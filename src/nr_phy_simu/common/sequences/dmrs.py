@@ -1,0 +1,236 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import math
+
+import numpy as np
+
+from nr_phy_simu.config import SimulationConfig
+
+
+def gold_sequence(c_init: int, length: int) -> np.ndarray:
+    nc = 1600
+    seq_len = nc + length + 31
+    x1 = np.zeros(seq_len, dtype=np.int8)
+    x2 = np.zeros(seq_len, dtype=np.int8)
+    x1[0] = 1
+
+    for bit_idx in range(31):
+        x2[bit_idx] = (c_init >> bit_idx) & 1
+
+    for idx in range(31, seq_len):
+        x1[idx] = (x1[idx - 28] + x1[idx - 31]) & 1
+        x2[idx] = (x2[idx - 28] + x2[idx - 29] + x2[idx - 30] + x2[idx - 31]) & 1
+
+    return (x1[nc : nc + length] + x2[nc : nc + length]) & 1
+
+
+def qpsk_from_prbs(bits: np.ndarray) -> np.ndarray:
+    real = 1 - 2 * bits[0::2]
+    imag = 1 - 2 * bits[1::2]
+    return (real + 1j * imag) / np.sqrt(2.0)
+
+
+def _largest_prime_less_than_or_equal(value: int) -> int:
+    if value <= 2:
+        return 2
+    for candidate in range(value, 1, -1):
+        is_prime = True
+        limit = int(math.sqrt(candidate)) + 1
+        for factor in range(2, limit):
+            if candidate % factor == 0:
+                is_prime = False
+                break
+        if is_prime:
+            return candidate
+    return 2
+
+
+def _zadoff_chu_extension(root: int, length: int) -> np.ndarray:
+    nzc = _largest_prime_less_than_or_equal(length)
+    n = np.arange(nzc)
+    base = np.exp(-1j * np.pi * root * n * (n + 1) / nzc)
+    return base[np.mod(np.arange(length), nzc)]
+
+
+@dataclass(frozen=True)
+class DmrsInfo:
+    symbol_indices: tuple[int, ...]
+    re_offsets: np.ndarray
+    re_per_prb: int
+
+
+class DmrsGenerator:
+    """
+    Protocol-oriented DMRS helper.
+
+    Sequence initialization follows the standard Gold-sequence form used by
+    TS 38.211 for PDSCH DM-RS and for PUSCH when transform precoding is
+    disabled. For transform-precoded PUSCH, the implementation uses a
+    low-PAPR Zadoff-Chu style construction as an isolated engineering
+    placeholder until the full clause 5.2.2/5.2.3 procedure is added.
+    """
+
+    def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
+        if config.dmrs.config_type == 1:
+            re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
+        elif config.dmrs.config_type == 2:
+            re_offsets = np.array([0, 1, 6, 7], dtype=int)
+        else:
+            raise ValueError(f"Unsupported DMRS configuration type: {config.dmrs.config_type}")
+
+        return DmrsInfo(
+            symbol_indices=self._dmrs_symbol_indices(config),
+            re_offsets=re_offsets,
+            re_per_prb=re_offsets.size,
+        )
+
+    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> np.ndarray:
+        info = self.get_dmrs_info(config)
+        num_prbs = config.link.num_prbs
+        if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
+            return self._generate_pusch_transform_precoded(symbol, num_prbs, info, config)
+        if config.link.channel_type.upper() == "PUSCH":
+            return self._generate_gold_dmrs(symbol, num_prbs, info, config)
+        if config.link.channel_type.upper() == "PDSCH":
+            return self._generate_gold_dmrs(symbol, num_prbs, info, config)
+        raise ValueError(f"Unsupported channel type: {config.link.channel_type}")
+
+    def _dmrs_symbol_indices(self, config: SimulationConfig) -> tuple[int, ...]:
+        if config.dmrs.symbol_positions:
+            return tuple(config.dmrs.symbol_positions)
+
+        start = config.link.start_symbol
+        length = config.link.num_symbols
+        mapping_type = config.dmrs.mapping_type.upper()
+        add_pos = config.dmrs.additional_positions
+        max_len = config.dmrs.max_length
+
+        if mapping_type == "A":
+            first = config.dmrs.type_a_position
+            positions = [first]
+            span = start + length
+            if span in (8, 9):
+                positions += [7]
+            elif span in (10, 11):
+                if add_pos == 1:
+                    positions += [9]
+                elif add_pos >= 2:
+                    positions += [6, 9]
+            elif span == 12:
+                if add_pos == 1:
+                    positions += [11]
+                elif add_pos == 2:
+                    positions += [7, 11]
+                elif add_pos >= 3:
+                    positions += [5, 8, 11]
+            elif span >= 13:
+                if add_pos == 1:
+                    positions += [11]
+                elif add_pos == 2:
+                    positions += [7, 11]
+                elif add_pos >= 3:
+                    positions += [5, 8, 11]
+            if max_len == 2:
+                positions = [value for pos in positions for value in (pos, pos + 1)]
+            return tuple(sorted({pos for pos in positions if start <= pos < start + length}))
+
+        positions = [start]
+        if length >= 8 and add_pos >= 1:
+            positions.append(start + length - 4)
+        if length >= 10 and add_pos >= 2:
+            positions.append(start + length // 2)
+        if length >= 12 and add_pos >= 3:
+            positions.append(start + 3)
+        if max_len == 2:
+            positions = [value for pos in positions for value in (pos, pos + 1)]
+        return tuple(sorted({pos for pos in positions if start <= pos < start + length}))
+
+    def _effective_scrambling_id(self, config: SimulationConfig) -> int:
+        if config.dmrs.nid_nscid is not None:
+            return int(config.dmrs.nid_nscid)
+        if config.dmrs.scrambling_id0 is not None:
+            return int(config.dmrs.scrambling_id0)
+        return int(config.carrier.n_cell_id)
+
+    def _dmrs_c_init(self, symbol: int, config: SimulationConfig) -> int:
+        nid = self._effective_scrambling_id(config)
+        slot = config.slot_index
+        symbols_per_slot = config.carrier.symbols_per_slot
+        return (
+            (1 << 17) * (symbols_per_slot * slot + symbol + 1) * (2 * nid + 1)
+            + 2 * nid
+            + config.dmrs.n_scid
+        ) % (1 << 31)
+
+    def _generate_gold_dmrs(
+        self,
+        symbol: int,
+        num_prbs: int,
+        info: DmrsInfo,
+        config: SimulationConfig,
+    ) -> np.ndarray:
+        dmrs_begin = info.re_per_prb * config.link.prb_start * 2
+        dmrs_end = info.re_per_prb * (config.link.prb_start + num_prbs) * 2
+        dmrs_size = info.re_per_prb * config.carrier.n_size_grid * 2
+        bits = gold_sequence(self._dmrs_c_init(symbol, config), dmrs_size)
+        return qpsk_from_prbs(bits[dmrs_begin:dmrs_end])
+
+    def _generate_pusch_transform_precoded(
+        self,
+        symbol: int,
+        num_prbs: int,
+        info: DmrsInfo,
+        config: SimulationConfig,
+    ) -> np.ndarray:
+        length = num_prbs * info.re_per_prb
+        if config.link.modulation.upper() == "PI/2-BPSK":
+            bits = gold_sequence(self._dmrs_c_init(symbol, config), 2 * length)
+            return qpsk_from_prbs(bits)
+
+        u, v = self._pusch_low_papr_group_sequence_numbers(symbol, config)
+        return self._low_papr_type1(u=u, v=v, length=length)
+
+    def _pusch_low_papr_group_sequence_numbers(
+        self,
+        symbol: int,
+        config: SimulationConfig,
+    ) -> tuple[int, int]:
+        n_id_rs = config.dmrs.n_pusch_identity
+        if n_id_rs is None:
+            n_id_rs = self._effective_scrambling_id(config)
+
+        slot_number = config.slot_index
+        symbols_per_slot = config.carrier.symbols_per_slot
+        linear_symbol = slot_number * symbols_per_slot + symbol
+
+        f_gh = 0
+        if config.dmrs.group_hopping:
+            prbs = gold_sequence(c_init=int(n_id_rs // 30), length=8 * (linear_symbol + 1))
+            hop_bits = prbs[8 * linear_symbol : 8 * (linear_symbol + 1)]
+            f_gh = int(np.sum(hop_bits * (2 ** np.arange(8)))) % 30
+
+        v = 0
+        if config.dmrs.sequence_hopping and config.link.num_prbs * 6 >= 72:
+            prbs = gold_sequence(c_init=int(n_id_rs // 30), length=linear_symbol + 1)
+            v = int(prbs[linear_symbol])
+
+        u = (f_gh + int(n_id_rs)) % 30
+        return u, v
+
+    def _low_papr_type1(self, u: int, v: int, length: int) -> np.ndarray:
+        if length < 36:
+            # Reuse the large-length construction for short lengths until the
+            # table-driven short-sequence set is added.
+            return self._zc_low_papr_sequence(u=u, v=v, length=length)
+        return self._zc_low_papr_sequence(u=u, v=v, length=length)
+
+    @staticmethod
+    def _zc_low_papr_sequence(u: int, v: int, length: int) -> np.ndarray:
+        nzc = _largest_prime_less_than_or_equal(length)
+        q_bar = nzc * (u + 1) / 31.0
+        q = int(np.floor(q_bar + 0.5)) + v * ((-1) ** int(np.floor(2 * q_bar)))
+        n = np.arange(nzc)
+        base = np.exp(-1j * np.pi * q * n * (n + 1) / nzc)
+        sequence = base[np.mod(np.arange(length), nzc)]
+        return sequence / np.sqrt(np.mean(np.abs(sequence) ** 2))
