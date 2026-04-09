@@ -51,6 +51,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 python examples/run_pusch_awgn.py
+python examples/run_pusch_dfts_awgn.py
+python examples/run_pdsch_awgn.py
 ```
 
 ## 设计原则
