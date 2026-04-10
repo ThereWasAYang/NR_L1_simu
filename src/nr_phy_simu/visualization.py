@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path("/tmp/mplconfig")))
@@ -67,12 +68,11 @@ def save_simulation_plots(
 
     constellation_fig.savefig(constellation_path, dpi=160)
     pilot_fig.savefig(pilots_path, dpi=160)
+    plt.close(constellation_fig)
+    plt.close(pilot_fig)
 
     if show:
-        _show_figures([constellation_fig, pilot_fig], block=block)
-    else:
-        plt.close(constellation_fig)
-        plt.close(pilot_fig)
+        _show_plots([constellation_path, pilots_path], block=block)
 
     return {"constellation": constellation_path, "pilot_estimates": pilots_path}
 
@@ -109,7 +109,18 @@ def _build_pilot_estimate_figure(result: SimulationResult):
     return fig
 
 
-def _show_figures(figures, block: bool) -> None:
+def _show_plots(paths: list[Path], block: bool) -> None:
+    if _use_system_viewer():
+        _open_with_system_viewer(paths)
+        return
+
+    figures = [plt.figure() for _ in paths]
+    for figure, path in zip(figures, paths, strict=True):
+        image = plt.imread(path)
+        axis = figure.subplots()
+        axis.imshow(image)
+        axis.axis("off")
+
     manager_backend = plt.get_backend().lower()
     if "agg" in manager_backend:
         for figure in figures:
@@ -122,3 +133,16 @@ def _show_figures(figures, block: bool) -> None:
     if block:
         for figure in figures:
             plt.close(figure)
+
+
+def _use_system_viewer() -> bool:
+    return platform.system() == "Darwin" and _is_foreground_session()
+
+
+def _open_with_system_viewer(paths: list[Path]) -> None:
+    for path in paths:
+        subprocess.Popen(
+            ["open", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
