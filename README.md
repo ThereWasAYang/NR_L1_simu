@@ -26,7 +26,6 @@
 
 当前版本仍需进一步补齐：
 
-- 继续扩展更多标准 `MCS table type`
 - 完整的 PUSCH/PDSCH 映射规则与多天线预编码流程
 - 继续补齐 DMRS/PTRS/CSI-RS 等协议表项，尤其是 transform-precoded PUSCH DMRS 的 clause 5.2.2/5.2.3 完整细节
 - 3GPP TDL/CDL 精确参数集、时变多径与多普勒模型
@@ -162,7 +161,14 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - NR `rate matching / rate recovery`
 - `MCS -> modulation/code rate/TBS` 自动解析
 
-当前 `MCS table` 已实现 `qam64`，并保留了继续扩展其他标准表的接口。
+当前已实现的 `MCS table` 包括：
+
+- `qam64`
+- `qam256`
+- `qam64lowse`
+- `qam1024`（PDSCH）
+- `tp64qam`（transform-precoded PUSCH）
+- `tp64lowse`（transform-precoded PUSCH）
 
 ## 后续建议
 

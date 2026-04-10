@@ -31,8 +31,9 @@ link:
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
-    table: qam64                # MCS table type
+    table: qam64                # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
     index: 10                   # MCS index
+    tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
     x_overhead: 0               # TBS 计算中的 xOh
 

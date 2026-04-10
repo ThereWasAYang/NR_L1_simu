@@ -129,6 +129,7 @@ class McsConfig:
     index: int | None = None
     modulation: str | None = None
     target_code_rate: float | None = None
+    tp_pi2bpsk: bool = False
     x_overhead: int = 0
     rv: int = 0
 

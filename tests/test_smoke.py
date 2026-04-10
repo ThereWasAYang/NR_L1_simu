@@ -14,6 +14,7 @@ from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
+from nr_phy_simu.common.mcs import resolve_mcs
 
 
 class PuschAwgnSmokeTest(unittest.TestCase):
@@ -74,6 +75,44 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(len(yaml_cfg.carrier.cyclic_prefix_lengths), yaml_cfg.carrier.symbols_per_slot)
         self.assertEqual(yaml_cfg.scrambling.rnti, 4660)
         self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
+
+
+class McsTableTest(unittest.TestCase):
+    def test_pdsch_all_mcs_tables(self):
+        cases = [
+            ("qam64", 10, "16QAM"),
+            ("qam256", 20, "256QAM"),
+            ("qam64lowse", 21, "64QAM"),
+            ("qam1024", 23, "1024QAM"),
+        ]
+        for table_name, index, modulation in cases:
+            cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
+            cfg.link.mcs.table = table_name
+            cfg.link.mcs.index = index
+            entry = resolve_mcs(cfg)
+            self.assertEqual(entry.modulation, modulation)
+            self.assertGreater(entry.target_code_rate, 0.0)
+
+    def test_pusch_transform_precoding_tables(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
+        cfg.link.mcs.table = "tp64qam"
+        cfg.link.mcs.index = 0
+        cfg.link.mcs.tp_pi2bpsk = True
+        entry = resolve_mcs(cfg)
+        self.assertEqual(entry.modulation, "PI/2-BPSK")
+
+        cfg.link.mcs.table = "tp64lowse"
+        cfg.link.mcs.index = 24
+        cfg.link.mcs.tp_pi2bpsk = False
+        entry = resolve_mcs(cfg)
+        self.assertEqual(entry.modulation, "64QAM")
+
+    def test_invalid_mcs_table_combination_raises(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.link.mcs.table = "qam1024"
+        cfg.link.mcs.index = 23
+        with self.assertRaises(ValueError):
+            resolve_mcs(cfg)
 
 
 if __name__ == "__main__":
