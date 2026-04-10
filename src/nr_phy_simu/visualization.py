@@ -77,6 +77,10 @@ def _show_figures(figures) -> None:
             plt.close(figure)
         return
 
-    plt.show()
+    # Force blocking display for IDE foreground runs such as PyCharm, where
+    # non-blocking show() may return immediately and the figures would be
+    # closed before the window/toolwindow is rendered.
+    plt.ioff()
+    plt.show(block=True)
     for figure in figures:
         plt.close(figure)
