@@ -62,6 +62,17 @@ class NrResourceMapper(ResourceMapper):
         dmrs_symbols = np.concatenate(dmrs_sequence) if dmrs_sequence else np.array([], dtype=np.complex128)
         return grid, dmrs_mask, data_mask, dmrs_symbols
 
+    def count_data_re(self, config: SimulationConfig) -> int:
+        allocated = self._allocated_subcarriers(config)
+        dmrs_info = self.dmrs_generator.get_dmrs_info(config)
+        total = 0
+        for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
+            symbol_count = allocated.size
+            if symbol_idx in dmrs_info.symbol_indices:
+                symbol_count -= self._symbol_dmrs_offsets(config, dmrs_info).size
+            total += symbol_count
+        return total
+
     @staticmethod
     def _allocated_subcarriers(config: SimulationConfig) -> np.ndarray:
         start = config.link.prb_start * 12

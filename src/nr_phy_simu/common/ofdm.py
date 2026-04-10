@@ -10,7 +10,7 @@ class OfdmProcessor(TimeDomainProcessor):
     """CP-OFDM processor shared by CP-OFDM and DFT-s-OFDM chains."""
 
     def modulate(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        fft_size = config.carrier.fft_size
+        fft_size = config.carrier.fft_size_effective
         cp_length = config.carrier.cp_length
         n_sc = config.carrier.n_subcarriers
 
@@ -28,7 +28,7 @@ class OfdmProcessor(TimeDomainProcessor):
         return np.concatenate(waveform_symbols)
 
     def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        fft_size = config.carrier.fft_size
+        fft_size = config.carrier.fft_size_effective
         cp_length = config.carrier.cp_length
         n_sc = config.carrier.n_subcarriers
         symbols_per_slot = config.carrier.symbols_per_slot

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 
 from nr_phy_simu.common.interfaces import Demodulator
+from nr_phy_simu.common.mcs import bits_per_symbol
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.tx.modulation import QamModulator
 
 
 class QamDemodulator(Demodulator):
@@ -13,20 +17,21 @@ class QamDemodulator(Demodulator):
         noise_variance: float,
         config: SimulationConfig,
     ) -> np.ndarray:
-        modulation = config.link.modulation.upper()
-        if modulation == "QPSK":
-            scale = np.sqrt(2.0)
-            llr_i = 2 * scale * symbols.real / max(noise_variance, 1e-12)
-            llr_q = 2 * scale * symbols.imag / max(noise_variance, 1e-12)
-            return np.column_stack([llr_i, llr_q]).reshape(-1)
-        if modulation == "16QAM":
-            scale = np.sqrt(10.0)
-            re = scale * symbols.real
-            im = scale * symbols.imag
-            llr0 = 2 * re / max(noise_variance, 1e-12)
-            llr1 = (2 - np.abs(re)) * 2 / max(noise_variance, 1e-12)
-            llr2 = 2 * im / max(noise_variance, 1e-12)
-            llr3 = (2 - np.abs(im)) * 2 / max(noise_variance, 1e-12)
-            return np.column_stack([llr0, llr1, llr2, llr3]).reshape(-1)
-        raise ValueError(f"Unsupported modulation: {config.link.modulation}")
+        constellation, bit_labels = self._constellation(config.link.modulation)
+        metric = np.empty((symbols.size, constellation.size), dtype=np.float64)
+        for idx, point in enumerate(constellation):
+            metric[:, idx] = np.abs(symbols - point) ** 2
 
+        llrs = []
+        variance = max(noise_variance, 1e-12)
+        for bit_idx in range(bit_labels.shape[1]):
+            zero_metric = np.min(metric[:, bit_labels[:, bit_idx] == 0], axis=1)
+            one_metric = np.min(metric[:, bit_labels[:, bit_idx] == 1], axis=1)
+            llrs.append((one_metric - zero_metric) / variance)
+        return np.column_stack(llrs).reshape(-1)
+
+    def _constellation(self, modulation: str) -> tuple[np.ndarray, np.ndarray]:
+        bps = bits_per_symbol(modulation)
+        bit_patterns = np.array(list(itertools.product([0, 1], repeat=bps)), dtype=np.int8)
+        symbols = QamModulator.map_bits_for_modulation(bit_patterns.reshape(-1), modulation)
+        return symbols, bit_patterns

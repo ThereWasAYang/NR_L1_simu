@@ -1,0 +1,46 @@
+{
+  "carrier": {
+    "cell_bandwidth_rbs": 52,
+    "subcarrier_spacing_khz": 30,
+    "fft_size": null,
+    "sample_rate_hz": null,
+    "cp_length": 72,
+    "symbols_per_slot": 14,
+    "n_cell_id": 1
+  },
+  "channel": {
+    "model": "AWGN",
+    "params": {
+      "snr_db": 12.0
+    }
+  },
+  "link": {
+    "channel_type": "PDSCH",
+    "waveform": "CP-OFDM",
+    "num_layers": 1,
+    "num_tx_ant": 1,
+    "num_rx_ant": 1,
+    "prb_start": 4,
+    "num_prbs": 24,
+    "start_symbol": 0,
+    "num_symbols": 14,
+    "mcs": {
+      "table": "qam64",
+      "index": 10,
+      "rv": 0,
+      "x_overhead": 0
+    }
+  },
+  "dmrs": {
+    "config_type": 1,
+    "mapping_type": "A",
+    "type_a_position": 2,
+    "additional_positions": 1,
+    "max_length": 1,
+    "symbol_positions": [],
+    "n_scid": 0,
+    "port_set": [0]
+  },
+  "random_seed": 7,
+  "slot_index": 0
+}

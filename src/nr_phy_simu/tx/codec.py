@@ -1,29 +1,37 @@
 from __future__ import annotations
 
-import math
-
 import numpy as np
+from py3gpp import (
+    nrCRCEncode,
+    nrCodeBlockSegmentLDPC,
+    nrDLSCHInfo,
+    nrLDPCEncode,
+    nrRateMatchLDPC,
+)
 
 from nr_phy_simu.common.interfaces import ChannelCoder
 from nr_phy_simu.config import SimulationConfig
 
 
-class RepetitionCoder(ChannelCoder):
-    """
-    Runnable placeholder for the coding stage.
-
-    This keeps the chain executable before a full NR LDPC implementation is
-    integrated. Replace with an R18-compliant LDPC coder in production use.
-    """
-
-    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        target_len = math.ceil(bits.size / config.link.code_rate)
-        repeat_factor = max(1, math.ceil(target_len / bits.size))
-        coded = np.tile(bits, repeat_factor)
-        return coded[:target_len].astype(np.int8)
-
-
 class NrLdpcCoder(ChannelCoder):
-    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        raise NotImplementedError("NR LDPC coding is not implemented yet.")
+    """
+    NR LDPC coding chain:
+    TB CRC -> code block segmentation -> LDPC encode -> rate matching.
+    """
 
+    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        if config.link.coded_bit_capacity is None:
+            raise ValueError("coded_bit_capacity must be resolved before LDPC encoding.")
+
+        tbs = int(bits.size)
+        info = nrDLSCHInfo(tbs, config.link.code_rate)
+        tb_crc = nrCRCEncode(bits.astype(np.int8), info["CRC"])[:, 0].astype(np.int8)
+        cbs = nrCodeBlockSegmentLDPC(tb_crc, info["BGN"])
+        coded_cbs = nrLDPCEncode(cbs, info["BGN"])
+        return nrRateMatchLDPC(
+            coded_cbs,
+            outlen=int(config.link.coded_bit_capacity),
+            rv=int(config.link.mcs.rv),
+            mod=config.link.modulation,
+            nLayers=config.link.num_layers,
+        ).astype(np.int8)

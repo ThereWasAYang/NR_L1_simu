@@ -1,28 +1,34 @@
 from __future__ import annotations
 
 import numpy as np
+from py3gpp import (
+    nrCRCDecode,
+    nrCodeBlockDesegmentLDPC,
+    nrDLSCHInfo,
+    nrLDPCDecode,
+    nrRateRecoverLDPC,
+)
 
 from nr_phy_simu.common.interfaces import ChannelDecoder
 from nr_phy_simu.config import SimulationConfig
 
 
-class HardDecisionRepetitionDecoder(ChannelDecoder):
-    """
-    Pairs with the placeholder repetition coder.
-    """
-
-    def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        target_len = config.link.transport_block_size
-        hard_bits = (llrs < 0).astype(np.int8)
-        if hard_bits.size < target_len:
-            hard_bits = np.pad(hard_bits, (0, target_len - hard_bits.size))
-
-        repeats = int(np.ceil(hard_bits.size / target_len))
-        padded = np.pad(hard_bits, (0, repeats * target_len - hard_bits.size))
-        blocks = padded.reshape(repeats, target_len)
-        return (np.mean(blocks, axis=0) >= 0.5).astype(np.int8)
-
-
 class NrLdpcDecoder(ChannelDecoder):
     def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        raise NotImplementedError("NR LDPC decoding is not implemented yet.")
+        tbs = int(config.link.transport_block_size or 0)
+        if tbs <= 0:
+            raise ValueError("transport_block_size must be resolved before LDPC decoding.")
+
+        info = nrDLSCHInfo(tbs, config.link.code_rate)
+        recovered = nrRateRecoverLDPC(
+            llrs,
+            trblklen=tbs,
+            R=config.link.code_rate,
+            rv=int(config.link.mcs.rv),
+            mod=config.link.modulation,
+            nLayers=config.link.num_layers,
+        )
+        decoded_cbs, _ = nrLDPCDecode(recovered, info["BGN"], maxNumIter=25)
+        tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
+        decoded, _ = nrCRCDecode(tb_with_crc.astype(np.int8), info["CRC"])
+        return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)

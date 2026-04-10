@@ -15,12 +15,12 @@ class AwgnChannel(ChannelModel):
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
-        snr_linear = 10 ** (config.snr_db / 10.0)
+        snr_db = float(config.channel.params.get("snr_db", config.snr_db))
+        snr_linear = 10 ** (snr_db / 10.0)
         signal_power = np.mean(np.abs(waveform) ** 2)
         noise_variance = signal_power / max(snr_linear, 1e-12)
         noise = (
             self.rng.normal(0.0, np.sqrt(noise_variance / 2), waveform.shape)
             + 1j * self.rng.normal(0.0, np.sqrt(noise_variance / 2), waveform.shape)
         )
-        return waveform + noise, {"noise_variance": noise_variance}
-
+        return waveform + noise, {"noise_variance": noise_variance, "snr_db": snr_db}
