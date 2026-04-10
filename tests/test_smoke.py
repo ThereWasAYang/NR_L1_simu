@@ -35,7 +35,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
 
 class PdschAwgnSmokeTest(unittest.TestCase):
     def test_pdsch_cp_ofdm_awgn_smoke(self):
-        config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.json")
+        config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
         config.channel.params["snr_db"] = 30.0
         result = PdschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
@@ -66,14 +66,14 @@ class DmrsSequenceTest(unittest.TestCase):
 class ConfigLoaderTest(unittest.TestCase):
     def test_load_yaml_and_json_config(self):
         yaml_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
-        json_cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.json")
+        yaml_pdsch_cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
         self.assertEqual(yaml_cfg.link.channel_type, "PUSCH")
-        self.assertEqual(json_cfg.link.channel_type, "PDSCH")
+        self.assertEqual(yaml_pdsch_cfg.link.channel_type, "PDSCH")
         self.assertGreater(yaml_cfg.carrier.fft_size_effective, 0)
         self.assertEqual(yaml_cfg.carrier.cyclic_prefix_mode, "NORMAL")
         self.assertEqual(len(yaml_cfg.carrier.cyclic_prefix_lengths), yaml_cfg.carrier.symbols_per_slot)
         self.assertEqual(yaml_cfg.scrambling.rnti, 4660)
-        self.assertEqual(json_cfg.scrambling.effective_data_scrambling_id, 1)
+        self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
 
 
 if __name__ == "__main__":

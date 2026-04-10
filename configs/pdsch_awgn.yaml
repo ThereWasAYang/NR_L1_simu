@@ -21,7 +21,7 @@ scrambling:
 
 # 共享信道链路配置
 link:
-  channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
+  channel_type: PDSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
   num_tx_ant: 1                 # 发射天线数
@@ -48,9 +48,6 @@ dmrs:
   scrambling_id1: null          # DMRS scrambling ID 1
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
-  n_pusch_identity: 1           # PUSCH-specific sequence identity
-  sequence_hopping: false       # 是否启用 sequence hopping
-  group_hopping: false          # 是否启用 group hopping
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数

@@ -55,7 +55,7 @@ source .venv/bin/activate
 pip install -e .
 python examples/run_from_config.py configs/pusch_awgn.yaml
 python examples/run_from_config.py configs/pusch_dfts_awgn.yaml
-python examples/run_from_config.py configs/pdsch_awgn.json
+python examples/run_from_config.py configs/pdsch_awgn.yaml
 ```
 
 ## 参数文件
@@ -70,7 +70,7 @@ python examples/run_from_config.py configs/pdsch_awgn.json
 
 - [configs/pusch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_awgn.yaml)
 - [configs/pusch_dfts_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_dfts_awgn.yaml)
-- [configs/pdsch_awgn.json](/Users/yang/Work/NR_L1_Simu/configs/pdsch_awgn.json)
+- [configs/pdsch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pdsch_awgn.yaml)
 
 当前参数模型至少覆盖：
 
