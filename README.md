@@ -58,6 +58,8 @@ python examples/run_from_config.py configs/pusch_dfts_awgn.yaml
 python examples/run_from_config.py configs/pdsch_awgn.yaml
 ```
 
+前台运行示例脚本时，星座图和导频信道估计图会直接弹窗显示；同时仍会保存到 `outputs/`。如果当前环境没有图形显示能力，则会自动退化为仅保存图片。
+
 ## 参数文件
 
 当前支持：

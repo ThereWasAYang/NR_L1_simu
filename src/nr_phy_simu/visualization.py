@@ -15,6 +15,7 @@ def save_simulation_plots(
     result: SimulationResult,
     output_dir: str | Path,
     prefix: str,
+    show: bool = False,
 ) -> dict[str, Path]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -22,12 +23,22 @@ def save_simulation_plots(
     constellation_path = output_path / f"{prefix}_constellation.png"
     pilots_path = output_path / f"{prefix}_pilot_channel_estimates.png"
 
-    _save_constellation(result, constellation_path)
-    _save_pilot_estimates(result, pilots_path)
+    constellation_fig = _build_constellation_figure(result)
+    pilot_fig = _build_pilot_estimate_figure(result)
+
+    constellation_fig.savefig(constellation_path, dpi=160)
+    pilot_fig.savefig(pilots_path, dpi=160)
+
+    if show:
+        _show_figures([constellation_fig, pilot_fig])
+    else:
+        plt.close(constellation_fig)
+        plt.close(pilot_fig)
+
     return {"constellation": constellation_path, "pilot_estimates": pilots_path}
 
 
-def _save_constellation(result: SimulationResult, path: Path) -> None:
+def _build_constellation_figure(result: SimulationResult):
     symbols = result.rx.equalized_symbols
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
@@ -37,11 +48,10 @@ def _save_constellation(result: SimulationResult, path: Path) -> None:
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.axis("equal")
     fig.tight_layout()
-    fig.savefig(path, dpi=160)
-    plt.close(fig)
+    return fig
 
 
-def _save_pilot_estimates(result: SimulationResult, path: Path) -> None:
+def _build_pilot_estimate_figure(result: SimulationResult):
     pilots = result.rx.pilot_estimates
     fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
     x = np.arange(pilots.size)
@@ -57,5 +67,16 @@ def _save_pilot_estimates(result: SimulationResult, path: Path) -> None:
     axes[1].grid(True, linestyle="--", alpha=0.4)
 
     fig.tight_layout()
-    fig.savefig(path, dpi=160)
-    plt.close(fig)
+    return fig
+
+
+def _show_figures(figures) -> None:
+    manager_backend = plt.get_backend().lower()
+    if "agg" in manager_backend:
+        for figure in figures:
+            plt.close(figure)
+        return
+
+    plt.show()
+    for figure in figures:
+        plt.close(figure)

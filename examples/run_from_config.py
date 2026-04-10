@@ -18,7 +18,7 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
     result = simulation.run()
     prefix = config_path.stem
-    plots = save_simulation_plots(result, ROOT / "outputs", prefix)
+    plots = save_simulation_plots(result, ROOT / "outputs", prefix, show=True)
 
     print(f"Config: {config_path}")
     print(f"Channel type: {config.link.channel_type}")
