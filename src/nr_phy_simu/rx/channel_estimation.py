@@ -19,15 +19,16 @@ class LeastSquaresEstimator(ChannelEstimator):
         if dmrs_symbols.size == 0:
             return channel
 
-        pilot_est = rx_grid[dmrs_mask] / dmrs_symbols[: np.count_nonzero(dmrs_mask)]
-        channel[dmrs_mask] = pilot_est
-
         dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
+        dmrs_cursor = 0
         for symbol_idx in range(rx_grid.shape[1]):
             symbol_mask = dmrs_mask[:, symbol_idx]
             if np.any(symbol_mask):
                 pilot_sc = np.flatnonzero(symbol_mask)
-                pilot_values = channel[pilot_sc, symbol_idx]
+                symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
+                dmrs_cursor += pilot_sc.size
+                pilot_values = rx_grid[pilot_sc, symbol_idx] / symbol_dmrs
+                channel[pilot_sc, symbol_idx] = pilot_values
                 full_sc = np.arange(rx_grid.shape[0])
                 real = np.interp(full_sc, pilot_sc, pilot_values.real)
                 imag = np.interp(full_sc, pilot_sc, pilot_values.imag)
@@ -47,4 +48,15 @@ class LeastSquaresEstimator(ChannelEstimator):
     ) -> np.ndarray:
         if dmrs_symbols.size == 0:
             return np.array([], dtype=np.complex128)
-        return rx_grid[dmrs_mask] / dmrs_symbols[: np.count_nonzero(dmrs_mask)]
+
+        estimates = []
+        dmrs_cursor = 0
+        for symbol_idx in range(rx_grid.shape[1]):
+            symbol_mask = dmrs_mask[:, symbol_idx]
+            if not np.any(symbol_mask):
+                continue
+            pilot_sc = np.flatnonzero(symbol_mask)
+            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
+            dmrs_cursor += pilot_sc.size
+            estimates.append(rx_grid[pilot_sc, symbol_idx] / symbol_dmrs)
+        return np.concatenate(estimates) if estimates else np.array([], dtype=np.complex128)

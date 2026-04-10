@@ -54,6 +54,7 @@ def save_simulation_plots(
     output_dir: str | Path,
     prefix: str,
     show: bool = False,
+    block: bool = False,
 ) -> dict[str, Path]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -68,7 +69,7 @@ def save_simulation_plots(
     pilot_fig.savefig(pilots_path, dpi=160)
 
     if show:
-        _show_figures([constellation_fig, pilot_fig])
+        _show_figures([constellation_fig, pilot_fig], block=block)
     else:
         plt.close(constellation_fig)
         plt.close(pilot_fig)
@@ -108,17 +109,16 @@ def _build_pilot_estimate_figure(result: SimulationResult):
     return fig
 
 
-def _show_figures(figures) -> None:
+def _show_figures(figures, block: bool) -> None:
     manager_backend = plt.get_backend().lower()
     if "agg" in manager_backend:
         for figure in figures:
             plt.close(figure)
         return
 
-    # Force blocking display for IDE foreground runs such as PyCharm, where
-    # non-blocking show() may return immediately and the figures would be
-    # closed before the window/toolwindow is rendered.
     plt.ioff()
-    plt.show(block=True)
-    for figure in figures:
-        plt.close(figure)
+    plt.show(block=block)
+    plt.pause(0.001)
+    if block:
+        for figure in figures:
+            plt.close(figure)
