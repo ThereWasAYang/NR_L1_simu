@@ -5,6 +5,7 @@ import math
 
 import numpy as np
 
+from nr_phy_simu.common.interfaces import DmrsSequenceGenerator
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -172,7 +173,7 @@ class DmrsInfo:
     re_per_prb: int
 
 
-class DmrsGenerator:
+class DmrsGenerator(DmrsSequenceGenerator):
     """
     Protocol-oriented DMRS helper.
 

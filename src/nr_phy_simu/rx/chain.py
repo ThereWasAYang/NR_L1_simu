@@ -3,15 +3,15 @@ from __future__ import annotations
 import numpy as np
 
 from nr_phy_simu.common.interfaces import (
+    BitScrambler,
     ChannelDecoder,
     ChannelEstimator,
     Demodulator,
+    DmrsSequenceGenerator,
     FrequencyExtractor,
     MimoEqualizer,
     TimeDomainProcessor,
 )
-from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
-from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
 from nr_phy_simu.common.types import RxPayload
 from nr_phy_simu.config import SimulationConfig
 
@@ -25,8 +25,8 @@ class Receiver:
         equalizer: MimoEqualizer,
         demodulator: Demodulator,
         decoder: ChannelDecoder,
-        dmrs_generator: DmrsGenerator,
-        scrambler: NrDataScrambler | None = None,
+        dmrs_generator: DmrsSequenceGenerator,
+        scrambler: BitScrambler,
     ) -> None:
         self.time_processor = time_processor
         self.extractor = extractor
@@ -35,7 +35,7 @@ class Receiver:
         self.demodulator = demodulator
         self.decoder = decoder
         self.dmrs_generator = dmrs_generator
-        self.scrambler = scrambler or NrDataScrambler()
+        self.scrambler = scrambler
 
     def receive(
         self,

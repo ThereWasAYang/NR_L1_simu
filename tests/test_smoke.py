@@ -12,6 +12,9 @@ import numpy as np
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
+from nr_phy_simu.scenarios.factory import DefaultSimulationComponentFactory
+from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
+from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.mcs import resolve_mcs
@@ -113,6 +116,16 @@ class McsTableTest(unittest.TestCase):
         cfg.link.mcs.index = 23
         with self.assertRaises(ValueError):
             resolve_mcs(cfg)
+
+
+class ComponentAbstractionTest(unittest.TestCase):
+    def test_default_component_factory_builds_independent_stage_classes(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        factory = DefaultSimulationComponentFactory()
+        components = factory.create_components(cfg)
+        self.assertIsInstance(components.transmitter.mapper, FrequencyDomainResourceMapper)
+        self.assertIsInstance(components.receiver.extractor, FrequencyDomainExtractor)
+        self.assertIsNotNone(factory.create_channel_factory().create(cfg))
 
 
 if __name__ == "__main__":

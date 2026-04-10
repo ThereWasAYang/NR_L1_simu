@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from nr_phy_simu.common.interfaces import ChannelCoder, Modulator, ResourceMapper, TimeDomainProcessor
-from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
-from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
+from nr_phy_simu.common.interfaces import (
+    BitScrambler,
+    ChannelCoder,
+    DmrsSequenceGenerator,
+    Modulator,
+    ResourceMapper,
+    TimeDomainProcessor,
+)
 from nr_phy_simu.common.types import TxPayload
 from nr_phy_simu.config import SimulationConfig
 
@@ -16,15 +21,15 @@ class Transmitter:
         modulator: Modulator,
         mapper: ResourceMapper,
         time_processor: TimeDomainProcessor,
-        dmrs_generator: DmrsGenerator,
-        scrambler: NrDataScrambler | None = None,
+        dmrs_generator: DmrsSequenceGenerator,
+        scrambler: BitScrambler,
     ) -> None:
         self.coder = coder
         self.modulator = modulator
         self.mapper = mapper
         self.time_processor = time_processor
         self.dmrs_generator = dmrs_generator
-        self.scrambler = scrambler or NrDataScrambler()
+        self.scrambler = scrambler
 
     def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
         coded_bits = self.coder.encode(transport_block, config)

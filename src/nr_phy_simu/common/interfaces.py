@@ -19,6 +19,16 @@ class ChannelDecoder(ABC):
         raise NotImplementedError
 
 
+class BitScrambler(ABC):
+    @abstractmethod
+    def scramble(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        raise NotImplementedError
+
+    @abstractmethod
+    def descramble_llrs(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        raise NotImplementedError
+
+
 class Modulator(ABC):
     @abstractmethod
     def map_bits(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
@@ -43,6 +53,10 @@ class ResourceMapper(ABC):
         data_symbols: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def count_data_re(self, config: SimulationConfig) -> int:
         raise NotImplementedError
 
 
@@ -89,6 +103,15 @@ class ChannelEstimator(ABC):
     ) -> np.ndarray:
         raise NotImplementedError
 
+    @abstractmethod
+    def pilot_estimates(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+    ) -> np.ndarray:
+        raise NotImplementedError
+
 
 class MimoEqualizer(ABC):
     @abstractmethod
@@ -99,4 +122,14 @@ class MimoEqualizer(ABC):
         noise_variance: float,
         config: SimulationConfig,
     ) -> np.ndarray:
+        raise NotImplementedError
+
+
+class DmrsSequenceGenerator(ABC):
+    @abstractmethod
+    def get_dmrs_info(self, config: SimulationConfig):
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> np.ndarray:
         raise NotImplementedError

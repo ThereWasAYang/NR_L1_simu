@@ -37,10 +37,10 @@
 ```text
 src/nr_phy_simu/
   common/          公共类型、接口、资源栅格、OFDM、DMRS
-  tx/              发射机：编码、调制、映射、时域处理
-  rx/              接收机：时域处理、抽取、估计、均衡、解调、译码
-  channels/        AWGN / TDL / CDL
-  scenarios/       PUSCH / PDSCH 业务链路封装
+  tx/              发射机：编码、扰码、调制、频域资源映射
+  rx/              接收机：频域抽取、信道估计、均衡、解调、译码
+  channels/        AWGN / TDL / CDL / channel factory
+  scenarios/       PUSCH / PDSCH 场景封装与组件工厂
   config.py        全局配置 dataclass
 examples/
   run_pusch_awgn.py
@@ -116,6 +116,8 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - `MimoEqualizer`
 - `Demodulator`
 - `ChannelDecoder`
+- `BitScrambler`
+- `DmrsSequenceGenerator`
 
 ### 2. 协议实现与算法实现分离
 
@@ -130,6 +132,21 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 ### 3. 场景对象负责装配
 
 `PUSCHSimulation` / `PDSCHSimulation` 负责把 TX、RX、Channel、DMRS 这些模块组装起来；具体模块可以在构造时替换。
+
+### 4. 组件工厂负责默认实现装配
+
+默认装配逻辑位于 [factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/factory.py)：
+
+- 发射机各处理块分别以独立类存在于 `tx/`
+- 接收机各处理块分别以独立类存在于 `rx/`
+- `DMRS` 与数据扰码位于 `common/sequences/`
+- 信道实例创建位于 [factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/factory.py)
+
+如果你后续要引入新算法，推荐做法是：
+
+- 派生对应抽象接口的新类
+- 自定义一个 `SimulationComponentFactory`
+- 在 `PuschSimulation(..., component_factory=...)` 或 `PdschSimulation(..., component_factory=...)` 中注入
 
 ## DMRS 说明
 

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from nr_phy_simu.common.interfaces import BitScrambler
 from nr_phy_simu.common.sequences.dmrs import gold_sequence
 from nr_phy_simu.config import SimulationConfig
 
 
-class NrDataScrambler:
+class NrDataScrambler(BitScrambler):
     """3GPP NR data scrambling/descrambling helper for shared channels."""
 
     def scramble(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:

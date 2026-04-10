@@ -2,21 +2,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from nr_phy_simu.channels.awgn import AwgnChannel
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
-from nr_phy_simu.common.ofdm import OfdmProcessor
-from nr_phy_simu.common.resource_grid import DataExtractor, NrResourceMapper
-from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
-from nr_phy_simu.rx.channel_estimation import LeastSquaresEstimator
-from nr_phy_simu.rx.decoding import NrLdpcDecoder
-from nr_phy_simu.rx.demodulation import QamDemodulator
-from nr_phy_simu.rx.equalization import OneTapMmseEqualizer
+from nr_phy_simu.scenarios.factory import (
+    DefaultSimulationComponentFactory,
+    SimulationComponentFactory,
+    build_receiver,
+    build_transmitter,
+)
 from nr_phy_simu.tx.chain import Transmitter
-from nr_phy_simu.tx.codec import NrLdpcCoder
-from nr_phy_simu.tx.modulation import QamModulator
 
 
 class SharedChannelSimulation:
@@ -26,27 +22,16 @@ class SharedChannelSimulation:
         transmitter: Transmitter | None = None,
         receiver: Receiver | None = None,
         channel=None,
+        component_factory: SimulationComponentFactory | None = None,
     ) -> None:
         self.config = config
-        self.dmrs_generator = DmrsGenerator()
-        self.mapper = NrResourceMapper(dmrs_generator=self.dmrs_generator)
-        self.transmitter = transmitter or Transmitter(
-            coder=NrLdpcCoder(),
-            modulator=QamModulator(),
-            mapper=self.mapper,
-            time_processor=OfdmProcessor(),
-            dmrs_generator=self.dmrs_generator,
-        )
-        self.receiver = receiver or Receiver(
-            time_processor=OfdmProcessor(),
-            extractor=DataExtractor(),
-            estimator=LeastSquaresEstimator(),
-            equalizer=OneTapMmseEqualizer(),
-            demodulator=QamDemodulator(),
-            decoder=NrLdpcDecoder(),
-            dmrs_generator=self.dmrs_generator,
-        )
-        self.channel = channel or self._build_channel()
+        self.component_factory = component_factory or DefaultSimulationComponentFactory()
+        self.components = self.component_factory.create_components(config)
+        self.dmrs_generator = self.components.shared.dmrs_generator
+        self.mapper = self.components.transmitter.mapper
+        self.transmitter = transmitter or build_transmitter(self.components)
+        self.receiver = receiver or build_receiver(self.components)
+        self.channel = channel or self.component_factory.create_channel_factory().create(config)
 
     def run(self) -> SimulationResult:
         apply_mcs_to_link(self.config)
@@ -82,12 +67,6 @@ class SharedChannelSimulation:
             bit_error_rate=ber,
             snr_db=float(channel_info.get("snr_db", self.config.snr_db)),
         )
-
-    def _build_channel(self):
-        model = self.config.channel.model.upper()
-        if model == "AWGN":
-            return AwgnChannel(rng=np.random.default_rng(self.config.random_seed))
-        raise NotImplementedError(f"Channel model '{self.config.channel.model}' is not implemented yet.")
 
     def _bits_per_symbol(self) -> int:
         modulation = self.config.link.modulation.upper()
