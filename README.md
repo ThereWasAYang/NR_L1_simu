@@ -82,15 +82,21 @@ python examples/run_from_config.py configs/pdsch_awgn.json
 - `cell bandwidth RBs`
 - `user bandwidth RBs`
 - `subcarrier spacing`
+- `cyclic prefix type (NormalCP / ECP)`
 - `sample rate`
+- `RNTI`
+- `N_id`
+- `data scrambling ID`
 - `DMRS config type`
 - `DMRS symbol positions`
+- `DMRS scrambling IDs / n_SCID / hopping`
 - `RV`
 - `layer number`
 - `antenna number`
 - `slot index`
 
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
+循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。
 
 ## 设计原则
 
@@ -130,6 +136,11 @@ python examples/run_from_config.py configs/pdsch_awgn.json
 - `PDSCH DMRS` 采用 38.211 中的 Gold 序列初始化形式
 - `PUSCH DMRS` 在 `transform precoding disabled` 时走同类 Gold 序列初始化路径
 - `PUSCH DFT-s-OFDM` 已拆出独立分支，并依据 38.211 中 transform precoding enabled 时的 low-PAPR type 1 路径生成序列
+
+数据扰码实现在 [src/nr_phy_simu/common/sequences/scrambling.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/common/sequences/scrambling.py)：
+
+- 发端按 `RNTI + codeword index + data scrambling ID/N_id` 生成共享信道数据扰码
+- 收端对 LLR 执行对应解扰，再进入 LDPC 译码
 
 ## 编码与调制
 

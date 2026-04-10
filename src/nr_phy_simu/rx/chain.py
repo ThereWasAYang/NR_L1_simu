@@ -11,6 +11,7 @@ from nr_phy_simu.common.interfaces import (
     TimeDomainProcessor,
 )
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
+from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
 from nr_phy_simu.common.types import RxPayload
 from nr_phy_simu.config import SimulationConfig
 
@@ -25,6 +26,7 @@ class Receiver:
         demodulator: Demodulator,
         decoder: ChannelDecoder,
         dmrs_generator: DmrsGenerator,
+        scrambler: NrDataScrambler | None = None,
     ) -> None:
         self.time_processor = time_processor
         self.extractor = extractor
@@ -33,6 +35,7 @@ class Receiver:
         self.demodulator = demodulator
         self.decoder = decoder
         self.dmrs_generator = dmrs_generator
+        self.scrambler = scrambler or NrDataScrambler()
 
     def receive(
         self,
@@ -58,13 +61,14 @@ class Receiver:
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
             equalized_symbols = self._despread_equalized(equalized_symbols, data_mask, config)
         llrs = self.demodulator.demap_symbols(equalized_symbols, noise_variance, config)
-        decoded_bits = self.decoder.decode(llrs, config)
+        descrambled_llrs = self.scrambler.descramble_llrs(llrs, config)
+        decoded_bits = self.decoder.decode(descrambled_llrs, config)
         return RxPayload(
             rx_waveform=rx_waveform,
             rx_grid=rx_grid,
             channel_estimate=channel_estimate,
             equalized_symbols=equalized_symbols,
-            llrs=llrs,
+            llrs=descrambled_llrs,
             decoded_bits=decoded_bits,
             dmrs_symbols=dmrs_symbols,
             pilot_estimates=pilot_estimates,

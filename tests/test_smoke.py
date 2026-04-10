@@ -70,6 +70,10 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(yaml_cfg.link.channel_type, "PUSCH")
         self.assertEqual(json_cfg.link.channel_type, "PDSCH")
         self.assertGreater(yaml_cfg.carrier.fft_size_effective, 0)
+        self.assertEqual(yaml_cfg.carrier.cyclic_prefix_mode, "NORMAL")
+        self.assertEqual(len(yaml_cfg.carrier.cyclic_prefix_lengths), yaml_cfg.carrier.symbols_per_slot)
+        self.assertEqual(yaml_cfg.scrambling.rnti, 4660)
+        self.assertEqual(json_cfg.scrambling.effective_data_scrambling_id, 1)
 
 
 if __name__ == "__main__":

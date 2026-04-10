@@ -4,6 +4,7 @@ import numpy as np
 
 from nr_phy_simu.common.interfaces import ChannelCoder, Modulator, ResourceMapper, TimeDomainProcessor
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
+from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
 from nr_phy_simu.common.types import TxPayload
 from nr_phy_simu.config import SimulationConfig
 
@@ -16,16 +17,19 @@ class Transmitter:
         mapper: ResourceMapper,
         time_processor: TimeDomainProcessor,
         dmrs_generator: DmrsGenerator,
+        scrambler: NrDataScrambler | None = None,
     ) -> None:
         self.coder = coder
         self.modulator = modulator
         self.mapper = mapper
         self.time_processor = time_processor
         self.dmrs_generator = dmrs_generator
+        self.scrambler = scrambler or NrDataScrambler()
 
     def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
         coded_bits = self.coder.encode(transport_block, config)
-        tx_symbols = self.modulator.map_bits(coded_bits, config)
+        scrambled_bits = self.scrambler.scramble(coded_bits, config)
+        tx_symbols = self.modulator.map_bits(scrambled_bits, config)
         grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(tx_symbols, config)
         waveform = self.time_processor.modulate(grid, config)
         return TxPayload(

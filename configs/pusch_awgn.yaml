@@ -1,16 +1,20 @@
 carrier:
   cell_bandwidth_rbs: 52
   subcarrier_spacing_khz: 30
+  cyclic_prefix: NormalCP
   fft_size: null
   sample_rate_hz: null
-  cp_length: 72
-  symbols_per_slot: 14
-  n_cell_id: 1
 
 channel:
   model: AWGN
   params:
     snr_db: 12.0
+
+scrambling:
+  rnti: 4660
+  n_id: 1
+  data_scrambling_id: null
+  codeword_index: 0
 
 link:
   channel_type: PUSCH
@@ -35,7 +39,13 @@ dmrs:
   additional_positions: 1
   max_length: 1
   symbol_positions: []
+  scrambling_id0: 1
+  scrambling_id1: null
+  nid_nscid: null
   n_scid: 0
+  n_pusch_identity: 1
+  sequence_hopping: false
+  group_hopping: false
   port_set: [0]
 
 random_seed: 7

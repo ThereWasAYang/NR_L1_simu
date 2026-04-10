@@ -178,9 +178,9 @@ class DmrsGenerator:
 
     Sequence initialization follows the standard Gold-sequence form used by
     TS 38.211 for PDSCH DM-RS and for PUSCH when transform precoding is
-    disabled. For transform-precoded PUSCH, the implementation uses a
-    low-PAPR Zadoff-Chu style construction as an isolated engineering
-    placeholder until the full clause 5.2.2/5.2.3 procedure is added.
+    disabled. For transform-precoded PUSCH, the implementation uses the
+    dedicated low-PAPR branch with short-sequence tables and Zadoff-Chu
+    extension for longer allocations.
     """
 
     def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
@@ -263,7 +263,7 @@ class DmrsGenerator:
             return int(config.dmrs.nid_nscid)
         if config.dmrs.scrambling_id0 is not None:
             return int(config.dmrs.scrambling_id0)
-        return int(config.carrier.n_cell_id)
+        return int(config.scrambling.n_id)
 
     def _dmrs_c_init(self, symbol: int, config: SimulationConfig) -> int:
         nid = self._effective_scrambling_id(config)
