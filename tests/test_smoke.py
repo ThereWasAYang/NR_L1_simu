@@ -12,7 +12,7 @@ import numpy as np
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
-from nr_phy_simu.scenarios.factory import DefaultSimulationComponentFactory
+from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.visualization import save_simulation_plots

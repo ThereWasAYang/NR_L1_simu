@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from nr_phy_simu.channels.factory import ChannelFactory, DefaultChannelFactory
+from nr_phy_simu.channels.channel_factory import ChannelFactory, DefaultChannelFactory
 from nr_phy_simu.common.interfaces import (
     BitScrambler,
     ChannelCoder,

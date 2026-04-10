@@ -6,7 +6,7 @@ from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_si
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
-from nr_phy_simu.scenarios.factory import (
+from nr_phy_simu.scenarios.component_factory import (
     DefaultSimulationComponentFactory,
     SimulationComponentFactory,
     build_receiver,

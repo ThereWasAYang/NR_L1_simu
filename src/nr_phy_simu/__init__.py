@@ -1,7 +1,7 @@
 """NR PHY simulation package."""
 
 from .config import CarrierConfig, ChannelConfig, DmrsConfig, LinkConfig, McsConfig, SimulationConfig
-from .scenarios.factory import DefaultSimulationComponentFactory, SimulationComponentFactory
+from .scenarios.component_factory import DefaultSimulationComponentFactory, SimulationComponentFactory
 
 __all__ = [
     "CarrierConfig",

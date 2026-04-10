@@ -135,12 +135,12 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 
 ### 4. 组件工厂负责默认实现装配
 
-默认装配逻辑位于 [factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/factory.py)：
+默认装配逻辑位于 [component_factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/component_factory.py)：
 
 - 发射机各处理块分别以独立类存在于 `tx/`
 - 接收机各处理块分别以独立类存在于 `rx/`
 - `DMRS` 与数据扰码位于 `common/sequences/`
-- 信道实例创建位于 [factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/factory.py)
+- 信道实例创建位于 [channel_factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/channel_factory.py)
 
 如果你后续要引入新算法，推荐做法是：
 

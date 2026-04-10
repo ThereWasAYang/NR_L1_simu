@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.scenarios.base import SharedChannelSimulation
-from nr_phy_simu.scenarios.factory import SimulationComponentFactory
+from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory
 
 
 class PdschSimulation(SharedChannelSimulation):
