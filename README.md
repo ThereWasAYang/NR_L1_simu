@@ -59,6 +59,7 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 ```
 
 前台运行示例脚本时，星座图和导频信道估计图会直接弹窗显示；同时仍会保存到 `outputs/`。如果当前环境没有图形显示能力，则会自动退化为仅保存图片。
+在 macOS 前台运行时，工程会优先选择可交互的 `matplotlib` backend。若需要手动指定，可设置环境变量 `NR_PHY_SIMU_PLOT_BACKEND`，例如 `macosx` 或 `TkAgg`。
 
 ## 参数文件
 

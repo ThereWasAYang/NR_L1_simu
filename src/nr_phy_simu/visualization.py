@@ -2,8 +2,46 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import platform
+import sys
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path("/tmp/mplconfig")))
+
+import matplotlib
+
+_PREFERRED_BACKEND_ENV = "NR_PHY_SIMU_PLOT_BACKEND"
+
+
+def _configure_matplotlib_backend() -> None:
+    requested_backend = os.environ.get(_PREFERRED_BACKEND_ENV)
+    if requested_backend:
+        matplotlib.use(requested_backend)
+        return
+
+    if os.environ.get("MPLBACKEND"):
+        return
+
+    if platform.system() == "Darwin":
+        matplotlib.use("macosx")
+        return
+
+    if _is_foreground_session() and _has_tkinter():
+        matplotlib.use("TkAgg")
+
+
+def _is_foreground_session() -> bool:
+    return bool(os.environ.get("PYCHARM_HOSTED")) or sys.stdout.isatty()
+
+
+def _has_tkinter() -> bool:
+    try:
+        import tkinter  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+_configure_matplotlib_backend()
 
 import matplotlib.pyplot as plt
 import numpy as np
