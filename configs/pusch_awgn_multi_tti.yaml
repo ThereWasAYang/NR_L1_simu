@@ -10,7 +10,7 @@ carrier:
 channel:
   model: AWGN                   # 信道类型：AWGN / TDL / CDL
   params:
-    snr_db: 12.0                # 加性白噪声信噪比，单位 dB
+    snr_db: -3                # 加性白噪声信噪比，单位 dB
 
 # 数据扰码配置
 scrambling:
@@ -24,15 +24,15 @@ link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: DFT-s-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
-  num_tx_ant: 2                 # 发射天线数
-  num_rx_ant: 4                 # 接收天线数
+  num_tx_ant: 1                 # 发射天线数
+  num_rx_ant: 1                 # 接收天线数
   prb_start: 4                  # 资源分配起始 PRB
   num_prbs: 16                  # 用户占用带宽，单位 PRB
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
     table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
-    index: 10                   # MCS index
+    index: 0                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
     x_overhead: 0               # TBS 计算中的 xOh
@@ -58,6 +58,7 @@ dmrs:
 # 仿真控制参数
 simulation:
   num_ttis: 20                  # 连续仿真的 TTI 个数；最终统计 BLER（CRC 错包率）
+  result_output_path: ../outputs/pusch_awgn_multi_tti_results.csv  # 多 TTI 结果文本文件；不存在则创建，存在则追加
 
 # 绘图控制参数
 plotting:
