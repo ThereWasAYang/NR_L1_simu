@@ -18,6 +18,9 @@ from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.mcs import resolve_mcs
+from nr_phy_simu.channels.channel_factory import DefaultChannelFactory
+from nr_phy_simu.channels.tdl import TdlChannel
+from nr_phy_simu.channels.cdl import CdlChannel
 
 
 class PuschAwgnSmokeTest(unittest.TestCase):
@@ -126,6 +129,28 @@ class ComponentAbstractionTest(unittest.TestCase):
         self.assertIsInstance(components.transmitter.mapper, FrequencyDomainResourceMapper)
         self.assertIsInstance(components.receiver.extractor, FrequencyDomainExtractor)
         self.assertIsNotNone(factory.create_channel_factory().create(cfg))
+
+
+class FadingChannelSmokeTest(unittest.TestCase):
+    def test_tdl_channel_propagates(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl.yaml")
+        waveform = np.ones(2048, dtype=np.complex128)
+        channel = DefaultChannelFactory().create(cfg)
+        self.assertIsInstance(channel, TdlChannel)
+        rx_waveform, info = channel.propagate(waveform, cfg)
+        self.assertEqual(rx_waveform.shape, waveform.shape)
+        self.assertGreater(info["path_delays_s"].size, 0)
+        self.assertGreaterEqual(info["noise_variance"], 0.0)
+
+    def test_cdl_channel_propagates(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        waveform = np.ones(2048, dtype=np.complex128)
+        channel = DefaultChannelFactory().create(cfg)
+        self.assertIsInstance(channel, CdlChannel)
+        rx_waveform, info = channel.propagate(waveform, cfg)
+        self.assertEqual(rx_waveform.shape, waveform.shape)
+        self.assertGreater(info["path_delays_s"].size, 0)
+        self.assertGreaterEqual(info["noise_variance"], 0.0)
 
 
 if __name__ == "__main__":

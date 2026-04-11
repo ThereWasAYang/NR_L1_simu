@@ -1,0 +1,65 @@
+# 载波与 numerology 配置
+carrier:
+  cell_bandwidth_rbs: 52
+  subcarrier_spacing_khz: 30
+  cyclic_prefix: NormalCP
+  fft_size: null
+  sample_rate_hz: null
+
+# 信道模型配置
+channel:
+  model: CDL                         # 信道类型：AWGN / TDL / CDL
+  params:
+    profile: CDL-A                  # 38.901 CDL profile：CDL-A / CDL-B / CDL-C / CDL-D / CDL-E
+    delay_spread_ns: 30.0           # RMS delay spread，单位 ns
+    carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
+    ue_speed_mps: 1.0               # UE 速度，单位 m/s
+    ue_azimuth_deg: 0.0             # UE 运动方位角，单位度
+    ue_zenith_deg: 90.0             # UE 运动天顶角，单位度
+    num_sinusoids: 32               # LOS cluster 近似正弦数
+    snr_db: 20.0                    # 接收信噪比，单位 dB
+
+# 数据扰码配置
+scrambling:
+  rnti: 4660
+  n_id: 1
+  data_scrambling_id: null
+  codeword_index: 0
+
+# 共享信道链路配置
+link:
+  channel_type: PUSCH
+  waveform: CP-OFDM
+  num_layers: 1
+  num_tx_ant: 1
+  num_rx_ant: 1
+  prb_start: 4
+  num_prbs: 24
+  start_symbol: 0
+  num_symbols: 14
+  mcs:
+    table: qam64
+    index: 10
+    tp_pi2bpsk: false
+    rv: 0
+    x_overhead: 0
+
+# DMRS 配置
+dmrs:
+  config_type: 1
+  mapping_type: A
+  type_a_position: 2
+  additional_positions: 1
+  max_length: 1
+  symbol_positions: []
+  scrambling_id0: 1
+  scrambling_id1: null
+  nid_nscid: null
+  n_scid: 0
+  n_pusch_identity: 1
+  sequence_hopping: false
+  group_hopping: false
+  port_set: [0]
+
+random_seed: 7
+slot_index: 0

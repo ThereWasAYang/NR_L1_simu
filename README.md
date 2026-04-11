@@ -17,7 +17,7 @@
 - 面向 `PUSCH/PDSCH` 的统一配置与链路封装
 - `PUSCH` 的 `CP-OFDM` 与 `DFT-s-OFDM` 两种波形入口
 - `AWGN` 信道实现
-- `TDL/CDL` 信道接口骨架
+- 基于 3GPP TR 38.901 profile 的 `TDL/CDL` 信道实现
 - 可替换的编码、调制、映射、OFDM、估计、均衡、解调、译码模块
 - 基于 `MCS table + MCS index` 自动解析调制方式、目标码率和 `TBS`
 - 基于 `py3gpp` 的 NR `CRC/LDPC/rate matching/rate recovery`
@@ -28,7 +28,7 @@
 
 - 完整的 PUSCH/PDSCH 映射规则与多天线预编码流程
 - 继续补齐 DMRS/PTRS/CSI-RS 等协议表项，尤其是 transform-precoded PUSCH DMRS 的 clause 5.2.2/5.2.3 完整细节
-- 3GPP TDL/CDL 精确参数集、时变多径与多普勒模型
+- `TDL/CDL` 的完整 MIMO 天线阵列、极化与空间一致性增强
 
 因此，这个版本更适合作为“工程基础框架 + 可扩展参考实现”，而不是“已完成全部 R18 细节校准的协议级金模型”。协议严格化工作已经在结构上预留好了接入点。
 
@@ -39,7 +39,7 @@ src/nr_phy_simu/
   common/          公共类型、接口、资源栅格、OFDM、DMRS
   tx/              发射机：编码、扰码、调制、频域资源映射
   rx/              接收机：频域抽取、信道估计、均衡、解调、译码
-  channels/        AWGN / TDL / CDL / channel factory
+  channels/        AWGN / TDL / CDL / profile tables / channel factory
   scenarios/       PUSCH / PDSCH 场景封装与组件工厂
   config.py        全局配置 dataclass
 examples/
@@ -96,6 +96,17 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - `layer number`
 - `antenna number`
 - `slot index`
+
+对于 `TDL/CDL`，当前已支持的典型信道参数包括：
+
+- `profile`
+- `delay_spread_ns`
+- `carrier_frequency_hz`
+- `ue_speed_mps`
+- `max_doppler_hz`
+- `ue_azimuth_deg` / `ue_zenith_deg`（CDL）
+- `num_sinusoids`
+- `k_factor_db`（LOS profile 可选覆盖）
 
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。
@@ -160,6 +171,25 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 
 - 发端按 `RNTI + codeword index + data scrambling ID/N_id` 生成共享信道数据扰码
 - 收端对 LLR 执行对应解扰，再进入 LDPC 译码
+
+## 信道说明
+
+当前信道实现位于：
+
+- [awgn.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/awgn.py)
+- [tdl.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/tdl.py)
+- [cdl.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/cdl.py)
+- [profile_tables.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/profile_tables.py)
+
+当前版本已支持：
+
+- `TDL-A/B/C/D/E`
+- `CDL-A/B/C/D/E`
+- profile 归一化时延按目标 `delay spread` 缩放
+- 基于 UE 速度/载频的多普勒频移建模
+- `LOS` profile 的 Rician 分量
+
+当前这版 `TDL/CDL` 先面向现有链路接口实现为 `SISO`。如果后续你要把 `num_tx_ant / num_rx_ant > 1` 的阵列、极化、角域响应也纳入同一套仿真，我建议下一步把当前 `ChannelModel` 接口扩成显式 MIMO 通道矩阵/多分支波形接口。
 
 ## 编码与调制
 
