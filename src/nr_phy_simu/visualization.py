@@ -63,12 +63,15 @@ def save_simulation_plots(
     output_path.mkdir(parents=True, exist_ok=True)
 
     plots: dict[str, Path] = {}
-    figures: dict[str, object] = {
-        "constellation": _build_constellation_figure(result),
-        "pilot_estimates": _build_pilot_estimate_figure(result),
-    }
-    figures.update(_build_rx_time_domain_figures(result, config))
-    figures.update(_build_rx_frequency_domain_figures(result, config))
+    figure_builders = (
+        _build_constellation_figures,
+        _build_pilot_estimate_figures,
+        _build_rx_time_domain_figures,
+        _build_rx_frequency_domain_figures,
+    )
+    figures: dict[str, object] = {}
+    for builder in figure_builders:
+        figures.update(builder(result, config))
 
     for name, figure in figures.items():
         path = output_path / f"{prefix}_{name}.png"
@@ -82,7 +85,11 @@ def save_simulation_plots(
     return plots
 
 
-def _build_constellation_figure(result: SimulationResult):
+def _build_constellation_figures(
+    result: SimulationResult,
+    config: SimulationConfig,
+) -> dict[str, object]:
+    del config
     symbols = result.rx.equalized_symbols
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
@@ -92,10 +99,14 @@ def _build_constellation_figure(result: SimulationResult):
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.axis("equal")
     fig.tight_layout()
-    return fig
+    return {"constellation": fig}
 
 
-def _build_pilot_estimate_figure(result: SimulationResult):
+def _build_pilot_estimate_figures(
+    result: SimulationResult,
+    config: SimulationConfig,
+) -> dict[str, object]:
+    del config
     channel_estimate = result.rx.channel_estimate
     dmrs_mask = result.tx.dmrs_mask
     if channel_estimate.ndim == 2:
@@ -164,7 +175,7 @@ def _build_pilot_estimate_figure(result: SimulationResult):
 
     fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
-    return fig
+    return {"pilot_estimates": fig}
 
 
 def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
