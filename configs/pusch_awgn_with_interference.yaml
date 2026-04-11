@@ -22,7 +22,7 @@ scrambling:
 # 共享信道链路配置
 link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
-  waveform: DFT-s-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
+  waveform: CP-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
   num_tx_ant: 2                 # 发射天线数
   num_rx_ant: 4                 # 接收天线数
@@ -31,7 +31,7 @@ link:
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
-    table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
+    table: qam256              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
     index: 3                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
@@ -71,7 +71,7 @@ interference:
       channel_type: PUSCH           # 干扰共享信道类型
       num_tx_ant: 1                 # 干扰发射天线数
       mcs:
-        table: tp64qam              # 干扰源 MCS 表
+        table: qam256              # 干扰源 MCS 表
         index: 8                    # 干扰源 MCS index
     - label: jammer_tdl_partialband # 第二个干扰源标签
       enabled: true
@@ -90,7 +90,7 @@ interference:
       channel_type: PUSCH
       num_tx_ant: 1
       mcs:
-        table: tp64qam
+        table: qam256
         index: 6
 
 # 仿真控制参数
