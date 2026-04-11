@@ -92,6 +92,7 @@ def _build_constellation_figure(result: SimulationResult):
 
 def _build_pilot_estimate_figure(result: SimulationResult):
     pilots = result.rx.pilot_estimates
+    pilot_symbol_indices = result.rx.pilot_symbol_indices
     if pilots.ndim == 1:
         pilots = pilots[np.newaxis, :]
     num_ant = pilots.shape[0]
@@ -100,18 +101,43 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         axes = np.asarray(axes).reshape(2, 1)
 
     for ant_idx in range(num_ant):
-        x = np.arange(pilots.shape[1])
         mag_ax = axes[0, ant_idx]
         phase_ax = axes[1, ant_idx]
-        mag_ax.plot(x, np.abs(pilots[ant_idx]), marker="o", markersize=3, linewidth=1)
         mag_ax.set_ylabel("Magnitude")
         mag_ax.set_title(f"Pilot-Based Channel Estimate RX{ant_idx}")
         mag_ax.grid(True, linestyle="--", alpha=0.4)
-
-        phase_ax.plot(x, np.unwrap(np.angle(pilots[ant_idx])), marker="o", markersize=3, linewidth=1)
         phase_ax.set_xlabel("Pilot Index")
         phase_ax.set_ylabel("Phase (rad)")
         phase_ax.grid(True, linestyle="--", alpha=0.4)
+
+        start = 0
+        for symbol_idx in np.unique(pilot_symbol_indices):
+            symbol_mask = pilot_symbol_indices == symbol_idx
+            count = int(np.count_nonzero(symbol_mask))
+            stop = start + count
+            x = np.arange(count) + start
+            pilot_values = pilots[ant_idx, start:stop]
+            mag_ax.plot(
+                x,
+                np.abs(pilot_values),
+                marker="o",
+                markersize=3,
+                linewidth=1,
+                label=f"sym {symbol_idx}",
+            )
+            phase_ax.plot(
+                x,
+                np.unwrap(np.angle(pilot_values)),
+                marker="o",
+                markersize=3,
+                linewidth=1,
+                label=f"sym {symbol_idx}",
+            )
+            start = stop
+
+        if np.unique(pilot_symbol_indices).size > 1:
+            mag_ax.legend(fontsize=8)
+            phase_ax.legend(fontsize=8)
 
     fig.tight_layout()
     return fig

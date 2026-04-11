@@ -56,28 +56,31 @@ class LeastSquaresEstimator(ChannelEstimator):
 
     @staticmethod
     def pilot_estimates(
-        rx_grid: np.ndarray,
-        dmrs_symbols: np.ndarray,
+        channel_estimate: np.ndarray,
         dmrs_mask: np.ndarray,
-    ) -> np.ndarray:
-        if rx_grid.ndim == 2:
-            rx_grid = rx_grid[np.newaxis, ...]
-        if dmrs_symbols.size == 0:
-            return np.zeros((rx_grid.shape[0], 0), dtype=np.complex128)
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if channel_estimate.ndim == 2:
+            channel_estimate = channel_estimate[np.newaxis, ...]
 
-        antenna_estimates = []
-        for antenna_idx in range(rx_grid.shape[0]):
+        pilot_symbol_indices: list[np.ndarray] = []
+        estimates_per_ant = []
+        for antenna_idx in range(channel_estimate.shape[0]):
             estimates = []
-            dmrs_cursor = 0
-            for symbol_idx in range(rx_grid.shape[2]):
+            symbol_indices = []
+            for symbol_idx in range(channel_estimate.shape[2]):
                 symbol_mask = dmrs_mask[:, symbol_idx]
                 if not np.any(symbol_mask):
                     continue
                 pilot_sc = np.flatnonzero(symbol_mask)
-                symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
-                dmrs_cursor += pilot_sc.size
-                estimates.append(rx_grid[antenna_idx, pilot_sc, symbol_idx] / symbol_dmrs)
-            antenna_estimates.append(
+                estimates.append(channel_estimate[antenna_idx, pilot_sc, symbol_idx])
+                symbol_indices.append(np.full(pilot_sc.size, symbol_idx, dtype=int))
+            estimates_per_ant.append(
                 np.concatenate(estimates) if estimates else np.array([], dtype=np.complex128)
             )
-        return np.stack(antenna_estimates, axis=0)
+            pilot_symbol_indices.append(
+                np.concatenate(symbol_indices) if symbol_indices else np.array([], dtype=int)
+            )
+
+        pilot_estimates = np.stack(estimates_per_ant, axis=0)
+        symbol_index_ref = pilot_symbol_indices[0] if pilot_symbol_indices else np.array([], dtype=int)
+        return pilot_estimates, symbol_index_ref

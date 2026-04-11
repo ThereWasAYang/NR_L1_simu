@@ -48,7 +48,7 @@ class Receiver:
     ) -> RxPayload:
         rx_grid = self.time_processor.demodulate(rx_waveform, config)
         channel_estimate = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
-        pilot_estimates = self.estimator.pilot_estimates(rx_grid, dmrs_symbols, dmrs_mask)
+        pilot_estimates, pilot_symbol_indices = self.estimator.pilot_estimates(channel_estimate, dmrs_mask)
 
         rx_data_symbols = self.extractor.extract(rx_grid, data_mask, config, despread=False)
         data_channel = self.extractor.extract(channel_estimate, data_mask, config, despread=False)
@@ -72,6 +72,7 @@ class Receiver:
             decoded_bits=decoded_bits,
             dmrs_symbols=dmrs_symbols,
             pilot_estimates=pilot_estimates,
+            pilot_symbol_indices=pilot_symbol_indices,
         )
 
     @staticmethod

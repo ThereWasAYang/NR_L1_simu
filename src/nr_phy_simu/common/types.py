@@ -31,6 +31,7 @@ class RxPayload:
     decoded_bits: BitArray
     dmrs_symbols: ComplexArray
     pilot_estimates: ComplexArray
+    pilot_symbol_indices: np.ndarray
 
 
 @dataclass

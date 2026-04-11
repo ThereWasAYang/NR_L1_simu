@@ -106,10 +106,9 @@ class ChannelEstimator(ABC):
     @abstractmethod
     def pilot_estimates(
         self,
-        rx_grid: np.ndarray,
-        dmrs_symbols: np.ndarray,
+        channel_estimate: np.ndarray,
         dmrs_mask: np.ndarray,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError
 
 
