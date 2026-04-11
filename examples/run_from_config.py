@@ -49,6 +49,8 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
             )
     print(f"Sample rate: {config.carrier.sample_rate_effective_hz:.2f} Hz")
     print(f"FFT size: {config.carrier.fft_size_effective}")
+    if result.crc_ok is not None:
+        print(f"CRC OK: {result.crc_ok}")
     if np.isfinite(result.bit_error_rate):
         print(f"BER: {result.bit_error_rate:.6f}")
         print(f"Bit errors: {result.bit_errors}")

@@ -63,6 +63,7 @@ class Receiver:
         llrs = self.demodulator.demap_symbols(equalized_symbols, noise_variance, config)
         descrambled_llrs = self.scrambler.descramble_llrs(llrs, config)
         decoded_bits = self.decoder.decode(descrambled_llrs, config)
+        crc_ok = getattr(self.decoder, "last_crc_ok", None)
         return RxPayload(
             rx_waveform=rx_waveform,
             rx_grid=rx_grid,
@@ -70,6 +71,7 @@ class Receiver:
             equalized_symbols=equalized_symbols,
             llrs=descrambled_llrs,
             decoded_bits=decoded_bits,
+            crc_ok=crc_ok,
             dmrs_symbols=dmrs_symbols,
             pilot_estimates=pilot_estimates,
             pilot_symbol_indices=pilot_symbol_indices,

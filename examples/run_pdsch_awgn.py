@@ -28,6 +28,7 @@ def main() -> None:
     plots = save_simulation_plots(result, config, ROOT / "outputs", "pdsch_awgn", show=True, block=False)
     print("NR PDSCH AWGN simulation")
     print(f"SNR: {result.snr_db:.2f} dB")
+    print(f"CRC OK: {result.crc_ok}")
     print(f"BER: {result.bit_error_rate:.6f}")
     print(f"Bit errors: {result.bit_errors}")
     print(f"Constellation plot: {plots['constellation']}")

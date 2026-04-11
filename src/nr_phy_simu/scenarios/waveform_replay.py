@@ -74,6 +74,7 @@ class WaveformReplaySimulation:
             bit_errors=-1,
             bit_error_rate=float("nan"),
             snr_db=float(self.config.channel.params.get("snr_db", self.config.snr_db)),
+            crc_ok=rx_payload.crc_ok,
             interference_reports=interference_reports,
         )
 

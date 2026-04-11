@@ -14,6 +14,9 @@ from nr_phy_simu.config import SimulationConfig
 
 
 class NrLdpcDecoder(ChannelDecoder):
+    def __init__(self) -> None:
+        self.last_crc_ok: bool | None = None
+
     def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
         tbs = int(config.link.transport_block_size or 0)
         if tbs <= 0:
@@ -30,5 +33,6 @@ class NrLdpcDecoder(ChannelDecoder):
         )
         decoded_cbs, _ = nrLDPCDecode(recovered, info["BGN"], maxNumIter=25)
         tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
-        decoded, _ = nrCRCDecode(tb_with_crc.astype(np.int8), info["CRC"])
+        decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info["CRC"])
+        self.last_crc_ok = bool(crc_error == 0)
         return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)

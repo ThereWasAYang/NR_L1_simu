@@ -29,6 +29,7 @@ def main() -> None:
     print("NR PUSCH AWGN simulation")
     print(f"Waveform: {config.link.waveform}")
     print(f"SNR: {result.snr_db:.2f} dB")
+    print(f"CRC OK: {result.crc_ok}")
     print(f"BER: {result.bit_error_rate:.6f}")
     print(f"Bit errors: {result.bit_errors}")
     print(f"Constellation plot: {plots['constellation']}")

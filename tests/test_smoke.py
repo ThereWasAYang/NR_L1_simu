@@ -40,6 +40,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.pilot_estimates.ndim, 2)
         self.assertEqual(result.rx.pilot_estimates.shape[0], config.link.num_rx_ant)
         self.assertIsNotNone(config.link.transport_block_size)
+        self.assertIs(result.crc_ok, True)
 
     def test_pusch_dfts_ofdm_awgn_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
@@ -49,6 +50,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertGreater(result.rx.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+        self.assertIs(result.crc_ok, True)
 
     def test_pusch_awgn_multi_rx_branches(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
@@ -59,6 +61,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_waveform.shape[0], 4)
         self.assertEqual(result.rx.rx_grid.shape[0], 4)
         self.assertEqual(result.rx.pilot_estimates.shape[0], 4)
+        self.assertIs(result.crc_ok, True)
 
     def test_pusch_awgn_with_interference_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
@@ -66,6 +69,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertEqual(len(result.interference_reports), 2)
         self.assertTrue(all(report.scale >= 0.0 for report in result.interference_reports))
+        self.assertIs(result.crc_ok, True)
 
 
 class PdschAwgnSmokeTest(unittest.TestCase):
@@ -77,6 +81,7 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         self.assertGreater(result.rx.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+        self.assertIs(result.crc_ok, True)
 
 
 class VisualizationSmokeTest(unittest.TestCase):
@@ -232,6 +237,7 @@ class WaveformReplaySmokeTest(unittest.TestCase):
             result = WaveformReplaySimulation(replay_cfg).run()
             self.assertTrue(np.isnan(result.bit_error_rate))
             self.assertTrue(np.array_equal(result.rx.decoded_bits[: transport_block.size], transport_block))
+            self.assertIs(result.crc_ok, True)
 
     def test_cdl_channel_propagates(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")

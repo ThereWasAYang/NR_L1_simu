@@ -73,6 +73,7 @@ class SharedChannelSimulation:
             bit_errors=bit_errors,
             bit_error_rate=ber,
             snr_db=float(channel_info.get("snr_db", self.config.snr_db)),
+            crc_ok=rx_payload.crc_ok,
             interference_reports=interference_reports,
         )
 
