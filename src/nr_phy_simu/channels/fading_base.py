@@ -19,12 +19,10 @@ class FadingChannelBase(ChannelModel, ABC):
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
-        if config.link.num_tx_ant != 1 or config.link.num_rx_ant != 1:
-            raise NotImplementedError("Current 38.901 fading channel implementation supports SISO only.")
-
+        tx_waveform = self._expand_tx_branches(waveform, config)
         sample_rate = config.carrier.sample_rate_effective_hz
-        delays_s, coeff = self._generate_path_coefficients(waveform.size, sample_rate, config)
-        rx_waveform = self._apply_time_varying_channel(waveform, delays_s, coeff, sample_rate)
+        delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
+        rx_waveform = self._apply_time_varying_channel(tx_waveform, delays_s, coeff, sample_rate)
         noisy_waveform, noise_variance, snr_db = self._add_awgn(rx_waveform, config)
         return noisy_waveform, {
             "noise_variance": noise_variance,
@@ -44,16 +42,24 @@ class FadingChannelBase(ChannelModel, ABC):
 
     def _apply_time_varying_channel(
         self,
-        waveform: np.ndarray,
+        tx_waveform: np.ndarray,
         delays_s: np.ndarray,
         coefficients: np.ndarray,
         sample_rate_hz: float,
     ) -> np.ndarray:
-        output = np.zeros(waveform.size, dtype=np.complex128)
-        for path_idx, delay_s in enumerate(delays_s):
-            delayed = self._fractional_delay(waveform, delay_s * sample_rate_hz)
-            output += delayed * coefficients[path_idx, : waveform.size]
-        return output
+        num_rx_ant, num_tx_ant, _, _ = coefficients.shape
+        rx_waveform = np.zeros((num_rx_ant, tx_waveform.shape[-1]), dtype=np.complex128)
+
+        for rx_idx in range(num_rx_ant):
+            for tx_idx in range(num_tx_ant):
+                tx_branch = tx_waveform[tx_idx]
+                for path_idx, delay_s in enumerate(delays_s):
+                    delayed = self._fractional_delay(tx_branch, delay_s * sample_rate_hz)
+                    rx_waveform[rx_idx] += delayed * coefficients[rx_idx, tx_idx, path_idx, : tx_branch.size]
+
+        if num_rx_ant == 1:
+            return rx_waveform[0]
+        return rx_waveform
 
     @staticmethod
     def _fractional_delay(waveform: np.ndarray, delay_samples: float, filter_half_len: int = 8) -> np.ndarray:
@@ -77,9 +83,7 @@ class FadingChannelBase(ChannelModel, ABC):
         num_sinusoids: int,
     ) -> np.ndarray:
         if abs(max_doppler_hz) < 1e-12:
-            sample = (
-                self.rng.normal() + 1j * self.rng.normal()
-            ) / np.sqrt(2.0)
+            sample = (self.rng.normal() + 1j * self.rng.normal()) / np.sqrt(2.0)
             return np.full(num_samples, sample, dtype=np.complex128)
 
         time = np.arange(num_samples, dtype=np.float64) / sample_rate_hz
@@ -146,3 +150,51 @@ class FadingChannelBase(ChannelModel, ABC):
             return float(params["max_doppler_hz"])
         ue_speed_mps = float(params.get("ue_speed_mps", 0.0))
         return ue_speed_mps / cls._wavelength_m(config)
+
+    @staticmethod
+    def _resolve_path_parameters(
+        config: SimulationConfig,
+        normalized_delays: np.ndarray,
+        power_db: np.ndarray,
+        *,
+        delay_key: str = "path_delays_ns",
+        power_key: str = "path_powers_db",
+        delay_spread_key: str = "delay_spread_ns",
+    ) -> tuple[np.ndarray, np.ndarray]:
+        params = config.channel.params
+        custom_delays = params.get(delay_key)
+        custom_powers = params.get(power_key)
+        if custom_delays is not None or custom_powers is not None:
+            custom_delays_ns = np.asarray(custom_delays if custom_delays is not None else [], dtype=np.float64)
+            custom_powers_db = np.asarray(custom_powers if custom_powers is not None else [], dtype=np.float64)
+            if custom_delays_ns.size == 0 or custom_powers_db.size == 0:
+                raise ValueError(
+                    f"Channel params '{delay_key}' and '{power_key}' must both be provided when overriding path taps."
+                )
+            if custom_delays_ns.size != custom_powers_db.size:
+                raise ValueError(
+                    f"Channel params '{delay_key}' and '{power_key}' must have the same number of elements."
+                )
+            return custom_delays_ns * 1e-9, custom_powers_db
+
+        desired_ds_s = float(params.get(delay_spread_key, 300.0)) * 1e-9
+        return normalized_delays * desired_ds_s, power_db
+
+    @staticmethod
+    def _expand_tx_branches(waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        if waveform.ndim == 2:
+            return waveform
+
+        num_tx_ant = int(config.link.num_tx_ant)
+        if num_tx_ant <= 1:
+            return waveform[np.newaxis, :]
+        return np.repeat(waveform[np.newaxis, :], num_tx_ant, axis=0) / np.sqrt(num_tx_ant)
+
+    @staticmethod
+    def _array_response(
+        num_ant: int,
+        spatial_frequency: float,
+        spacing_lambda: float,
+    ) -> np.ndarray:
+        antenna_index = np.arange(num_ant, dtype=np.float64)
+        return np.exp(1j * 2.0 * np.pi * spacing_lambda * spatial_frequency * antenna_index)

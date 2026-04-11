@@ -165,6 +165,19 @@ class FadingChannelSmokeTest(unittest.TestCase):
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
 
+    def test_tdl_channel_supports_multi_tx_multi_rx_and_path_overrides(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 4
+        cfg.channel.params["path_delays_ns"] = [0.0, 70.0, 190.0]
+        cfg.channel.params["path_powers_db"] = [0.0, -2.5, -7.0]
+        waveform = np.ones(2048, dtype=np.complex128)
+        channel = DefaultChannelFactory().create(cfg)
+        rx_waveform, info = channel.propagate(waveform, cfg)
+        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
+        self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
+
 
 class WaveformReplaySmokeTest(unittest.TestCase):
     def test_replay_waveform_file_into_receiver(self):
@@ -207,6 +220,17 @@ class WaveformReplaySmokeTest(unittest.TestCase):
         self.assertEqual(rx_waveform.shape, waveform.shape)
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
+
+    def test_cdl_channel_supports_multi_tx_multi_rx(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 4
+        waveform = np.ones(2048, dtype=np.complex128)
+        channel = DefaultChannelFactory().create(cfg)
+        rx_waveform, info = channel.propagate(waveform, cfg)
+        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(info["path_coefficients"].shape[0], 4)
+        self.assertEqual(info["path_coefficients"].shape[1], 2)
 
 
 if __name__ == "__main__":

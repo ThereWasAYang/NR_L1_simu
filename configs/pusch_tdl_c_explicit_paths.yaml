@@ -11,9 +11,14 @@ channel:
   model: TDL                    # 信道类型：AWGN / TDL / CDL
   params:
     profile: TDL-C              # 38.901 TDL profile：TDL-A / TDL-B / TDL-C / TDL-D / TDL-E
-    delay_spread_ns: 300.0      # 标准 profile 的 RMS delay spread，单位 ns；协议表中的归一化逐径时延会统一按它缩放
-    path_delays_ns: null        # 可选：显式逐径时延列表，单位 ns；填写后将覆盖 profile*delay_spread 的时延
-    path_powers_db: null        # 可选：显式逐径功率列表，单位 dB；需与 path_delays_ns 一一对应
+    delay_spread_ns: 300.0      # 该字段在显式逐径模式下仅作说明；实际时延以 path_delays_ns 为准
+    path_delays_ns:             # 显式逐径时延，单位 ns；这里给出的是 TDL-C 在 300 ns delay spread 下的各径绝对时延
+      [0.0, 62.97, 66.57, 69.87, 65.28, 190.98, 193.44, 196.8, 197.52, 238.05, 246.39, 280.08,
+       368.55, 392.49, 651.12, 813.15, 1277.67, 1380.09, 1647.06, 1682.31, 1891.95, 1991.22,
+       2112.81, 2595.69]
+    path_powers_db:             # 显式逐径功率，单位 dB；需与 path_delays_ns 一一对应
+      [-4.4, -1.2, -3.5, -5.2, -2.5, 0.0, -2.2, -3.9, -7.4, -7.1, -10.7, -11.1,
+       -5.1, -6.8, -8.7, -13.2, -13.9, -13.9, -15.8, -17.1, -16.0, -15.7, -21.6, -22.8]
     carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
     ue_speed_mps: 3.0           # UE 速度，单位 m/s
     num_sinusoids: 32           # Jakes 近似正弦数
