@@ -22,16 +22,16 @@ scrambling:
 # 共享信道链路配置
 link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
-  waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM
+  waveform: DFT-s-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
-  num_tx_ant: 1                 # 发射天线数
-  num_rx_ant: 1                 # 接收天线数
+  num_tx_ant: 2                 # 发射天线数
+  num_rx_ant: 4                 # 接收天线数
   prb_start: 4                  # 资源分配起始 PRB
-  num_prbs: 24                  # 用户占用带宽，单位 PRB
+  num_prbs: 16                  # 用户占用带宽，单位 PRB
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
-    table: qam64                # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
+    table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
     index: 10                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
