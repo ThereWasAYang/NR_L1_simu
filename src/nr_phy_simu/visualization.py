@@ -107,11 +107,12 @@ def _build_pilot_estimate_figures(
     config: SimulationConfig,
 ) -> dict[str, object]:
     del config
-    channel_estimate = result.rx.channel_estimate
-    dmrs_mask = result.tx.dmrs_mask
+    channel_estimation = result.rx.channel_estimation
+    channel_estimate = channel_estimation.channel_estimate
     if channel_estimate.ndim == 2:
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
+    dmrs_mask = result.tx.dmrs_mask
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
     max_cols = 4
     ant_cols = min(num_ant, max_cols)
@@ -140,7 +141,7 @@ def _build_pilot_estimate_figures(
 
         for symbol_idx in dmrs_symbols:
             pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
-            pilot_values = channel_estimate[ant_idx, pilot_sc, symbol_idx]
+            pilot_values = channel_estimation.pilot_estimates[ant_idx, channel_estimation.pilot_symbol_indices == symbol_idx]
             mag_ax.plot(
                 pilot_sc,
                 np.abs(pilot_values),

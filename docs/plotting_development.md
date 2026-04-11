@@ -93,8 +93,12 @@ for builder in figure_builders:
   接收机入口时域波形
 - `result.rx.rx_grid`
   OFDM 解调后的频域栅格
-- `result.rx.channel_estimate`
-  信道估计结果
+- `result.rx.channel_estimation.channel_estimate`
+  完整信道估计结果
+- `result.rx.channel_estimation.pilot_estimates`
+  从完整信道估计中抽取出的导频 RE 结果
+- `result.rx.channel_estimation.pilot_symbol_indices`
+  每个导频估计值对应的 DMRS symbol 编号
 - `result.rx.equalized_symbols`
   均衡后的调制符号
 - `result.tx.dmrs_mask`
@@ -148,7 +152,7 @@ figure_builders = (
 
 例如：
 
-- 好做法：直接画 `result.rx.channel_estimate`
+- 好做法：直接画 `result.rx.channel_estimation.channel_estimate`
 - 不好做法：在绘图函数里重新从 `rx_grid / dmrs_symbols` 再做一次信道估计
 
 原因：

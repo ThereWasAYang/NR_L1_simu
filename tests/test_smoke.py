@@ -33,12 +33,12 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
-        self.assertEqual(result.rx.channel_estimate.ndim, 3)
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.ndim, 3)
         self.assertEqual(result.rx.rx_grid.shape[0], config.link.num_rx_ant)
-        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
-        self.assertEqual(result.rx.pilot_estimates.shape[0], config.link.num_rx_ant)
+        self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
+        self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], config.link.num_rx_ant)
         self.assertIsNotNone(config.link.transport_block_size)
         self.assertIs(result.crc_ok, True)
 
@@ -47,9 +47,9 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
-        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+        self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
 
     def test_pusch_awgn_multi_rx_branches(self):
@@ -60,7 +60,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_waveform.ndim, 2)
         self.assertEqual(result.rx.rx_waveform.shape[0], 4)
         self.assertEqual(result.rx.rx_grid.shape[0], 4)
-        self.assertEqual(result.rx.pilot_estimates.shape[0], 4)
+        self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], 4)
         self.assertIs(result.crc_ok, True)
 
     def test_pusch_awgn_with_interference_smoke(self):
@@ -78,9 +78,9 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PdschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
-        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+        self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
 
 

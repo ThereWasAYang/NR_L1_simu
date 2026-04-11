@@ -23,17 +23,22 @@ class TxPayload:
 
 
 @dataclass
+class ChannelEstimateResult:
+    channel_estimate: ComplexArray
+    pilot_estimates: ComplexArray
+    pilot_symbol_indices: np.ndarray
+
+
+@dataclass
 class RxPayload:
     rx_waveform: ComplexArray
     rx_grid: ComplexArray
-    channel_estimate: ComplexArray
+    channel_estimation: ChannelEstimateResult
     equalized_symbols: ComplexArray
     llrs: RealArray
     decoded_bits: BitArray
     crc_ok: bool | None
     dmrs_symbols: ComplexArray
-    pilot_estimates: ComplexArray
-    pilot_symbol_indices: np.ndarray
 
 
 @dataclass

@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.types import ChannelEstimateResult
 
 
 class ChannelCoder(ABC):
@@ -100,15 +101,7 @@ class ChannelEstimator(ABC):
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
-    ) -> np.ndarray:
-        raise NotImplementedError
-
-    @abstractmethod
-    def pilot_estimates(
-        self,
-        channel_estimate: np.ndarray,
-        dmrs_mask: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> ChannelEstimateResult:
         raise NotImplementedError
 
 

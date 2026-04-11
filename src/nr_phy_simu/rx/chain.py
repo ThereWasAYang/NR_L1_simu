@@ -47,11 +47,10 @@ class Receiver:
         config: SimulationConfig,
     ) -> RxPayload:
         rx_grid = self.time_processor.demodulate(rx_waveform, config)
-        channel_estimate = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
-        pilot_estimates, pilot_symbol_indices = self.estimator.pilot_estimates(channel_estimate, dmrs_mask)
+        channel_estimation = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
 
         rx_data_symbols = self.extractor.extract(rx_grid, data_mask, config, despread=False)
-        data_channel = self.extractor.extract(channel_estimate, data_mask, config, despread=False)
+        data_channel = self.extractor.extract(channel_estimation.channel_estimate, data_mask, config, despread=False)
         equalized_symbols = self.equalizer.equalize(
             rx_data_symbols,
             data_channel,
@@ -67,14 +66,12 @@ class Receiver:
         return RxPayload(
             rx_waveform=rx_waveform,
             rx_grid=rx_grid,
-            channel_estimate=channel_estimate,
+            channel_estimation=channel_estimation,
             equalized_symbols=equalized_symbols,
             llrs=descrambled_llrs,
             decoded_bits=decoded_bits,
             crc_ok=crc_ok,
             dmrs_symbols=dmrs_symbols,
-            pilot_estimates=pilot_estimates,
-            pilot_symbol_indices=pilot_symbol_indices,
         )
 
     @staticmethod

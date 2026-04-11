@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from nr_phy_simu.common.interfaces import ChannelEstimator
+from nr_phy_simu.common.types import ChannelEstimateResult
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -13,12 +14,18 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> ChannelEstimateResult:
         if rx_grid.ndim == 2:
             rx_grid = rx_grid[np.newaxis, ...]
-        return np.stack(
+        channel_estimate = np.stack(
             [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
             axis=0,
+        )
+        pilot_estimates, pilot_symbol_indices = self._extract_pilot_estimates(channel_estimate, dmrs_mask)
+        return ChannelEstimateResult(
+            channel_estimate=channel_estimate,
+            pilot_estimates=pilot_estimates,
+            pilot_symbol_indices=pilot_symbol_indices,
         )
 
     def _estimate_single(
@@ -63,7 +70,7 @@ class LeastSquaresEstimator(ChannelEstimator):
         return channel
 
     @staticmethod
-    def pilot_estimates(
+    def _extract_pilot_estimates(
         channel_estimate: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
