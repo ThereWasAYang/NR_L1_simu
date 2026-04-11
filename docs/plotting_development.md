@@ -51,16 +51,37 @@ plotting:
 
 - `save_simulation_plots(...)`
 
-它当前会调用这些内部函数：
+它当前会通过统一的 `figure_builders` 注册表调用这些内部函数：
 
-- `_build_constellation_figure(result)`
+- `_build_constellation_figures(result, config)`
   画均衡后的星座图
-- `_build_pilot_estimate_figure(result)`
+- `_build_pilot_estimate_figures(result, config)`
   画导频位置上的信道估计幅度/相位
 - `_build_rx_time_domain_figures(result, config)`
   画接收机入口时域幅值图
 - `_build_rx_frequency_domain_figures(result, config)`
   画接收机时域处理后的频域幅值图
+
+统一入口现在的组织方式大致如下：
+
+```python
+figure_builders = (
+    _build_constellation_figures,
+    _build_pilot_estimate_figures,
+    _build_rx_time_domain_figures,
+    _build_rx_frequency_domain_figures,
+)
+
+figures = {}
+for builder in figure_builders:
+    figures.update(builder(result, config))
+```
+
+这样所有绘图节点的接入方式都保持一致：
+
+- 每个 builder 都接收 `result, config`
+- 每个 builder 都返回 `dict[str, figure]`
+- `save_simulation_plots(...)` 不再区分“单张图”和“多张图”的特殊写法
 
 ## 4. 图里用到的数据从哪里来
 
@@ -89,22 +110,28 @@ plotting:
 
 推荐做法是只改两个地方：
 
-1. 在 `src/nr_phy_simu/visualization.py` 新增一个 `_build_xxx_figure(...)` 或 `_build_xxx_figures(...)`
-2. 在 `save_simulation_plots(...)` 里把它加入 `figures` 字典
+1. 在 `src/nr_phy_simu/visualization.py` 新增一个 `_build_xxx_figures(...)`
+2. 在 `save_simulation_plots(...)` 的 `figure_builders` 里注册它
 
 例如：
 
 ```python
-def _build_my_new_figure(result: SimulationResult, config: SimulationConfig):
+def _build_my_new_figures(
+    result: SimulationResult,
+    config: SimulationConfig,
+) -> dict[str, object]:
     fig, ax = plt.subplots()
     ax.plot(...)
-    return fig
+    return {"my_new_plot": fig}
 ```
 
 然后在 `save_simulation_plots(...)` 中加入：
 
 ```python
-figures["my_new_plot"] = _build_my_new_figure(result, config)
+figure_builders = (
+    ...,
+    _build_my_new_figures,
+)
 ```
 
 这样系统会自动：
@@ -191,9 +218,9 @@ figures["my_new_plot"] = _build_my_new_figure(result, config)
 2. 修改 `src/nr_phy_simu/rx/chain.py` 或 `src/nr_phy_simu/scenarios/base.py`
    把中间结果写进 `result`
 3. 修改 `src/nr_phy_simu/visualization.py`
-   新增 `_build_xxx_figure(...)`
+   新增 `_build_xxx_figures(...)`
 4. 修改 `save_simulation_plots(...)`
-   把新图挂进去
+   在 `figure_builders` 中注册这个 builder
 
 ## 9. 当前最关键的文件
 
