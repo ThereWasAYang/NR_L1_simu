@@ -55,6 +55,7 @@ pip install -e .
 python examples/run_from_config.py configs/pusch_awgn.yaml
 python examples/run_from_config.py configs/pusch_dfts_awgn.yaml
 python examples/run_from_config.py configs/pdsch_awgn.yaml
+# 仓库内置灌数样例，可直接运行
 python examples/run_from_config.py configs/pusch_replay_template.yaml
 ```
 
@@ -79,6 +80,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - [configs/pusch_dfts_awgn.yaml](configs/pusch_dfts_awgn.yaml)
 - [configs/pdsch_awgn.yaml](configs/pdsch_awgn.yaml)
 - [configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
+- [inputs/pusch_capture.txt](inputs/pusch_capture.txt)
 
 当前参数模型至少覆盖：
 
@@ -188,6 +190,11 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - `waveform_path`：文本文件路径
 - `num_samples_per_tti`：每根天线每个 TTI 的样点数；为空时按当前 numerology 自动推导
 - `noise_variance`：已知噪声方差；为空时按 `snr_db` 和灌入波形功率估计
+
+仓库当前已内置一份可直接运行的示例：
+
+- 配置文件：[configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
+- 波形文件：[inputs/pusch_capture.txt](inputs/pusch_capture.txt)
 
 在该模式下：
 

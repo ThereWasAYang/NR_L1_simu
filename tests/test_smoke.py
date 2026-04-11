@@ -207,6 +207,13 @@ class FadingChannelSmokeTest(unittest.TestCase):
 
 
 class WaveformReplaySmokeTest(unittest.TestCase):
+    def test_replay_repository_example_config(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_replay_template.yaml")
+        result = WaveformReplaySimulation(cfg).run()
+        self.assertTrue(np.isnan(result.bit_error_rate))
+        self.assertGreater(result.rx.decoded_bits.size, 0)
+        self.assertIs(result.crc_ok, True)
+
     def test_replay_waveform_file_into_receiver(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
         cfg.link.num_rx_ant = 1
