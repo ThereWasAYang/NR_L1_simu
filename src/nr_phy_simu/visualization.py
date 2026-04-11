@@ -102,16 +102,25 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
-    fig, axes = plt.subplots(2, num_ant, figsize=(max(10, 5 * num_ant), 6), sharex=True)
-    if num_ant == 1:
-        axes = np.asarray(axes).reshape(2, 1)
+    max_cols = 4
+    ant_cols = min(num_ant, max_cols)
+    ant_rows = int(np.ceil(num_ant / ant_cols))
+    fig, axes = plt.subplots(
+        ant_rows * 2,
+        ant_cols,
+        figsize=(max(ant_cols * 4.5, 10), max(ant_rows * 5.5, 6)),
+        sharex=True,
+    )
+    axes = np.asarray(axes).reshape(ant_rows * 2, ant_cols)
     all_dmrs_sc = np.flatnonzero(np.any(dmrs_mask, axis=1))
     x_min = int(all_dmrs_sc[0]) if all_dmrs_sc.size else 0
     x_max = int(all_dmrs_sc[-1]) if all_dmrs_sc.size else 1
 
     for ant_idx in range(num_ant):
-        mag_ax = axes[0, ant_idx]
-        phase_ax = axes[1, ant_idx]
+        row_idx = ant_idx // ant_cols
+        col_idx = ant_idx % ant_cols
+        mag_ax = axes[row_idx * 2, col_idx]
+        phase_ax = axes[row_idx * 2 + 1, col_idx]
         mag_ax.set_ylabel("Magnitude")
         mag_ax.set_title(f"Pilot-Based Channel Estimate RX{ant_idx}")
         mag_ax.grid(True, linestyle="--", alpha=0.4)
@@ -146,6 +155,12 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         phase_ax.set_ylim(-np.pi, np.pi)
         phase_ax.set_yticks([-np.pi, -np.pi / 2, 0.0, np.pi / 2, np.pi])
         phase_ax.set_yticklabels(["-pi", "-pi/2", "0", "pi/2", "pi"])
+
+    for ant_idx in range(num_ant, ant_rows * ant_cols):
+        row_idx = ant_idx // ant_cols
+        col_idx = ant_idx % ant_cols
+        axes[row_idx * 2, col_idx].set_visible(False)
+        axes[row_idx * 2 + 1, col_idx].set_visible(False)
 
     fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
