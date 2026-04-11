@@ -173,6 +173,11 @@ class PlottingConfig:
 
 
 @dataclass
+class SimulationControlConfig:
+    num_ttis: int = 1
+
+
+@dataclass
 class WaveformInputConfig:
     waveform_path: str | None = None
     format: str = "text_iq"
@@ -215,6 +220,7 @@ class SimulationConfig:
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     interference: InterferenceConfig = field(default_factory=InterferenceConfig)
     plotting: PlottingConfig = field(default_factory=PlottingConfig)
+    simulation: SimulationControlConfig = field(default_factory=SimulationControlConfig)
     waveform_input: WaveformInputConfig = field(default_factory=WaveformInputConfig)
     snr_db: float = 10.0
     random_seed: int = 7
@@ -239,6 +245,7 @@ class SimulationConfig:
         channel = ChannelConfig(**channel_data)
         interference = _parse_interference_config(interference_data)
         plotting = PlottingConfig(**data.get("plotting", {}))
+        simulation = SimulationControlConfig(**data.get("simulation", {}))
         waveform_input = WaveformInputConfig(**waveform_input_data)
 
         snr_db = float(channel.params.get("snr_db", data.get("snr_db", 10.0)))
@@ -250,6 +257,7 @@ class SimulationConfig:
             channel=channel,
             interference=interference,
             plotting=plotting,
+            simulation=simulation,
             waveform_input=waveform_input,
             snr_db=snr_db,
             random_seed=int(data.get("random_seed", 7)),

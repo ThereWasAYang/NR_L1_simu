@@ -55,6 +55,7 @@ pip install -e .
 python examples/run_from_config.py configs/pusch_awgn.yaml
 python examples/run_from_config.py configs/pusch_dfts_awgn.yaml
 python examples/run_from_config.py configs/pdsch_awgn.yaml
+python examples/run_from_config.py configs/pusch_awgn_multi_tti.yaml
 # 仓库内置灌数样例，可直接运行
 python examples/run_from_config.py configs/pusch_replay_template.yaml
 ```
@@ -77,6 +78,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 样例文件位于：
 
 - [configs/pusch_awgn.yaml](configs/pusch_awgn.yaml)
+- [configs/pusch_awgn_multi_tti.yaml](configs/pusch_awgn_multi_tti.yaml)
 - [configs/pusch_dfts_awgn.yaml](configs/pusch_dfts_awgn.yaml)
 - [configs/pdsch_awgn.yaml](configs/pdsch_awgn.yaml)
 - [configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
@@ -104,6 +106,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - `layer number`
 - `antenna number`
 - `slot index`
+- `simulation.num_ttis`
 - `waveform_input.waveform_path`
 - `waveform_input.num_samples_per_tti`
 - `waveform_input.noise_variance`
@@ -121,6 +124,8 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。
+
+当 `simulation.num_ttis > 1` 时，系统会连续运行多个 TTI，并统计最终 `BLER`。这里的误包定义为：`CRC` 错误的 TTI。
 
 ## 设计原则
 

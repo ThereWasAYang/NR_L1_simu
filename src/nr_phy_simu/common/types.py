@@ -50,3 +50,18 @@ class SimulationResult:
     snr_db: float
     crc_ok: bool | None = None
     interference_reports: tuple[Any, ...] = ()
+
+
+@dataclass
+class MultiTtiSimulationResult:
+    num_ttis: int
+    packet_errors: int
+    block_error_rate: float
+    tti_results: tuple[SimulationResult, ...]
+    final_config: Any
+
+    @property
+    def last_result(self) -> SimulationResult | None:
+        if not self.tti_results:
+            return None
+        return self.tti_results[-1]

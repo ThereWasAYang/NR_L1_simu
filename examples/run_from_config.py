@@ -11,6 +11,7 @@ import numpy as np
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
+from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.visualization import save_simulation_plots
 
@@ -18,37 +19,50 @@ from nr_phy_simu.visualization import save_simulation_plots
 def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     config_path = ROOT / config_relpath
     config = load_simulation_config(config_path)
-    if config.waveform_input.enabled:
-        simulation = WaveformReplaySimulation(config)
+    if config.simulation.num_ttis > 1:
+        batch_result = MultiTtiSimulationRunner(config).run()
+        result = batch_result.last_result
+        if result is None:
+            raise RuntimeError("Multi-TTI simulation did not produce any TTI result.")
+        effective_config = batch_result.final_config
     else:
-        simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
-    result = simulation.run()
+        batch_result = None
+        if config.waveform_input.enabled:
+            simulation = WaveformReplaySimulation(config)
+        else:
+            simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
+        result = simulation.run()
+        effective_config = config
     prefix = config_path.stem
     plots = {}
-    if config.plotting.enabled:
-        plots = save_simulation_plots(result, config, ROOT / "outputs", prefix, show=True, block=False)
+    if effective_config.plotting.enabled:
+        plots = save_simulation_plots(result, effective_config, ROOT / "outputs", prefix, show=True, block=False)
 
     print(f"Config: {config_path}")
-    if config.waveform_input.enabled:
-        print(f"Waveform input: {config.waveform_input.waveform_path}")
-    print(f"Channel type: {config.link.channel_type}")
-    print(f"Waveform: {config.link.waveform}")
-    print(f"MCS table/index: {config.link.mcs.table}/{config.link.mcs.index}")
-    print(f"Modulation: {config.link.modulation}")
-    print(f"Code rate: {config.link.code_rate:.6f}")
-    print(f"TBS: {config.link.transport_block_size}")
+    if effective_config.waveform_input.enabled:
+        print(f"Waveform input: {effective_config.waveform_input.waveform_path}")
+    print(f"Channel type: {effective_config.link.channel_type}")
+    print(f"Waveform: {effective_config.link.waveform}")
+    print(f"MCS table/index: {effective_config.link.mcs.table}/{effective_config.link.mcs.index}")
+    print(f"Modulation: {effective_config.link.modulation}")
+    print(f"Code rate: {effective_config.link.code_rate:.6f}")
+    print(f"TBS: {effective_config.link.transport_block_size}")
     print(f"SNR: {result.snr_db:.2f} dB")
+    if batch_result is not None:
+        print(f"TTIs: {batch_result.num_ttis}")
+        print(f"Packet errors: {batch_result.packet_errors}")
+        print(f"BLER: {batch_result.block_error_rate:.6f}")
     if result.interference_reports:
         print(f"Interference sources: {len(result.interference_reports)}")
         for report in result.interference_reports:
-            prb_start = report.prb_start if report.prb_start >= 0 else config.link.prb_start
-            num_prbs = report.num_prbs if report.num_prbs >= 0 else config.link.num_prbs
+            prb_start = report.prb_start if report.prb_start >= 0 else effective_config.link.prb_start
+            num_prbs = report.num_prbs if report.num_prbs >= 0 else effective_config.link.num_prbs
             print(
                 f"  - {report.label}: channel={report.channel_model}, INR={report.inr_db:.2f} dB, "
                 f"RB=[{prb_start}, {prb_start + num_prbs - 1}]"
             )
-    print(f"Sample rate: {config.carrier.sample_rate_effective_hz:.2f} Hz")
-    print(f"FFT size: {config.carrier.fft_size_effective}")
+    print(f"Sample rate: {effective_config.carrier.sample_rate_effective_hz:.2f} Hz")
+    print(f"FFT size: {effective_config.carrier.fft_size_effective}")
     if result.crc_ok is not None:
         print(f"CRC OK: {result.crc_ok}")
     if np.isfinite(result.bit_error_rate):
@@ -56,7 +70,7 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         print(f"Bit errors: {result.bit_errors}")
     else:
         print("BER: N/A (waveform replay mode has no transmitted reference bits)")
-    if config.plotting.enabled:
+    if effective_config.plotting.enabled:
         for name, path in plots.items():
             print(f"Plot [{name}]: {path}")
 

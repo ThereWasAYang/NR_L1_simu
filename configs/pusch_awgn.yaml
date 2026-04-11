@@ -56,6 +56,10 @@ dmrs:
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
+simulation:
+  num_ttis: 1                  # 连续仿真的 TTI 个数；大于 1 时统计最终 BLER（CRC 错包率）
+
+# 绘图控制参数
 plotting:
   enabled: true                 # 是否启用本次仿真的所有绘图
 

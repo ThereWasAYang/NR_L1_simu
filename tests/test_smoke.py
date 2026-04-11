@@ -14,6 +14,7 @@ from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
+from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.visualization import save_simulation_plots
@@ -28,6 +29,16 @@ from nr_phy_simu.scenarios.component_factory import build_transmitter
 
 
 class PuschAwgnSmokeTest(unittest.TestCase):
+    def test_pusch_multi_tti_bler_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_multi_tti.yaml")
+        config.channel.params["snr_db"] = 30.0
+        batch_result = MultiTtiSimulationRunner(config).run()
+        self.assertEqual(batch_result.num_ttis, 20)
+        self.assertEqual(len(batch_result.tti_results), 20)
+        self.assertEqual(batch_result.packet_errors, 0)
+        self.assertEqual(batch_result.block_error_rate, 0.0)
+        self.assertIsNotNone(batch_result.last_result)
+
     def test_pusch_cp_ofdm_awgn_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
         config.channel.params["snr_db"] = 30.0
@@ -120,10 +131,12 @@ class DmrsSequenceTest(unittest.TestCase):
 class ConfigLoaderTest(unittest.TestCase):
     def test_load_yaml_and_json_config(self):
         yaml_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        yaml_multi_tti_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn_multi_tti.yaml")
         yaml_pdsch_cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
         yaml_interference_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
         yaml_replay_cfg = load_simulation_config(ROOT / "configs" / "pusch_replay_template.yaml")
         self.assertEqual(yaml_cfg.link.channel_type, "PUSCH")
+        self.assertEqual(yaml_multi_tti_cfg.simulation.num_ttis, 20)
         self.assertEqual(yaml_pdsch_cfg.link.channel_type, "PDSCH")
         self.assertGreater(yaml_cfg.carrier.fft_size_effective, 0)
         self.assertEqual(yaml_cfg.carrier.cyclic_prefix_mode, "NORMAL")
