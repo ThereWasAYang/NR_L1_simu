@@ -34,23 +34,31 @@ class LeastSquaresEstimator(ChannelEstimator):
             return channel
 
         dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
+        dmrs_estimates: dict[int, np.ndarray] = {}
         dmrs_cursor = 0
-        for symbol_idx in range(rx_grid.shape[1]):
+        full_sc = np.arange(rx_grid.shape[0])
+        for symbol_idx in dmrs_symbol_indices:
             symbol_mask = dmrs_mask[:, symbol_idx]
-            if np.any(symbol_mask):
-                pilot_sc = np.flatnonzero(symbol_mask)
-                symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
-                dmrs_cursor += pilot_sc.size
-                pilot_values = rx_grid[pilot_sc, symbol_idx] / symbol_dmrs
-                channel[pilot_sc, symbol_idx] = pilot_values
-                full_sc = np.arange(rx_grid.shape[0])
-                real = np.interp(full_sc, pilot_sc, pilot_values.real)
-                imag = np.interp(full_sc, pilot_sc, pilot_values.imag)
-                channel[:, symbol_idx] = real + 1j * imag
-                continue
+            pilot_sc = np.flatnonzero(symbol_mask)
+            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
+            dmrs_cursor += pilot_sc.size
+            pilot_values = rx_grid[pilot_sc, symbol_idx] / symbol_dmrs
+            channel[pilot_sc, symbol_idx] = pilot_values
+            real = np.interp(full_sc, pilot_sc, pilot_values.real)
+            imag = np.interp(full_sc, pilot_sc, pilot_values.imag)
+            dmrs_estimates[symbol_idx] = real + 1j * imag
+            channel[:, symbol_idx] = dmrs_estimates[symbol_idx]
 
-            nearest = dmrs_symbol_indices[np.argmin(np.abs(dmrs_symbol_indices - symbol_idx))]
-            channel[:, symbol_idx] = channel[:, nearest]
+        if len(dmrs_symbol_indices) == 1:
+            channel[:, :] = channel[:, dmrs_symbol_indices[0]][:, np.newaxis]
+            return channel
+
+        for sc_idx in range(rx_grid.shape[0]):
+            known_symbols = dmrs_symbol_indices.astype(np.float64)
+            known_values = np.array([dmrs_estimates[int(symbol_idx)][sc_idx] for symbol_idx in dmrs_symbol_indices])
+            real_interp = np.interp(np.arange(rx_grid.shape[1], dtype=np.float64), known_symbols, known_values.real)
+            imag_interp = np.interp(np.arange(rx_grid.shape[1], dtype=np.float64), known_symbols, known_values.imag)
+            channel[sc_idx, :] = real_interp + 1j * imag_interp
 
         return channel
 
