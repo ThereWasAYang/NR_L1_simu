@@ -196,6 +196,11 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - 配置文件：[configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
 - 波形文件：[inputs/pusch_capture.txt](inputs/pusch_capture.txt)
 
+注意：
+
+- `waveform_input.waveform_path` 现在按“相对配置文件所在目录”解析
+- 因此 `configs/pusch_replay_template.yaml` 中使用的是 `../inputs/pusch_capture.txt`
+
 在该模式下：
 
 - 发射机和信道模型不会参与运行

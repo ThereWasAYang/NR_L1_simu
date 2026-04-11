@@ -122,6 +122,7 @@ class ConfigLoaderTest(unittest.TestCase):
         yaml_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
         yaml_pdsch_cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
         yaml_interference_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
+        yaml_replay_cfg = load_simulation_config(ROOT / "configs" / "pusch_replay_template.yaml")
         self.assertEqual(yaml_cfg.link.channel_type, "PUSCH")
         self.assertEqual(yaml_pdsch_cfg.link.channel_type, "PDSCH")
         self.assertGreater(yaml_cfg.carrier.fft_size_effective, 0)
@@ -131,6 +132,10 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
         self.assertEqual(len(yaml_interference_cfg.interference.sources), 2)
         self.assertEqual(yaml_interference_cfg.interference.sources[0].channel_model, "AWGN")
+        self.assertEqual(
+            Path(yaml_replay_cfg.waveform_input.waveform_path),
+            (ROOT / "inputs" / "pusch_capture.txt").resolve(),
+        )
 
 
 class McsTableTest(unittest.TestCase):

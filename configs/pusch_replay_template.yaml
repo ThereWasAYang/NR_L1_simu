@@ -12,7 +12,7 @@ carrier:
 
 # 直接灌入接收机的时域波形文件配置
 waveform_input:
-  waveform_path: ./inputs/pusch_capture.txt   # 仓库内置的时域 IQ 文本文件；每行一个复数，按天线顺序拼接
+  waveform_path: ../inputs/pusch_capture.txt  # 相对当前配置文件路径；仓库内置的时域 IQ 文本文件
   format: text_iq                             # 当前支持 text_iq
   num_samples_per_tti: null                   # 每根天线每个 TTI 的样点数；null 表示按当前 numerology 自动推导
   noise_variance: null                        # 已知噪声方差；null 表示按 snr_db 和信号功率估计
