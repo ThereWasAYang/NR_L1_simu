@@ -148,9 +148,8 @@ def _use_system_viewer() -> bool:
 
 
 def _open_with_system_viewer(paths: list[Path]) -> None:
-    for path in paths:
-        subprocess.Popen(
-            ["open", str(path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    subprocess.Popen(
+        ["open", *[str(path) for path in paths]],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
