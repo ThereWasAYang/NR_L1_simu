@@ -175,6 +175,7 @@ class PlottingConfig:
 @dataclass
 class SimulationControlConfig:
     num_ttis: int = 1
+    result_output_path: str | None = None
 
 
 @dataclass

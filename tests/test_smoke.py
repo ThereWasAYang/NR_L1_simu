@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
 import numpy as np
 
 from nr_phy_simu.io.config_loader import load_simulation_config
+from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
@@ -38,6 +39,21 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(batch_result.packet_errors, 0)
         self.assertEqual(batch_result.block_error_rate, 0.0)
         self.assertIsNotNone(batch_result.last_result)
+
+    def test_multi_tti_report_file_append(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_multi_tti.yaml")
+        config.channel.params["snr_db"] = 30.0
+        config.simulation.num_ttis = 2
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "bler_report.csv"
+            config.simulation.result_output_path = str(report_path)
+            first_result = MultiTtiSimulationRunner(config).run()
+            append_multi_tti_report(report_path, first_result, first_result.final_config)
+            second_result = MultiTtiSimulationRunner(config).run()
+            append_multi_tti_report(report_path, second_result, second_result.final_config)
+            lines = report_path.read_text(encoding="utf-8").strip().splitlines()
+            self.assertEqual(lines[0], "信噪比,BLER,RB位置,MCS阶数,总TTI数,误包数,码率,调制阶数,TBsize")
+            self.assertEqual(len(lines), 3)
 
     def test_pusch_cp_ofdm_awgn_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")

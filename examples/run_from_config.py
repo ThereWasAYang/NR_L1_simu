@@ -9,6 +9,7 @@ if str(SRC) not in sys.path:
 import numpy as np
 
 from nr_phy_simu.io.config_loader import load_simulation_config
+from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
@@ -25,8 +26,16 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         if result is None:
             raise RuntimeError("Multi-TTI simulation did not produce any TTI result.")
         effective_config = batch_result.final_config
+        report_path = None
+        if effective_config.simulation.result_output_path:
+            report_path = append_multi_tti_report(
+                effective_config.simulation.result_output_path,
+                batch_result,
+                effective_config,
+            )
     else:
         batch_result = None
+        report_path = None
         if config.waveform_input.enabled:
             simulation = WaveformReplaySimulation(config)
         else:
@@ -52,6 +61,8 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         print(f"TTIs: {batch_result.num_ttis}")
         print(f"Packet errors: {batch_result.packet_errors}")
         print(f"BLER: {batch_result.block_error_rate:.6f}")
+        if report_path is not None:
+            print(f"Multi-TTI report: {report_path}")
     if result.interference_reports:
         print(f"Interference sources: {len(result.interference_reports)}")
         for report in result.interference_reports:

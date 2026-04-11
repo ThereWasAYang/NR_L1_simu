@@ -26,19 +26,23 @@ def load_simulation_config(path: str | Path) -> SimulationConfig:
 
 def _resolve_relative_paths(data: dict, base_dir: Path) -> None:
     waveform_input = data.get("waveform_input")
-    if not isinstance(waveform_input, dict):
-        return
+    if isinstance(waveform_input, dict):
+        waveform_path = waveform_input.get("waveform_path")
+        if isinstance(waveform_path, str) and waveform_path.strip() != "":
+            waveform_input["waveform_path"] = str(_resolve_path_string(waveform_path, base_dir))
 
-    waveform_path = waveform_input.get("waveform_path")
-    if not isinstance(waveform_path, str) or waveform_path.strip() == "":
-        return
+    simulation = data.get("simulation")
+    if isinstance(simulation, dict):
+        result_output_path = simulation.get("result_output_path")
+        if isinstance(result_output_path, str) and result_output_path.strip() != "":
+            simulation["result_output_path"] = str(_resolve_path_string(result_output_path, base_dir))
 
-    candidate = Path(waveform_path).expanduser()
+
+def _resolve_path_string(path_value: str, base_dir: Path) -> Path:
+    candidate = Path(path_value).expanduser()
     if candidate.is_absolute():
-        waveform_input["waveform_path"] = str(candidate.resolve())
-        return
-
-    waveform_input["waveform_path"] = str((base_dir / candidate).resolve())
+        return candidate.resolve()
+    return (base_dir / candidate).resolve()
 
 
 def _xml_to_mapping(element: ET.Element):

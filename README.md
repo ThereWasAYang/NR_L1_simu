@@ -107,6 +107,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - `antenna number`
 - `slot index`
 - `simulation.num_ttis`
+- `simulation.result_output_path`
 - `waveform_input.waveform_path`
 - `waveform_input.num_samples_per_tti`
 - `waveform_input.noise_variance`
@@ -126,6 +127,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。
 
 当 `simulation.num_ttis > 1` 时，系统会连续运行多个 TTI，并统计最终 `BLER`。这里的误包定义为：`CRC` 错误的 TTI。
+如果同时配置了 `simulation.result_output_path`，系统还会把多 TTI 结果按 CSV 风格追加写入文本文件；文件不存在时会自动创建，空文件会先写标题行。
 
 ## 设计原则
 
