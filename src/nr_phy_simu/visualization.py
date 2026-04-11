@@ -97,9 +97,12 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
-    fig, axes = plt.subplots(2, num_ant, figsize=(max(10, 5 * num_ant), 6), sharex="col")
+    fig, axes = plt.subplots(2, num_ant, figsize=(max(10, 5 * num_ant), 6), sharex=True)
     if num_ant == 1:
         axes = np.asarray(axes).reshape(2, 1)
+    all_dmrs_sc = np.flatnonzero(np.any(dmrs_mask, axis=1))
+    x_min = int(all_dmrs_sc[0]) if all_dmrs_sc.size else 0
+    x_max = int(all_dmrs_sc[-1]) if all_dmrs_sc.size else 1
 
     for ant_idx in range(num_ant):
         mag_ax = axes[0, ant_idx]
@@ -107,7 +110,6 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         mag_ax.set_ylabel("Magnitude")
         mag_ax.set_title(f"Pilot-Based Channel Estimate RX{ant_idx}")
         mag_ax.grid(True, linestyle="--", alpha=0.4)
-        phase_ax.set_xlabel("Pilot Index")
         phase_ax.set_ylabel("Phase (rad)")
         phase_ax.grid(True, linestyle="--", alpha=0.4)
 
@@ -134,11 +136,13 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         if dmrs_symbols.size > 1:
             mag_ax.legend(fontsize=8)
             phase_ax.legend(fontsize=8)
+        mag_ax.set_xlim(x_min, x_max)
+        phase_ax.set_xlim(x_min, x_max)
         phase_ax.set_ylim(-np.pi, np.pi)
         phase_ax.set_yticks([-np.pi, -np.pi / 2, 0.0, np.pi / 2, np.pi])
         phase_ax.set_yticklabels(["-pi", "-pi/2", "0", "pi/2", "pi"])
 
-    axes[1, 0].set_xlabel("DMRS Subcarrier Index")
+    fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
     return fig
 
