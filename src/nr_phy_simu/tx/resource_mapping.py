@@ -32,12 +32,18 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         dmrs_sequence = []
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
             symbol_dmrs_offsets = np.array([], dtype=int)
+            is_dmrs_symbol = symbol_idx in dmrs_info.symbol_indices
             is_transform_precoded_dmrs_symbol = (
                 config.link.channel_type.upper() == "PUSCH"
                 and config.link.waveform.upper() == "DFT-S-OFDM"
-                and symbol_idx in dmrs_info.symbol_indices
+                and is_dmrs_symbol
             )
-            if symbol_idx in dmrs_info.symbol_indices:
+            skip_data_on_dmrs_symbol = is_transform_precoded_dmrs_symbol or (
+                config.link.waveform.upper() == "CP-OFDM"
+                and is_dmrs_symbol
+                and not config.dmrs.data_mux_enabled
+            )
+            if is_dmrs_symbol:
                 symbol_dmrs_offsets = self.symbol_dmrs_offsets(config, dmrs_info)
                 dmrs_subcarriers = allocated[symbol_dmrs_offsets]
                 dmrs_values = self.dmrs_generator.generate_for_symbol(symbol_idx, config)
@@ -45,7 +51,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
                 dmrs_mask[dmrs_subcarriers, symbol_idx] = True
                 dmrs_sequence.append(dmrs_values)
 
-            if is_transform_precoded_dmrs_symbol:
+            if skip_data_on_dmrs_symbol:
                 continue
 
             available_subcarriers = allocated
@@ -76,14 +82,19 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         dmrs_info = self.dmrs_generator.get_dmrs_info(config)
         total = 0
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
+            is_dmrs_symbol = symbol_idx in dmrs_info.symbol_indices
             if (
                 config.link.channel_type.upper() == "PUSCH"
                 and config.link.waveform.upper() == "DFT-S-OFDM"
-                and symbol_idx in dmrs_info.symbol_indices
+                and is_dmrs_symbol
+            ) or (
+                config.link.waveform.upper() == "CP-OFDM"
+                and is_dmrs_symbol
+                and not config.dmrs.data_mux_enabled
             ):
                 continue
             symbol_count = allocated.size
-            if symbol_idx in dmrs_info.symbol_indices:
+            if is_dmrs_symbol:
                 symbol_count -= self.symbol_dmrs_offsets(config, dmrs_info).size
             total += symbol_count
         return total

@@ -185,14 +185,6 @@ class DmrsGenerator(DmrsSequenceGenerator):
     """
 
     def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
-        if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
-            re_offsets = np.arange(12, dtype=int)
-            return DmrsInfo(
-                symbol_indices=self._dmrs_symbol_indices(config),
-                re_offsets=re_offsets,
-                re_per_prb=re_offsets.size,
-            )
-
         if config.dmrs.config_type == 1:
             re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
         elif config.dmrs.config_type == 2:

@@ -189,7 +189,6 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
 
 def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
     rx_grid = result.rx.rx_grid
-    dmrs_mask = result.tx.dmrs_mask
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
     n_sc = config.carrier.n_subcarriers
@@ -199,32 +198,12 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
         concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
         x = np.arange(concatenated.size)
         ax.plot(x, concatenated, linewidth=0.9)
-        dmrs_x = []
-        dmrs_y = []
-        for symbol_idx in range(config.carrier.symbols_per_slot):
-            pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
-            if pilot_sc.size == 0:
-                continue
-            dmrs_x.append(symbol_idx * n_sc + pilot_sc)
-            dmrs_y.append(np.abs(rx_grid[ant_idx, pilot_sc, symbol_idx]))
-        if dmrs_x:
-            ax.scatter(
-                np.concatenate(dmrs_x),
-                np.concatenate(dmrs_y),
-                s=10,
-                color="tab:orange",
-                alpha=0.8,
-                label="DMRS RE",
-                zorder=3,
-            )
         for symbol_idx in range(config.carrier.symbols_per_slot + 1):
             ax.axvline(symbol_idx * n_sc, color="tab:red", linestyle="--", linewidth=0.8, alpha=0.6)
         ymax = max(float(np.max(concatenated)), 1e-6)
         for symbol_idx in range(config.carrier.symbols_per_slot):
             center = symbol_idx * n_sc + n_sc / 2
             ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
-        if dmrs_x:
-            ax.legend(fontsize=8)
         ax.set_title(f"Received Frequency-Domain Magnitude RX{ant_idx} (Full Cell BW)")
         ax.set_xlabel("Flattened Subcarrier Index Across Symbols")
         ax.set_ylabel("Magnitude")

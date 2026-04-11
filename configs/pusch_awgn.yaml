@@ -40,6 +40,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
+  data_mux_enabled: true        # CP-OFDM 下导频符号是否允许数据与 DMRS 在同一 symbol 内按频域复用；DFT-s-OFDM 下忽略此项
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition

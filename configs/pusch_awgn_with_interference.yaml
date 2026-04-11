@@ -10,7 +10,7 @@ carrier:
 channel:
   model: AWGN                   # 目标信道类型：AWGN / TDL / CDL
   params:
-    snr_db: 18.0                # 目标链路相对于底噪的 SNR，单位 dB
+    snr_db: 30.0                # 目标链路相对于底噪的 SNR，单位 dB
 
 # 数据扰码配置
 scrambling:
@@ -32,7 +32,7 @@ link:
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
     table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
-    index: 10                   # MCS index
+    index: 3                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
     x_overhead: 0               # TBS 计算中的 xOh
@@ -40,6 +40,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
+  data_mux_enabled: false       # DFT-s-OFDM 下该项固定等效为 false；保留此字段便于统一配置结构
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition

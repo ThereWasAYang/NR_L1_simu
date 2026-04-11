@@ -40,6 +40,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
+  data_mux_enabled: false       # DFT-s-OFDM 下该项固定等效为 false；保留此字段便于统一配置结构
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition

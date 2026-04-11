@@ -98,8 +98,18 @@ class DmrsSequenceTest(unittest.TestCase):
             config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
             config.link.num_prbs = num_prbs
             symbols = generator.generate_for_symbol(symbol=2, config=config)
-            self.assertEqual(symbols.size, num_prbs * 12)
+            self.assertEqual(symbols.size, num_prbs * 6)
             self.assertTrue(np.allclose(np.abs(symbols), 1.0))
+
+    def test_cp_ofdm_dmrs_can_disable_data_multiplexing(self):
+        config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
+        config.dmrs.data_mux_enabled = False
+        mapper = FrequencyDomainResourceMapper(dmrs_generator=DmrsGenerator())
+        grid, dmrs_mask, data_mask, _ = mapper.map_to_grid(np.ones(mapper.count_data_re(config), dtype=np.complex128), config)
+        dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
+        self.assertGreater(dmrs_symbols.size, 0)
+        for symbol_idx in dmrs_symbols:
+            self.assertEqual(int(np.count_nonzero(data_mask[:, symbol_idx])), 0)
 
 
 class ConfigLoaderTest(unittest.TestCase):

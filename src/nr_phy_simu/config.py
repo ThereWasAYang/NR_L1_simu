@@ -95,6 +95,7 @@ class DmrsConfig:
     additional_positions: int = 0
     config_type: int = 1
     symbol_positions: tuple[int, ...] = ()
+    data_mux_enabled: bool = True
     mapping_type: str = "A"
     type_a_position: int = 2
     max_length: int = 1
