@@ -63,7 +63,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 绘图调用链和如何新增绘图节点的开发说明见：
 
-- [docs/plotting_development.md](/Users/yang/Work/NR_L1_Simu/docs/plotting_development.md)
+- [docs/plotting_development.md](docs/plotting_development.md)
 
 ## 参数文件
 
@@ -75,10 +75,10 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 样例文件位于：
 
-- [configs/pusch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_awgn.yaml)
-- [configs/pusch_dfts_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_dfts_awgn.yaml)
-- [configs/pdsch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pdsch_awgn.yaml)
-- [configs/pusch_replay_template.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_replay_template.yaml)
+- [configs/pusch_awgn.yaml](configs/pusch_awgn.yaml)
+- [configs/pusch_dfts_awgn.yaml](configs/pusch_dfts_awgn.yaml)
+- [configs/pdsch_awgn.yaml](configs/pdsch_awgn.yaml)
+- [configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
 
 当前参数模型至少覆盖：
 
@@ -155,12 +155,12 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 ### 4. 组件工厂负责默认实现装配
 
-默认装配逻辑位于 [component_factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/component_factory.py)：
+默认装配逻辑位于 [component_factory.py](src/nr_phy_simu/scenarios/component_factory.py)：
 
 - 发射机各处理块分别以独立类存在于 `tx/`
 - 接收机各处理块分别以独立类存在于 `rx/`
 - `DMRS` 与数据扰码位于 `common/sequences/`
-- 信道实例创建位于 [channel_factory.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/channel_factory.py)
+- 信道实例创建位于 [channel_factory.py](src/nr_phy_simu/channels/channel_factory.py)
 
 如果你后续要引入新算法，推荐做法是：
 
@@ -170,7 +170,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 ## 灌数仿真
 
-当前已支持“灌数仿真”模式：直接从文本文件读取时域 IQ，跳过发射机和信道模型，把数据送入接收机处理链。入口在 [waveform_replay.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/waveform_replay.py)。
+当前已支持“灌数仿真”模式：直接从文本文件读取时域 IQ，跳过发射机和信道模型，把数据送入接收机处理链。入口在 [waveform_replay.py](src/nr_phy_simu/scenarios/waveform_replay.py)。
 
 文本文件格式如下：
 
@@ -197,13 +197,13 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 ## DMRS 说明
 
-当前 DMRS 实现在 [src/nr_phy_simu/common/sequences/dmrs.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/common/sequences/dmrs.py)：
+当前 DMRS 实现在 [src/nr_phy_simu/common/sequences/dmrs.py](src/nr_phy_simu/common/sequences/dmrs.py)：
 
 - `PDSCH DMRS` 采用 38.211 中的 Gold 序列初始化形式
 - `PUSCH DMRS` 在 `transform precoding disabled` 时走同类 Gold 序列初始化路径
 - `PUSCH DFT-s-OFDM` 已拆出独立分支，并依据 38.211 中 transform precoding enabled 时的 low-PAPR type 1 路径生成序列
 
-数据扰码实现在 [src/nr_phy_simu/common/sequences/scrambling.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/common/sequences/scrambling.py)：
+数据扰码实现在 [src/nr_phy_simu/common/sequences/scrambling.py](src/nr_phy_simu/common/sequences/scrambling.py)：
 
 - 发端按 `RNTI + codeword index + data scrambling ID/N_id` 生成共享信道数据扰码
 - 收端对 LLR 执行对应解扰，再进入 LDPC 译码
@@ -212,10 +212,10 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 当前信道实现位于：
 
-- [awgn.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/awgn.py)
-- [tdl.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/tdl.py)
-- [cdl.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/cdl.py)
-- [profile_tables.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/channels/profile_tables.py)
+- [awgn.py](src/nr_phy_simu/channels/awgn.py)
+- [tdl.py](src/nr_phy_simu/channels/tdl.py)
+- [cdl.py](src/nr_phy_simu/channels/cdl.py)
+- [profile_tables.py](src/nr_phy_simu/channels/profile_tables.py)
 
 当前版本已支持：
 
@@ -242,11 +242,11 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 当前编码/调制相关实现集中在：
 
-- [src/nr_phy_simu/tx/codec.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/tx/codec.py)
-- [src/nr_phy_simu/rx/decoding.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/rx/decoding.py)
-- [src/nr_phy_simu/tx/modulation.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/tx/modulation.py)
-- [src/nr_phy_simu/rx/demodulation.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/rx/demodulation.py)
-- [src/nr_phy_simu/common/mcs.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/common/mcs.py)
+- [src/nr_phy_simu/tx/codec.py](src/nr_phy_simu/tx/codec.py)
+- [src/nr_phy_simu/rx/decoding.py](src/nr_phy_simu/rx/decoding.py)
+- [src/nr_phy_simu/tx/modulation.py](src/nr_phy_simu/tx/modulation.py)
+- [src/nr_phy_simu/rx/demodulation.py](src/nr_phy_simu/rx/demodulation.py)
+- [src/nr_phy_simu/common/mcs.py](src/nr_phy_simu/common/mcs.py)
 
 当前版本已接入：
 
