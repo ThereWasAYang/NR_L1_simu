@@ -32,6 +32,11 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         dmrs_sequence = []
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
             symbol_dmrs_offsets = np.array([], dtype=int)
+            is_transform_precoded_dmrs_symbol = (
+                config.link.channel_type.upper() == "PUSCH"
+                and config.link.waveform.upper() == "DFT-S-OFDM"
+                and symbol_idx in dmrs_info.symbol_indices
+            )
             if symbol_idx in dmrs_info.symbol_indices:
                 symbol_dmrs_offsets = self.symbol_dmrs_offsets(config, dmrs_info)
                 dmrs_subcarriers = allocated[symbol_dmrs_offsets]
@@ -39,6 +44,9 @@ class FrequencyDomainResourceMapper(ResourceMapper):
                 grid[dmrs_subcarriers, symbol_idx] = dmrs_values
                 dmrs_mask[dmrs_subcarriers, symbol_idx] = True
                 dmrs_sequence.append(dmrs_values)
+
+            if is_transform_precoded_dmrs_symbol:
+                continue
 
             available_subcarriers = allocated
             if symbol_dmrs_offsets.size:
@@ -68,6 +76,12 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         dmrs_info = self.dmrs_generator.get_dmrs_info(config)
         total = 0
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
+            if (
+                config.link.channel_type.upper() == "PUSCH"
+                and config.link.waveform.upper() == "DFT-S-OFDM"
+                and symbol_idx in dmrs_info.symbol_indices
+            ):
+                continue
             symbol_count = allocated.size
             if symbol_idx in dmrs_info.symbol_indices:
                 symbol_count -= self.symbol_dmrs_offsets(config, dmrs_info).size

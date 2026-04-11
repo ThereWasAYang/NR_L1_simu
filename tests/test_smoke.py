@@ -98,7 +98,7 @@ class DmrsSequenceTest(unittest.TestCase):
             config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
             config.link.num_prbs = num_prbs
             symbols = generator.generate_for_symbol(symbol=2, config=config)
-            self.assertEqual(symbols.size, num_prbs * 6)
+            self.assertEqual(symbols.size, num_prbs * 12)
             self.assertTrue(np.allclose(np.abs(symbols), 1.0))
 
 
