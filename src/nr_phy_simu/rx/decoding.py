@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+
 import numpy as np
 from py3gpp import (
     nrCRCDecode,
@@ -32,7 +35,8 @@ class NrLdpcDecoder(ChannelDecoder):
             nLayers=config.link.num_layers,
         )
         decoded_cbs, _ = nrLDPCDecode(recovered, info["BGN"], maxNumIter=25)
-        tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
         decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info["CRC"])
         self.last_crc_ok = bool(crc_error == 0)
         return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)
