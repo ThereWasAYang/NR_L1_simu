@@ -91,11 +91,12 @@ def _build_constellation_figure(result: SimulationResult):
 
 
 def _build_pilot_estimate_figure(result: SimulationResult):
-    pilots = result.rx.pilot_estimates
-    pilot_symbol_indices = result.rx.pilot_symbol_indices
-    if pilots.ndim == 1:
-        pilots = pilots[np.newaxis, :]
-    num_ant = pilots.shape[0]
+    channel_estimate = result.rx.channel_estimate
+    dmrs_mask = result.tx.dmrs_mask
+    if channel_estimate.ndim == 2:
+        channel_estimate = channel_estimate[np.newaxis, ...]
+    num_ant = channel_estimate.shape[0]
+    dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
     fig, axes = plt.subplots(2, num_ant, figsize=(max(10, 5 * num_ant), 6), sharex="col")
     if num_ant == 1:
         axes = np.asarray(axes).reshape(2, 1)
@@ -110,15 +111,11 @@ def _build_pilot_estimate_figure(result: SimulationResult):
         phase_ax.set_ylabel("Phase (rad)")
         phase_ax.grid(True, linestyle="--", alpha=0.4)
 
-        start = 0
-        for symbol_idx in np.unique(pilot_symbol_indices):
-            symbol_mask = pilot_symbol_indices == symbol_idx
-            count = int(np.count_nonzero(symbol_mask))
-            stop = start + count
-            x = np.arange(count) + start
-            pilot_values = pilots[ant_idx, start:stop]
+        for symbol_idx in dmrs_symbols:
+            pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
+            pilot_values = channel_estimate[ant_idx, pilot_sc, symbol_idx]
             mag_ax.plot(
-                x,
+                pilot_sc,
                 np.abs(pilot_values),
                 marker="o",
                 markersize=3,
@@ -126,19 +123,22 @@ def _build_pilot_estimate_figure(result: SimulationResult):
                 label=f"sym {symbol_idx}",
             )
             phase_ax.plot(
-                x,
-                np.unwrap(np.angle(pilot_values)),
+                pilot_sc,
+                np.angle(pilot_values),
                 marker="o",
                 markersize=3,
                 linewidth=1,
                 label=f"sym {symbol_idx}",
             )
-            start = stop
 
-        if np.unique(pilot_symbol_indices).size > 1:
+        if dmrs_symbols.size > 1:
             mag_ax.legend(fontsize=8)
             phase_ax.legend(fontsize=8)
+        phase_ax.set_ylim(-np.pi, np.pi)
+        phase_ax.set_yticks([-np.pi, -np.pi / 2, 0.0, np.pi / 2, np.pi])
+        phase_ax.set_yticklabels(["-pi", "-pi/2", "0", "pi/2", "pi"])
 
+    axes[1, 0].set_xlabel("DMRS Subcarrier Index")
     fig.tight_layout()
     return fig
 
