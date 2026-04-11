@@ -48,10 +48,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from nr_phy_simu.common.types import SimulationResult
+from nr_phy_simu.config import SimulationConfig
 
 
 def save_simulation_plots(
     result: SimulationResult,
+    config: SimulationConfig,
     output_dir: str | Path,
     prefix: str,
     show: bool = False,
@@ -60,21 +62,24 @@ def save_simulation_plots(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    constellation_path = output_path / f"{prefix}_constellation.png"
-    pilots_path = output_path / f"{prefix}_pilot_channel_estimates.png"
+    plots: dict[str, Path] = {}
+    figures: dict[str, object] = {
+        "constellation": _build_constellation_figure(result),
+        "pilot_estimates": _build_pilot_estimate_figure(result),
+    }
+    figures.update(_build_rx_time_domain_figures(result, config))
+    figures.update(_build_rx_frequency_domain_figures(result, config))
 
-    constellation_fig = _build_constellation_figure(result)
-    pilot_fig = _build_pilot_estimate_figure(result)
-
-    constellation_fig.savefig(constellation_path, dpi=160)
-    pilot_fig.savefig(pilots_path, dpi=160)
-    plt.close(constellation_fig)
-    plt.close(pilot_fig)
+    for name, figure in figures.items():
+        path = output_path / f"{prefix}_{name}.png"
+        figure.savefig(path, dpi=160)
+        plt.close(figure)
+        plots[name] = path
 
     if show:
-        _show_plots([constellation_path, pilots_path], block=block)
+        _show_plots(list(plots.values()), block=block)
 
-    return {"constellation": constellation_path, "pilot_estimates": pilots_path}
+    return plots
 
 
 def _build_constellation_figure(result: SimulationResult):
@@ -145,6 +150,67 @@ def _build_pilot_estimate_figure(result: SimulationResult):
     fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
     return fig
+
+
+def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
+    waveform = result.rx.rx_waveform
+    if waveform.ndim == 1:
+        waveform = waveform[np.newaxis, :]
+    cp_lengths = config.carrier.cyclic_prefix_lengths
+    fft_size = config.carrier.fft_size_effective
+    boundaries = [0]
+    labels: list[tuple[float, int]] = []
+    offset = 0
+    for symbol_idx, cp_len in enumerate(cp_lengths):
+        symbol_len = fft_size + cp_len
+        center = offset + symbol_len / 2
+        labels.append((center, symbol_idx))
+        offset += symbol_len
+        boundaries.append(offset)
+
+    figures = {}
+    for ant_idx in range(waveform.shape[0]):
+        fig, ax = plt.subplots(figsize=(12, 4))
+        x = np.arange(waveform.shape[1])
+        ax.plot(x, np.abs(waveform[ant_idx]), linewidth=0.9)
+        for boundary in boundaries:
+            ax.axvline(boundary, color="tab:red", linestyle="--", linewidth=0.8, alpha=0.6)
+        ymax = max(float(np.max(np.abs(waveform[ant_idx]))), 1e-6)
+        for center, symbol_idx in labels:
+            ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
+        ax.set_title(f"Received Time-Domain Magnitude RX{ant_idx}")
+        ax.set_xlabel("Sample Index")
+        ax.set_ylabel("Magnitude")
+        ax.grid(True, linestyle="--", alpha=0.35)
+        fig.tight_layout()
+        figures[f"rx_time_ant{ant_idx}"] = fig
+    return figures
+
+
+def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
+    rx_grid = result.rx.rx_grid
+    if rx_grid.ndim == 2:
+        rx_grid = rx_grid[np.newaxis, ...]
+    n_sc = config.carrier.n_subcarriers
+    figures = {}
+    for ant_idx in range(rx_grid.shape[0]):
+        fig, ax = plt.subplots(figsize=(12, 4))
+        concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
+        x = np.arange(concatenated.size)
+        ax.plot(x, concatenated, linewidth=0.9)
+        for symbol_idx in range(config.carrier.symbols_per_slot + 1):
+            ax.axvline(symbol_idx * n_sc, color="tab:red", linestyle="--", linewidth=0.8, alpha=0.6)
+        ymax = max(float(np.max(concatenated)), 1e-6)
+        for symbol_idx in range(config.carrier.symbols_per_slot):
+            center = symbol_idx * n_sc + n_sc / 2
+            ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
+        ax.set_title(f"Received Frequency-Domain Magnitude RX{ant_idx}")
+        ax.set_xlabel("Subcarrier Index Across Symbols")
+        ax.set_ylabel("Magnitude")
+        ax.grid(True, linestyle="--", alpha=0.35)
+        fig.tight_layout()
+        figures[f"rx_freq_ant{ant_idx}"] = fig
+    return figures
 
 
 def _show_plots(paths: list[Path], block: bool) -> None:

@@ -24,7 +24,9 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
     result = simulation.run()
     prefix = config_path.stem
-    plots = save_simulation_plots(result, ROOT / "outputs", prefix, show=True, block=False)
+    plots = {}
+    if config.plotting.enabled:
+        plots = save_simulation_plots(result, config, ROOT / "outputs", prefix, show=True, block=False)
 
     print(f"Config: {config_path}")
     if config.waveform_input.enabled:
@@ -52,8 +54,9 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         print(f"Bit errors: {result.bit_errors}")
     else:
         print("BER: N/A (waveform replay mode has no transmitted reference bits)")
-    print(f"Constellation plot: {plots['constellation']}")
-    print(f"Pilot estimate plot: {plots['pilot_estimates']}")
+    if config.plotting.enabled:
+        for name, path in plots.items():
+            print(f"Plot [{name}]: {path}")
 
 
 if __name__ == "__main__":

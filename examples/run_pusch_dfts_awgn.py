@@ -25,7 +25,7 @@ def main() -> None:
         ),
     )
     result = PuschSimulation(config).run()
-    plots = save_simulation_plots(result, ROOT / "outputs", "pusch_dfts_awgn", show=True, block=False)
+    plots = save_simulation_plots(result, config, ROOT / "outputs", "pusch_dfts_awgn", show=True, block=False)
     print("NR PUSCH AWGN simulation")
     print(f"Waveform: {config.link.waveform}")
     print(f"SNR: {result.snr_db:.2f} dB")

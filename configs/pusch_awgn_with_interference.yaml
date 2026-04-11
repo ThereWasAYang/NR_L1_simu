@@ -59,7 +59,7 @@ interference:
   sources:
     - label: jammer_awgn_fullband   # 干扰源标签
       enabled: true                 # 是否启用该干扰源
-      inr_db: 6.0                   # 干扰功率相对底噪的 INR，单位 dB
+      inr_db: -6.0                   # 干扰功率相对底噪的 INR，单位 dB
       channel_model: AWGN           # 干扰源信道类型：AWGN / TDL / CDL
       channel_params: {}            # 干扰源信道参数；为空时使用默认参数
       prb_start: null               # 干扰 RB 起始位置；null 表示回退到用户带宽起点
@@ -74,7 +74,7 @@ interference:
         index: 8                    # 干扰源 MCS index
     - label: jammer_tdl_partialband # 第二个干扰源标签
       enabled: true
-      inr_db: 3.0
+      inr_db: -3.0
       channel_model: TDL
       channel_params:
         profile: TDL-A
@@ -91,6 +91,10 @@ interference:
       mcs:
         table: tp64qam
         index: 6
+
+# 仿真控制参数
+plotting:
+  enabled: true                 # 是否启用本次仿真的所有绘图
 
 # 仿真控制参数
 random_seed: 7                      # 随机种子

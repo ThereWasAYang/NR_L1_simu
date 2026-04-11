@@ -59,5 +59,8 @@ dmrs:
   group_hopping: false
   port_set: [0]
 
+plotting:
+  enabled: true
+
 random_seed: 7
 slot_index: 0

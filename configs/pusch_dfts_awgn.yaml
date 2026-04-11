@@ -55,5 +55,9 @@ dmrs:
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
+plotting:
+  enabled: true                 # 是否启用本次仿真的所有绘图
+
+# 仿真控制参数
 random_seed: 7                  # 随机种子
 slot_index: 0                   # 槽号

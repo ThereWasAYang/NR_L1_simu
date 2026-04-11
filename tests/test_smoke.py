@@ -84,9 +84,11 @@ class VisualizationSmokeTest(unittest.TestCase):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
         config.channel.params["snr_db"] = 20.0
         result = PuschSimulation(config).run()
-        paths = save_simulation_plots(result, ROOT / "outputs" / "tests", "smoke")
+        paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "smoke")
         self.assertTrue(paths["constellation"].exists())
         self.assertTrue(paths["pilot_estimates"].exists())
+        self.assertTrue(paths["rx_time_ant0"].exists())
+        self.assertTrue(paths["rx_freq_ant0"].exists())
 
 
 class DmrsSequenceTest(unittest.TestCase):

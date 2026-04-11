@@ -25,7 +25,7 @@ def main() -> None:
         ),
     )
     result = PdschSimulation(config).run()
-    plots = save_simulation_plots(result, ROOT / "outputs", "pdsch_awgn", show=True, block=False)
+    plots = save_simulation_plots(result, config, ROOT / "outputs", "pdsch_awgn", show=True, block=False)
     print("NR PDSCH AWGN simulation")
     print(f"SNR: {result.snr_db:.2f} dB")
     print(f"BER: {result.bit_error_rate:.6f}")

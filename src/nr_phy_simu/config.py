@@ -167,6 +167,11 @@ class InterferenceConfig:
 
 
 @dataclass
+class PlottingConfig:
+    enabled: bool = True
+
+
+@dataclass
 class WaveformInputConfig:
     waveform_path: str | None = None
     format: str = "text_iq"
@@ -208,6 +213,7 @@ class SimulationConfig:
     link: LinkConfig = field(default_factory=LinkConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     interference: InterferenceConfig = field(default_factory=InterferenceConfig)
+    plotting: PlottingConfig = field(default_factory=PlottingConfig)
     waveform_input: WaveformInputConfig = field(default_factory=WaveformInputConfig)
     snr_db: float = 10.0
     random_seed: int = 7
@@ -231,6 +237,7 @@ class SimulationConfig:
         link = LinkConfig(**link_data, mcs=mcs)
         channel = ChannelConfig(**channel_data)
         interference = _parse_interference_config(interference_data)
+        plotting = PlottingConfig(**data.get("plotting", {}))
         waveform_input = WaveformInputConfig(**waveform_input_data)
 
         snr_db = float(channel.params.get("snr_db", data.get("snr_db", 10.0)))
@@ -241,6 +248,7 @@ class SimulationConfig:
             link=link,
             channel=channel,
             interference=interference,
+            plotting=plotting,
             waveform_input=waveform_input,
             snr_db=snr_db,
             random_seed=int(data.get("random_seed", 7)),
