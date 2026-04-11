@@ -1,1 +1,1 @@
-"""Configuration IO helpers."""
+"""Configuration and waveform IO helpers."""

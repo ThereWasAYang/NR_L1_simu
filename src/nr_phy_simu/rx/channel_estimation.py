@@ -14,6 +14,20 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> np.ndarray:
+        if rx_grid.ndim == 3:
+            return np.stack(
+                [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
+                axis=0,
+            )
+        return self._estimate_single(rx_grid, dmrs_symbols, dmrs_mask, config)
+
+    def _estimate_single(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        config: SimulationConfig,
+    ) -> np.ndarray:
         del config
         channel = np.ones_like(rx_grid, dtype=np.complex128)
         if dmrs_symbols.size == 0:
@@ -46,6 +60,12 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> np.ndarray:
+        if rx_grid.ndim == 3:
+            estimates = [
+                LeastSquaresEstimator.pilot_estimates(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask)
+                for antenna_idx in range(rx_grid.shape[0])
+            ]
+            return np.mean(np.stack(estimates, axis=0), axis=0)
         if dmrs_symbols.size == 0:
             return np.array([], dtype=np.complex128)
 

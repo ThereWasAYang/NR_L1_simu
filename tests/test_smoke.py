@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,9 @@ from nr_phy_simu.common.mcs import resolve_mcs
 from nr_phy_simu.channels.channel_factory import DefaultChannelFactory
 from nr_phy_simu.channels.tdl import TdlChannel
 from nr_phy_simu.channels.cdl import CdlChannel
+from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
+from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
+from nr_phy_simu.scenarios.component_factory import build_transmitter
 
 
 class PuschAwgnSmokeTest(unittest.TestCase):
@@ -141,6 +145,37 @@ class FadingChannelSmokeTest(unittest.TestCase):
         self.assertEqual(rx_waveform.shape, waveform.shape)
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
+
+
+class WaveformReplaySmokeTest(unittest.TestCase):
+    def test_replay_waveform_file_into_receiver(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        factory = DefaultSimulationComponentFactory()
+        components = factory.create_components(cfg)
+        transmitter = build_transmitter(components)
+
+        mcs_entry = apply_mcs_to_link(cfg)
+        data_re = components.transmitter.mapper.count_data_re(cfg)
+        cfg.link.coded_bit_capacity = data_re * mcs_entry.bits_per_symbol
+        cfg.link.transport_block_size = resolve_transport_block_size(cfg, data_re)
+        transport_block = np.random.default_rng(0).integers(
+            0, 2, size=int(cfg.link.transport_block_size), dtype=np.int8
+        )
+        tx_payload = transmitter.transmit(transport_block, cfg)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            waveform_path = Path(tmpdir) / "capture.txt"
+            waveform_path.write_text(
+                "\n".join(f"{sample.real:.12e} {sample.imag:.12e}" for sample in tx_payload.waveform)
+            )
+            replay_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+            replay_cfg.waveform_input.waveform_path = str(waveform_path)
+            replay_cfg.channel.params["snr_db"] = 50.0
+            replay_cfg.link.transport_block_size = cfg.link.transport_block_size
+            replay_cfg.link.coded_bit_capacity = cfg.link.coded_bit_capacity
+            result = WaveformReplaySimulation(replay_cfg).run()
+            self.assertTrue(np.isnan(result.bit_error_rate))
+            self.assertTrue(np.array_equal(result.rx.decoded_bits[: transport_block.size], transport_block))
 
     def test_cdl_channel_propagates(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")

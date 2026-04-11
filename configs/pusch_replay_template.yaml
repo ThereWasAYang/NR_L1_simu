@@ -1,0 +1,65 @@
+# 载波与 numerology 配置
+carrier:
+  cell_bandwidth_rbs: 52
+  subcarrier_spacing_khz: 30
+  cyclic_prefix: NormalCP
+  fft_size: null
+  sample_rate_hz: null
+
+# 直接灌入接收机的时域波形文件配置
+waveform_input:
+  waveform_path: ./inputs/pusch_capture.txt   # 时域 IQ 文本文件路径；每行一个复数，按天线顺序拼接
+  format: text_iq                             # 当前支持 text_iq
+  num_samples_per_tti: null                   # 每根天线每个 TTI 的样点数；null 表示按当前 numerology 自动推导
+  noise_variance: null                        # 已知噪声方差；null 表示按 snr_db 和信号功率估计
+
+# 该模式下不会真正启用信道，但仍可用 snr_db 为接收机提供 MMSE/LLR 所需噪声估计
+channel:
+  model: AWGN
+  params:
+    snr_db: 30.0
+
+# 数据扰码配置
+scrambling:
+  rnti: 4660
+  n_id: 1
+  data_scrambling_id: null
+  codeword_index: 0
+
+# 共享信道链路配置
+link:
+  channel_type: PUSCH
+  waveform: CP-OFDM
+  num_layers: 1
+  num_tx_ant: 1
+  num_rx_ant: 1
+  prb_start: 4
+  num_prbs: 24
+  start_symbol: 0
+  num_symbols: 14
+  mcs:
+    table: qam64
+    index: 10
+    tp_pi2bpsk: false
+    rv: 0
+    x_overhead: 0
+
+# DMRS 配置
+dmrs:
+  config_type: 1
+  mapping_type: A
+  type_a_position: 2
+  additional_positions: 1
+  max_length: 1
+  symbol_positions: []
+  scrambling_id0: 1
+  scrambling_id1: null
+  nid_nscid: null
+  n_scid: 0
+  n_pusch_identity: 1
+  sequence_hopping: false
+  group_hopping: false
+  port_set: [0]
+
+random_seed: 7
+slot_index: 0

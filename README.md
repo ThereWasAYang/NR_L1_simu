@@ -55,6 +55,7 @@ pip install -e .
 python examples/run_from_config.py configs/pusch_awgn.yaml
 python examples/run_from_config.py configs/pusch_dfts_awgn.yaml
 python examples/run_from_config.py configs/pdsch_awgn.yaml
+python examples/run_from_config.py configs/pusch_replay_template.yaml
 ```
 
 前台运行示例脚本时，星座图和导频信道估计图会直接显示；同时仍会保存到 `outputs/`。在 macOS 前台运行时，默认会直接调用系统图片查看器打开生成的 PNG，因此不会阻塞 Python 主进程，也不会依赖 `matplotlib` 的 GUI 事件循环。
@@ -73,6 +74,7 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - [configs/pusch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_awgn.yaml)
 - [configs/pusch_dfts_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_dfts_awgn.yaml)
 - [configs/pdsch_awgn.yaml](/Users/yang/Work/NR_L1_Simu/configs/pdsch_awgn.yaml)
+- [configs/pusch_replay_template.yaml](/Users/yang/Work/NR_L1_Simu/configs/pusch_replay_template.yaml)
 
 当前参数模型至少覆盖：
 
@@ -96,6 +98,9 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - `layer number`
 - `antenna number`
 - `slot index`
+- `waveform_input.waveform_path`
+- `waveform_input.num_samples_per_tti`
+- `waveform_input.noise_variance`
 
 对于 `TDL/CDL`，当前已支持的典型信道参数包括：
 
@@ -158,6 +163,33 @@ python examples/run_from_config.py configs/pdsch_awgn.yaml
 - 派生对应抽象接口的新类
 - 自定义一个 `SimulationComponentFactory`
 - 在 `PuschSimulation(..., component_factory=...)` 或 `PdschSimulation(..., component_factory=...)` 中注入
+
+## 灌数仿真
+
+当前已支持“灌数仿真”模式：直接从文本文件读取时域 IQ，跳过发射机和信道模型，把数据送入接收机处理链。入口在 [waveform_replay.py](/Users/yang/Work/NR_L1_Simu/src/nr_phy_simu/scenarios/waveform_replay.py)。
+
+文本文件格式如下：
+
+- 每一行一个复数样点
+- 可以写成 `I Q`
+- 也可以写成 `I,Q`
+- 也支持 Python 复数字面量形式，例如 `0.12+0.34j`
+- 若一个 TTI 每根接收天线有 `M` 个样点、接收天线数为 `N`
+- 则前 `M` 行对应第 1 根天线
+- 第 `M+1` 到第 `2M` 行对应第 2 根天线
+- 以此类推
+
+灌数仿真所需配置位于 `waveform_input` 段：
+
+- `waveform_path`：文本文件路径
+- `num_samples_per_tti`：每根天线每个 TTI 的样点数；为空时按当前 numerology 自动推导
+- `noise_variance`：已知噪声方差；为空时按 `snr_db` 和灌入波形功率估计
+
+在该模式下：
+
+- 发射机和信道模型不会参与运行
+- `DMRS`、资源映射位置、解调与译码仍按当前配置生成和执行
+- 因为没有本地发端参考比特，`BER` 会显示为 `N/A`
 
 ## DMRS 说明
 

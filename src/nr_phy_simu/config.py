@@ -141,6 +141,18 @@ class ChannelConfig:
 
 
 @dataclass
+class WaveformInputConfig:
+    waveform_path: str | None = None
+    format: str = "text_iq"
+    num_samples_per_tti: int | None = None
+    noise_variance: float | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.waveform_path is not None
+
+
+@dataclass
 class LinkConfig:
     channel_type: str = "PUSCH"
     waveform: str = "CP-OFDM"
@@ -169,6 +181,7 @@ class SimulationConfig:
     scrambling: ScramblingConfig = field(default_factory=ScramblingConfig)
     link: LinkConfig = field(default_factory=LinkConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
+    waveform_input: WaveformInputConfig = field(default_factory=WaveformInputConfig)
     snr_db: float = 10.0
     random_seed: int = 7
     slot_index: int = 0
@@ -181,6 +194,7 @@ class SimulationConfig:
         link_data = dict(data.get("link", {}))
         mcs_data = link_data.pop("mcs", {})
         channel_data = data.get("channel", {})
+        waveform_input_data = data.get("waveform_input", {})
 
         carrier = CarrierConfig(**carrier_data)
         dmrs = DmrsConfig(**dmrs_data)
@@ -188,6 +202,7 @@ class SimulationConfig:
         mcs = McsConfig(**mcs_data)
         link = LinkConfig(**link_data, mcs=mcs)
         channel = ChannelConfig(**channel_data)
+        waveform_input = WaveformInputConfig(**waveform_input_data)
 
         snr_db = float(channel.params.get("snr_db", data.get("snr_db", 10.0)))
         return cls(
@@ -196,6 +211,7 @@ class SimulationConfig:
             scrambling=scrambling,
             link=link,
             channel=channel,
+            waveform_input=waveform_input,
             snr_db=snr_db,
             random_seed=int(data.get("random_seed", 7)),
             slot_index=int(data.get("slot_index", 0)),

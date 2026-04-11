@@ -15,7 +15,11 @@ class OneTapMmseEqualizer(MimoEqualizer):
         config: SimulationConfig,
     ) -> np.ndarray:
         del config
+        if rx_symbols.ndim == 2:
+            numerator = np.sum(np.conj(channel_estimate) * rx_symbols, axis=0)
+            denominator = np.sum(np.abs(channel_estimate) ** 2, axis=0) + noise_variance
+            return numerator / np.maximum(denominator, 1e-12)
+
         denom = (np.abs(channel_estimate) ** 2) + noise_variance
         weights = np.conj(channel_estimate) / np.maximum(denom, 1e-12)
         return weights * rx_symbols
-

@@ -29,6 +29,11 @@ class OfdmProcessor(TimeDomainProcessor):
         return np.concatenate(waveform_symbols)
 
     def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        if waveform.ndim == 2:
+            return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
+        return self._demodulate_single(waveform, config)
+
+    def _demodulate_single(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers
