@@ -38,6 +38,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(len(batch_result.tti_results), 20)
         self.assertEqual(batch_result.packet_errors, 0)
         self.assertEqual(batch_result.block_error_rate, 0.0)
+        self.assertIsNotNone(batch_result.average_evm_percent)
+        self.assertIsNotNone(batch_result.average_evm_snr_linear)
         self.assertIsNotNone(batch_result.last_result)
 
     def test_multi_tti_report_file_append(self):
@@ -52,7 +54,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
             second_result = MultiTtiSimulationRunner(config).run()
             append_multi_tti_report(report_path, second_result, second_result.final_config)
             lines = report_path.read_text(encoding="utf-8").strip().splitlines()
-            self.assertEqual(lines[0], "信噪比,BLER,RB位置,MCS阶数,总TTI数,误包数,码率,调制阶数,TBsize")
+            self.assertEqual(lines[0], "信噪比,BLER,EVM,EVM_SNR,RB位置,MCS阶数,总TTI数,误包数,码率,调制阶数,TBsize")
             self.assertEqual(len(lines), 3)
 
     def test_pusch_cp_ofdm_awgn_smoke(self):
@@ -68,6 +70,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], config.link.num_rx_ant)
         self.assertIsNotNone(config.link.transport_block_size)
         self.assertIs(result.crc_ok, True)
+        self.assertIsNotNone(result.evm_percent)
+        self.assertIsNotNone(result.evm_snr_linear)
 
     def test_pusch_dfts_ofdm_awgn_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")

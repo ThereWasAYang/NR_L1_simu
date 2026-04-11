@@ -27,6 +27,8 @@ class MultiTtiSimulationRunner:
         tti_results: list[SimulationResult] = []
         packet_errors = 0
         final_config = None
+        evm_values: list[float] = []
+        evm_snr_values: list[float] = []
         for tti_idx in range(num_ttis):
             tti_config = deepcopy(self.config)
             tti_config.random_seed = self.config.random_seed + tti_idx
@@ -36,11 +38,17 @@ class MultiTtiSimulationRunner:
             final_config = tti_config
             if tti_result.crc_ok is False:
                 packet_errors += 1
+            if tti_result.evm_percent is not None:
+                evm_values.append(tti_result.evm_percent)
+            if tti_result.evm_snr_linear is not None:
+                evm_snr_values.append(tti_result.evm_snr_linear)
 
         return MultiTtiSimulationResult(
             num_ttis=num_ttis,
             packet_errors=packet_errors,
             block_error_rate=packet_errors / num_ttis,
+            average_evm_percent=(sum(evm_values) / len(evm_values)) if evm_values else None,
+            average_evm_snr_linear=(sum(evm_snr_values) / len(evm_snr_values)) if evm_snr_values else None,
             tti_results=tuple(tti_results),
             final_config=final_config,
         )

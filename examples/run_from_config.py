@@ -57,10 +57,18 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"Code rate: {effective_config.link.code_rate:.6f}")
     print(f"TBS: {effective_config.link.transport_block_size}")
     print(f"SNR: {result.snr_db:.2f} dB")
+    if result.evm_percent is not None:
+        print(f"EVM (last TTI): {result.evm_percent:.6f} %")
+    if result.evm_snr_linear is not None:
+        print(f"EVM_SNR (last TTI): {result.evm_snr_linear:.6f}")
     if batch_result is not None:
         print(f"TTIs: {batch_result.num_ttis}")
         print(f"Packet errors: {batch_result.packet_errors}")
         print(f"BLER: {batch_result.block_error_rate:.6f}")
+        if batch_result.average_evm_percent is not None:
+            print(f"Average EVM: {batch_result.average_evm_percent:.6f} %")
+        if batch_result.average_evm_snr_linear is not None:
+            print(f"Average EVM_SNR: {batch_result.average_evm_snr_linear:.6f}")
         if report_path is not None:
             print(f"Multi-TTI report: {report_path}")
     if result.interference_reports:

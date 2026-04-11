@@ -6,7 +6,7 @@ from nr_phy_simu.common.mcs import bits_per_symbol
 from nr_phy_simu.common.types import MultiTtiSimulationResult
 from nr_phy_simu.config import SimulationConfig
 
-_HEADER = ["信噪比", "BLER", "RB位置", "MCS阶数", "总TTI数", "误包数", "码率", "调制阶数", "TBsize"]
+_HEADER = ["信噪比", "BLER", "EVM", "EVM_SNR", "RB位置", "MCS阶数", "总TTI数", "误包数", "码率", "调制阶数", "TBsize"]
 
 
 def append_multi_tti_report(
@@ -35,6 +35,8 @@ def _build_row(result: MultiTtiSimulationResult, config: SimulationConfig) -> li
     return [
         f"{result.last_result.snr_db:.2f}" if result.last_result is not None else f"{effective_config.snr_db:.2f}",
         f"{result.block_error_rate:.6f}",
+        _format_optional(result.average_evm_percent, precision=6),
+        _format_optional(result.average_evm_snr_linear, precision=6),
         f"{effective_config.link.prb_start}-{rb_end}",
         str(effective_config.link.mcs.index),
         str(result.num_ttis),
@@ -43,3 +45,9 @@ def _build_row(result: MultiTtiSimulationResult, config: SimulationConfig) -> li
         str(modulation_order),
         str(effective_config.link.transport_block_size),
     ]
+
+
+def _format_optional(value: float | None, precision: int) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:.{precision}f}"

@@ -49,6 +49,8 @@ class SimulationResult:
     bit_error_rate: float
     snr_db: float
     crc_ok: bool | None = None
+    evm_percent: float | None = None
+    evm_snr_linear: float | None = None
     interference_reports: tuple[Any, ...] = ()
 
 
@@ -57,6 +59,8 @@ class MultiTtiSimulationResult:
     num_ttis: int
     packet_errors: int
     block_error_rate: float
+    average_evm_percent: float | None
+    average_evm_snr_linear: float | None
     tti_results: tuple[SimulationResult, ...]
     final_config: Any
 
