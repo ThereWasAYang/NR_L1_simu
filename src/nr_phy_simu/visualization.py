@@ -168,9 +168,10 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
         offset += symbol_len
         boundaries.append(offset)
 
-    figures = {}
-    for ant_idx in range(waveform.shape[0]):
-        fig, ax = plt.subplots(figsize=(12, 4))
+    num_ant = waveform.shape[0]
+    fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
+    axes = np.atleast_1d(axes)
+    for ant_idx, ax in enumerate(axes):
         x = np.arange(waveform.shape[1])
         ax.plot(x, np.abs(waveform[ant_idx]), linewidth=0.9)
         for boundary in boundaries:
@@ -179,12 +180,11 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
         for center, symbol_idx in labels:
             ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
         ax.set_title(f"Received Time-Domain Magnitude RX{ant_idx}")
-        ax.set_xlabel("Sample Index")
         ax.set_ylabel("Magnitude")
         ax.grid(True, linestyle="--", alpha=0.35)
-        fig.tight_layout()
-        figures[f"rx_time_ant{ant_idx}"] = fig
-    return figures
+    axes[-1].set_xlabel("Sample Index")
+    fig.tight_layout()
+    return {"rx_time": fig}
 
 
 def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
@@ -192,9 +192,10 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
     n_sc = config.carrier.n_subcarriers
-    figures = {}
-    for ant_idx in range(rx_grid.shape[0]):
-        fig, ax = plt.subplots(figsize=(12, 4))
+    num_ant = rx_grid.shape[0]
+    fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
+    axes = np.atleast_1d(axes)
+    for ant_idx, ax in enumerate(axes):
         concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
         x = np.arange(concatenated.size)
         ax.plot(x, concatenated, linewidth=0.9)
@@ -205,12 +206,11 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
             center = symbol_idx * n_sc + n_sc / 2
             ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
         ax.set_title(f"Received Frequency-Domain Magnitude RX{ant_idx} (Full Cell BW)")
-        ax.set_xlabel("Flattened Subcarrier Index Across Symbols")
         ax.set_ylabel("Magnitude")
         ax.grid(True, linestyle="--", alpha=0.35)
-        fig.tight_layout()
-        figures[f"rx_freq_ant{ant_idx}"] = fig
-    return figures
+    axes[-1].set_xlabel("Flattened Subcarrier Index Across Symbols")
+    fig.tight_layout()
+    return {"rx_freq": fig}
 
 
 def _show_plots(paths: list[Path], block: bool) -> None:

@@ -92,8 +92,8 @@ class VisualizationSmokeTest(unittest.TestCase):
         paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "smoke")
         self.assertTrue(paths["constellation"].exists())
         self.assertTrue(paths["pilot_estimates"].exists())
-        self.assertTrue(paths["rx_time_ant0"].exists())
-        self.assertTrue(paths["rx_freq_ant0"].exists())
+        self.assertTrue(paths["rx_time"].exists())
+        self.assertTrue(paths["rx_freq"].exists())
 
 
 class DmrsSequenceTest(unittest.TestCase):
