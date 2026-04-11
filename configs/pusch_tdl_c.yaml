@@ -1,0 +1,64 @@
+# 载波与 numerology 配置
+carrier:
+  cell_bandwidth_rbs: 52        # 小区带宽，单位 PRB
+  subcarrier_spacing_khz: 30    # 子载波间隔，单位 kHz
+  cyclic_prefix: NormalCP       # 循环前缀类型：NormalCP / ECP
+  fft_size: null                # FFT 点数；null 表示自动选择满足带宽要求的最小 2 的整数次幂
+  sample_rate_hz: null          # 基带采样率；null 表示按 FFT 点数和 SCS 自动计算
+
+# 信道模型配置
+channel:
+  model: TDL                    # 信道类型：AWGN / TDL / CDL
+  params:
+    profile: TDL-C              # 38.901 TDL profile：TDL-A / TDL-B / TDL-C / TDL-D / TDL-E
+    delay_spread_ns: 300.0      # RMS delay spread，单位 ns
+    carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
+    ue_speed_mps: 3.0           # UE 速度，单位 m/s
+    num_sinusoids: 32           # Jakes 近似正弦数
+    snr_db: 12.0                # 接收信噪比，单位 dB
+
+# 数据扰码配置
+scrambling:
+  rnti: 4660                    # RNTI
+  n_id: 1                       # 数据扰码 N_ID
+  data_scrambling_id: null      # 显式数据扰码 ID；null 表示回退到 n_id
+  codeword_index: 0             # 码字索引 q
+
+# 共享信道链路配置
+link:
+  channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
+  waveform: DFT-s-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
+  num_layers: 1                 # 传输层数
+  num_tx_ant: 2                 # 发射天线数
+  num_rx_ant: 4                 # 接收天线数
+  prb_start: 4                  # 资源分配起始 PRB
+  num_prbs: 16                  # 用户占用带宽，单位 PRB
+  start_symbol: 0               # 时域起始 OFDM symbol
+  num_symbols: 14               # 时域连续占用 symbol 数
+  mcs:
+    table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
+    index: 10                   # MCS index
+    tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
+    rv: 0                       # 冗余版本号 RV
+    x_overhead: 0               # TBS 计算中的 xOh
+
+# DMRS 配置
+dmrs:
+  config_type: 1                # DMRS configuration type：1 / 2
+  mapping_type: A               # DMRS mapping type：A / B
+  type_a_position: 2            # Type A DMRS 的首符号位置
+  additional_positions: 1       # additionalPosition
+  max_length: 1                 # DMRS length：1 / 2
+  symbol_positions: []          # 显式 DMRS symbol 列表；空表示按协议规则自动推导
+  scrambling_id0: 1             # DMRS scrambling ID 0
+  scrambling_id1: null          # DMRS scrambling ID 1
+  nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
+  n_scid: 0                     # NSCID
+  n_pusch_identity: 1           # PUSCH-specific sequence identity
+  sequence_hopping: false       # 是否启用 sequence hopping
+  group_hopping: false          # 是否启用 group hopping
+  port_set: [0]                 # DMRS 端口集合
+
+# 仿真控制参数
+random_seed: 7                  # 随机种子
+slot_index: 0                   # 槽号
