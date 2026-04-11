@@ -17,10 +17,21 @@ class AwgnChannel(ChannelModel):
     ) -> tuple[np.ndarray, dict]:
         snr_db = float(config.channel.params.get("snr_db", config.snr_db))
         snr_linear = 10 ** (snr_db / 10.0)
-        signal_power = np.mean(np.abs(waveform) ** 2)
+        tx_waveform = self._expand_receive_branches(waveform, config)
+        signal_power = np.mean(np.abs(tx_waveform) ** 2)
         noise_variance = signal_power / max(snr_linear, 1e-12)
         noise = (
-            self.rng.normal(0.0, np.sqrt(noise_variance / 2), waveform.shape)
-            + 1j * self.rng.normal(0.0, np.sqrt(noise_variance / 2), waveform.shape)
+            self.rng.normal(0.0, np.sqrt(noise_variance / 2), tx_waveform.shape)
+            + 1j * self.rng.normal(0.0, np.sqrt(noise_variance / 2), tx_waveform.shape)
         )
-        return waveform + noise, {"noise_variance": noise_variance, "snr_db": snr_db}
+        return tx_waveform + noise, {"noise_variance": noise_variance, "snr_db": snr_db}
+
+    @staticmethod
+    def _expand_receive_branches(waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        if waveform.ndim == 2:
+            return waveform
+
+        num_rx_ant = int(config.link.num_rx_ant)
+        if num_rx_ant <= 1:
+            return waveform
+        return np.repeat(waveform[np.newaxis, :], num_rx_ant, axis=0)

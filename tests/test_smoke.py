@@ -36,9 +36,9 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertGreater(result.rx.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.channel_estimate.ndim, 3)
-        self.assertEqual(result.rx.rx_grid.shape[0], 1)
+        self.assertEqual(result.rx.rx_grid.shape[0], config.link.num_rx_ant)
         self.assertEqual(result.rx.pilot_estimates.ndim, 2)
-        self.assertEqual(result.rx.pilot_estimates.shape[0], 1)
+        self.assertEqual(result.rx.pilot_estimates.shape[0], config.link.num_rx_ant)
         self.assertIsNotNone(config.link.transport_block_size)
 
     def test_pusch_dfts_ofdm_awgn_smoke(self):
@@ -49,6 +49,16 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertGreater(result.rx.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+
+    def test_pusch_awgn_multi_rx_branches(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.channel.params["snr_db"] = 30.0
+        config.link.num_rx_ant = 4
+        result = PuschSimulation(config).run()
+        self.assertEqual(result.rx.rx_waveform.ndim, 2)
+        self.assertEqual(result.rx.rx_waveform.shape[0], 4)
+        self.assertEqual(result.rx.rx_grid.shape[0], 4)
+        self.assertEqual(result.rx.pilot_estimates.shape[0], 4)
 
 
 class PdschAwgnSmokeTest(unittest.TestCase):
