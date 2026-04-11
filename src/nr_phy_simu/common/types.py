@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -41,3 +42,4 @@ class SimulationResult:
     bit_errors: int
     bit_error_rate: float
     snr_db: float
+    interference_reports: tuple[Any, ...] = ()

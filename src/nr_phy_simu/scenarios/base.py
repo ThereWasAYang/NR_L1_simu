@@ -6,6 +6,7 @@ from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_si
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
+from nr_phy_simu.scenarios.interference import InterferenceMixer
 from nr_phy_simu.scenarios.component_factory import (
     DefaultSimulationComponentFactory,
     SimulationComponentFactory,
@@ -32,6 +33,7 @@ class SharedChannelSimulation:
         self.transmitter = transmitter or build_transmitter(self.components)
         self.receiver = receiver or build_receiver(self.components)
         self.channel = channel or self.component_factory.create_channel_factory().create(config)
+        self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
         apply_mcs_to_link(self.config)
@@ -49,6 +51,11 @@ class SharedChannelSimulation:
         )
         tx_payload = self.transmitter.transmit(transport_block, self.config)
         rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
+        rx_waveform, interference_reports = self.interference_mixer.apply(
+            rx_waveform,
+            noise_variance=float(channel_info["noise_variance"]),
+            config=self.config,
+        )
         rx_payload = self.receiver.receive(
             rx_waveform=rx_waveform,
             dmrs_symbols=tx_payload.dmrs_symbols,
@@ -66,6 +73,7 @@ class SharedChannelSimulation:
             bit_errors=bit_errors,
             bit_error_rate=ber,
             snr_db=float(channel_info.get("snr_db", self.config.snr_db)),
+            interference_reports=interference_reports,
         )
 
     def _bits_per_symbol(self) -> int:

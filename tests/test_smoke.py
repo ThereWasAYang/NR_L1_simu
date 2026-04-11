@@ -60,6 +60,13 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_grid.shape[0], 4)
         self.assertEqual(result.rx.pilot_estimates.shape[0], 4)
 
+    def test_pusch_awgn_with_interference_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
+        result = PuschSimulation(config).run()
+        self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
+        self.assertEqual(len(result.interference_reports), 2)
+        self.assertTrue(all(report.scale >= 0.0 for report in result.interference_reports))
+
 
 class PdschAwgnSmokeTest(unittest.TestCase):
     def test_pdsch_cp_ofdm_awgn_smoke(self):
@@ -97,6 +104,7 @@ class ConfigLoaderTest(unittest.TestCase):
     def test_load_yaml_and_json_config(self):
         yaml_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
         yaml_pdsch_cfg = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
+        yaml_interference_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
         self.assertEqual(yaml_cfg.link.channel_type, "PUSCH")
         self.assertEqual(yaml_pdsch_cfg.link.channel_type, "PDSCH")
         self.assertGreater(yaml_cfg.carrier.fft_size_effective, 0)
@@ -104,6 +112,8 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(len(yaml_cfg.carrier.cyclic_prefix_lengths), yaml_cfg.carrier.symbols_per_slot)
         self.assertEqual(yaml_cfg.scrambling.rnti, 4660)
         self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
+        self.assertEqual(len(yaml_interference_cfg.interference.sources), 2)
+        self.assertEqual(yaml_interference_cfg.interference.sources[0].channel_model, "AWGN")
 
 
 class McsTableTest(unittest.TestCase):

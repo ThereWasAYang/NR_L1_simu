@@ -23,6 +23,13 @@ class FadingChannelBase(ChannelModel, ABC):
         sample_rate = config.carrier.sample_rate_effective_hz
         delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
         rx_waveform = self._apply_time_varying_channel(tx_waveform, delays_s, coeff, sample_rate)
+        if not bool(config.channel.params.get("add_noise", True)):
+            return rx_waveform, {
+                "noise_variance": 0.0,
+                "snr_db": float("inf"),
+                "path_delays_s": delays_s,
+                "path_coefficients": coeff,
+            }
         noisy_waveform, noise_variance, snr_db = self._add_awgn(rx_waveform, config)
         return noisy_waveform, {
             "noise_variance": noise_variance,

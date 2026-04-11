@@ -141,6 +141,32 @@ class ChannelConfig:
 
 
 @dataclass
+class InterferenceSourceConfig:
+    label: str | None = None
+    enabled: bool = True
+    inr_db: float = 0.0
+    channel_model: str = "AWGN"
+    channel_params: dict[str, Any] = field(default_factory=dict)
+    prb_start: int | None = None
+    num_prbs: int | None = None
+    start_symbol: int | None = None
+    num_symbols: int | None = None
+    waveform: str | None = None
+    channel_type: str | None = None
+    num_tx_ant: int | None = None
+    mcs: McsConfig = field(default_factory=McsConfig)
+
+
+@dataclass
+class InterferenceConfig:
+    sources: tuple[InterferenceSourceConfig, ...] = ()
+
+    @property
+    def enabled(self) -> bool:
+        return any(source.enabled for source in self.sources)
+
+
+@dataclass
 class WaveformInputConfig:
     waveform_path: str | None = None
     format: str = "text_iq"
@@ -181,6 +207,7 @@ class SimulationConfig:
     scrambling: ScramblingConfig = field(default_factory=ScramblingConfig)
     link: LinkConfig = field(default_factory=LinkConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
+    interference: InterferenceConfig = field(default_factory=InterferenceConfig)
     waveform_input: WaveformInputConfig = field(default_factory=WaveformInputConfig)
     snr_db: float = 10.0
     random_seed: int = 7
@@ -194,6 +221,7 @@ class SimulationConfig:
         link_data = dict(data.get("link", {}))
         mcs_data = link_data.pop("mcs", {})
         channel_data = data.get("channel", {})
+        interference_data = data.get("interference", {})
         waveform_input_data = data.get("waveform_input", {})
 
         carrier = CarrierConfig(**carrier_data)
@@ -202,6 +230,7 @@ class SimulationConfig:
         mcs = McsConfig(**mcs_data)
         link = LinkConfig(**link_data, mcs=mcs)
         channel = ChannelConfig(**channel_data)
+        interference = _parse_interference_config(interference_data)
         waveform_input = WaveformInputConfig(**waveform_input_data)
 
         snr_db = float(channel.params.get("snr_db", data.get("snr_db", 10.0)))
@@ -211,6 +240,7 @@ class SimulationConfig:
             scrambling=scrambling,
             link=link,
             channel=channel,
+            interference=interference,
             waveform_input=waveform_input,
             snr_db=snr_db,
             random_seed=int(data.get("random_seed", 7)),
@@ -224,6 +254,18 @@ def _normalize_tuple_fields(data: dict[str, Any], tuple_fields: set[str]) -> dic
         if field_name in normalized and isinstance(normalized[field_name], list):
             normalized[field_name] = tuple(normalized[field_name])
     return normalized
+
+
+def _parse_interference_config(data: dict[str, Any]) -> InterferenceConfig:
+    if not data:
+        return InterferenceConfig()
+
+    sources = []
+    for source_data in data.get("sources", []):
+        normalized = dict(source_data)
+        mcs_data = normalized.pop("mcs", {})
+        sources.append(InterferenceSourceConfig(mcs=McsConfig(**mcs_data), **normalized))
+    return InterferenceConfig(sources=tuple(sources))
 
 
 def config_path(path: str | Path) -> Path:

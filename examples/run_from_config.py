@@ -36,6 +36,15 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"Code rate: {config.link.code_rate:.6f}")
     print(f"TBS: {config.link.transport_block_size}")
     print(f"SNR: {result.snr_db:.2f} dB")
+    if result.interference_reports:
+        print(f"Interference sources: {len(result.interference_reports)}")
+        for report in result.interference_reports:
+            prb_start = report.prb_start if report.prb_start >= 0 else config.link.prb_start
+            num_prbs = report.num_prbs if report.num_prbs >= 0 else config.link.num_prbs
+            print(
+                f"  - {report.label}: channel={report.channel_model}, INR={report.inr_db:.2f} dB, "
+                f"RB=[{prb_start}, {prb_start + num_prbs - 1}]"
+            )
     print(f"Sample rate: {config.carrier.sample_rate_effective_hz:.2f} Hz")
     print(f"FFT size: {config.carrier.fft_size_effective}")
     if np.isfinite(result.bit_error_rate):

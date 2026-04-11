@@ -7,6 +7,7 @@ from nr_phy_simu.common.types import SimulationResult, TxPayload
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.io.waveform_loader import load_text_waveform
 from nr_phy_simu.rx.chain import Receiver
+from nr_phy_simu.scenarios.interference import InterferenceMixer
 from nr_phy_simu.scenarios.component_factory import (
     DefaultSimulationComponentFactory,
     SimulationComponentFactory,
@@ -31,6 +32,7 @@ class WaveformReplaySimulation:
         self.mapper = self.components.transmitter.mapper
         self.dmrs_generator = self.components.shared.dmrs_generator
         self.receiver = receiver or build_receiver(self.components)
+        self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
         apply_mcs_to_link(self.config)
@@ -42,6 +44,11 @@ class WaveformReplaySimulation:
         waveform = load_text_waveform(self.config.waveform_input.waveform_path, self.config)
         dmrs_mask, data_mask, dmrs_symbols = self._build_reference_masks()
         noise_variance = self._resolve_noise_variance(waveform)
+        waveform, interference_reports = self.interference_mixer.apply(
+            waveform,
+            noise_variance=noise_variance,
+            config=self.config,
+        )
 
         rx_payload = self.receiver.receive(
             rx_waveform=waveform,
@@ -67,6 +74,7 @@ class WaveformReplaySimulation:
             bit_errors=-1,
             bit_error_rate=float("nan"),
             snr_db=float(self.config.channel.params.get("snr_db", self.config.snr_db)),
+            interference_reports=interference_reports,
         )
 
     def _build_reference_masks(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
