@@ -223,6 +223,17 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 当前这版 `TDL/CDL` 先面向现有链路接口实现为 `SISO`。如果后续你要把 `num_tx_ant / num_rx_ant > 1` 的阵列、极化、角域响应也纳入同一套仿真，我建议下一步把当前 `ChannelModel` 接口扩成显式 MIMO 通道矩阵/多分支波形接口。
 
+## 接收数据维度
+
+接收机内部当前统一采用带天线维的数据组织方式：
+
+- `rx_grid` 统一为 `num_rx_ant x num_subcarrier x num_symbol`
+- `channel_estimate` 统一为 `num_rx_ant x num_subcarrier x num_symbol`
+- 即使是单接收天线，天线维也会保留，长度为 `1`
+- `pilot_estimates` 统一为 `num_rx_ant x num_dmrs_re`
+
+这样做是为了保证单天线和多天线场景下的数据维度一致，方便后续替换估计器、均衡器和多天线算法。
+
 ## 编码与调制
 
 当前编码/调制相关实现集中在：

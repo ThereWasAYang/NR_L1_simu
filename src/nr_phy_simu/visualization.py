@@ -92,18 +92,26 @@ def _build_constellation_figure(result: SimulationResult):
 
 def _build_pilot_estimate_figure(result: SimulationResult):
     pilots = result.rx.pilot_estimates
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-    x = np.arange(pilots.size)
+    if pilots.ndim == 1:
+        pilots = pilots[np.newaxis, :]
+    num_ant = pilots.shape[0]
+    fig, axes = plt.subplots(2, num_ant, figsize=(max(10, 5 * num_ant), 6), sharex="col")
+    if num_ant == 1:
+        axes = np.asarray(axes).reshape(2, 1)
 
-    axes[0].plot(x, np.abs(pilots), marker="o", markersize=3, linewidth=1)
-    axes[0].set_ylabel("Magnitude")
-    axes[0].set_title("Pilot-Based Channel Estimate")
-    axes[0].grid(True, linestyle="--", alpha=0.4)
+    for ant_idx in range(num_ant):
+        x = np.arange(pilots.shape[1])
+        mag_ax = axes[0, ant_idx]
+        phase_ax = axes[1, ant_idx]
+        mag_ax.plot(x, np.abs(pilots[ant_idx]), marker="o", markersize=3, linewidth=1)
+        mag_ax.set_ylabel("Magnitude")
+        mag_ax.set_title(f"Pilot-Based Channel Estimate RX{ant_idx}")
+        mag_ax.grid(True, linestyle="--", alpha=0.4)
 
-    axes[1].plot(x, np.unwrap(np.angle(pilots)), marker="o", markersize=3, linewidth=1)
-    axes[1].set_xlabel("Pilot Index")
-    axes[1].set_ylabel("Phase (rad)")
-    axes[1].grid(True, linestyle="--", alpha=0.4)
+        phase_ax.plot(x, np.unwrap(np.angle(pilots[ant_idx])), marker="o", markersize=3, linewidth=1)
+        phase_ax.set_xlabel("Pilot Index")
+        phase_ax.set_ylabel("Phase (rad)")
+        phase_ax.grid(True, linestyle="--", alpha=0.4)
 
     fig.tight_layout()
     return fig

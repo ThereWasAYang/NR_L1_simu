@@ -34,6 +34,11 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+        self.assertEqual(result.rx.channel_estimate.ndim, 3)
+        self.assertEqual(result.rx.rx_grid.shape[0], 1)
+        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
+        self.assertEqual(result.rx.pilot_estimates.shape[0], 1)
         self.assertIsNotNone(config.link.transport_block_size)
 
     def test_pusch_dfts_ofdm_awgn_smoke(self):
@@ -42,6 +47,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
 
 
 class PdschAwgnSmokeTest(unittest.TestCase):
@@ -51,6 +58,8 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         result = PdschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertGreater(result.rx.pilot_estimates.size, 0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+        self.assertEqual(result.rx.pilot_estimates.ndim, 2)
 
 
 class VisualizationSmokeTest(unittest.TestCase):
@@ -150,6 +159,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
 class WaveformReplaySmokeTest(unittest.TestCase):
     def test_replay_waveform_file_into_receiver(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.link.num_rx_ant = 1
         factory = DefaultSimulationComponentFactory()
         components = factory.create_components(cfg)
         transmitter = build_transmitter(components)
@@ -169,6 +179,7 @@ class WaveformReplaySmokeTest(unittest.TestCase):
                 "\n".join(f"{sample.real:.12e} {sample.imag:.12e}" for sample in tx_payload.waveform)
             )
             replay_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+            replay_cfg.link.num_rx_ant = 1
             replay_cfg.waveform_input.waveform_path = str(waveform_path)
             replay_cfg.channel.params["snr_db"] = 50.0
             replay_cfg.link.transport_block_size = cfg.link.transport_block_size

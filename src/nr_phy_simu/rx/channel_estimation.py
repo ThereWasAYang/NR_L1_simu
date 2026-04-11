@@ -14,12 +14,12 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> np.ndarray:
-        if rx_grid.ndim == 3:
-            return np.stack(
-                [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
-                axis=0,
-            )
-        return self._estimate_single(rx_grid, dmrs_symbols, dmrs_mask, config)
+        if rx_grid.ndim == 2:
+            rx_grid = rx_grid[np.newaxis, ...]
+        return np.stack(
+            [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
+            axis=0,
+        )
 
     def _estimate_single(
         self,
@@ -60,23 +60,24 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> np.ndarray:
-        if rx_grid.ndim == 3:
-            estimates = [
-                LeastSquaresEstimator.pilot_estimates(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask)
-                for antenna_idx in range(rx_grid.shape[0])
-            ]
-            return np.mean(np.stack(estimates, axis=0), axis=0)
+        if rx_grid.ndim == 2:
+            rx_grid = rx_grid[np.newaxis, ...]
         if dmrs_symbols.size == 0:
-            return np.array([], dtype=np.complex128)
+            return np.zeros((rx_grid.shape[0], 0), dtype=np.complex128)
 
-        estimates = []
-        dmrs_cursor = 0
-        for symbol_idx in range(rx_grid.shape[1]):
-            symbol_mask = dmrs_mask[:, symbol_idx]
-            if not np.any(symbol_mask):
-                continue
-            pilot_sc = np.flatnonzero(symbol_mask)
-            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
-            dmrs_cursor += pilot_sc.size
-            estimates.append(rx_grid[pilot_sc, symbol_idx] / symbol_dmrs)
-        return np.concatenate(estimates) if estimates else np.array([], dtype=np.complex128)
+        antenna_estimates = []
+        for antenna_idx in range(rx_grid.shape[0]):
+            estimates = []
+            dmrs_cursor = 0
+            for symbol_idx in range(rx_grid.shape[2]):
+                symbol_mask = dmrs_mask[:, symbol_idx]
+                if not np.any(symbol_mask):
+                    continue
+                pilot_sc = np.flatnonzero(symbol_mask)
+                symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
+                dmrs_cursor += pilot_sc.size
+                estimates.append(rx_grid[antenna_idx, pilot_sc, symbol_idx] / symbol_dmrs)
+            antenna_estimates.append(
+                np.concatenate(estimates) if estimates else np.array([], dtype=np.complex128)
+            )
+        return np.stack(antenna_estimates, axis=0)

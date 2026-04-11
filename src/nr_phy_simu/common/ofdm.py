@@ -31,7 +31,7 @@ class OfdmProcessor(TimeDomainProcessor):
     def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
         if waveform.ndim == 2:
             return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
-        return self._demodulate_single(waveform, config)
+        return self._demodulate_single(waveform, config)[np.newaxis, ...]
 
     def _demodulate_single(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
         fft_size = config.carrier.fft_size_effective
