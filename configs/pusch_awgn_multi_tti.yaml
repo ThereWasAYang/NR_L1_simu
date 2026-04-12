@@ -10,7 +10,7 @@ carrier:
 channel:
   model: AWGN                   # 信道类型：AWGN / TDL / CDL
   params:
-    snr_db: -3                # 加性白噪声信噪比，单位 dB
+    snr_db: 30                # 加性白噪声信噪比，单位 dB
 
 # 数据扰码配置
 scrambling:
@@ -22,7 +22,7 @@ scrambling:
 # 共享信道链路配置
 link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
-  waveform: DFT-s-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
+  waveform: CP-OFDM          # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
   num_tx_ant: 1                 # 发射天线数
   num_rx_ant: 1                 # 接收天线数
@@ -31,7 +31,7 @@ link:
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
-    table: tp64qam              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
+    table: qam64              # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
     index: 0                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
@@ -40,7 +40,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
-  data_mux_enabled: true        # CP-OFDM 下导频符号是否允许数据与 DMRS 在同一 symbol 内按频域复用；DFT-s-OFDM 下忽略此项
+  data_mux_enabled: false        # CP-OFDM 下导频符号是否允许数据与 DMRS 在同一 symbol 内按频域复用；DFT-s-OFDM 下忽略此项
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition
@@ -51,6 +51,7 @@ dmrs:
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
   n_pusch_identity: 1           # PUSCH-specific sequence identity
+  num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
   port_set: [0]                 # DMRS 端口集合
@@ -62,7 +63,7 @@ simulation:
 
 # 绘图控制参数
 plotting:
-  enabled: false                # 多 TTI 批量仿真默认关闭绘图，避免弹出大量图片
+  enabled: true                # 多 TTI 批量仿真默认关闭绘图，避免弹出大量图片
 
 # 仿真控制参数
 random_seed: 7                  # 随机种子
