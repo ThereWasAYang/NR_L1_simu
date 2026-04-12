@@ -9,9 +9,27 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import numpy as np
+from py3gpp import (
+    nrCRCDecode,
+    nrCRCEncode,
+    nrCodeBlockDesegmentLDPC,
+    nrCodeBlockSegmentLDPC,
+    nrDLSCHInfo,
+    nrLDPCDecode,
+    nrLDPCEncode,
+    nrRateMatchLDPC,
+    nrRateRecoverLDPC,
+)
 
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
+from nr_phy_simu.common.ulsch_ldpc import (
+    decode_ulsch_ldpc,
+    encode_ldpc_codeblocks,
+    get_ulsch_ldpc_info,
+    rate_match_ulsch_ldpc,
+    rate_recover_ulsch_ldpc,
+)
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
@@ -114,8 +132,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.dmrs.data_mux_enabled = False
         config.channel.params["snr_db"] = 30.0
         result = PuschSimulation(config).run()
-        self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertIsNotNone(result.crc_ok)
+        self.assertEqual(result.bit_error_rate, 0.0)
+        self.assertIs(result.crc_ok, True)
 
 
 class PdschAwgnSmokeTest(unittest.TestCase):
@@ -238,6 +256,56 @@ class McsTableTest(unittest.TestCase):
         cfg.link.mcs.index = 23
         with self.assertRaises(ValueError):
             resolve_mcs(cfg)
+
+
+class UlschLdpcRegressionTest(unittest.TestCase):
+    def test_local_ulsch_ldpc_chain_decodes_low_rate_cp_ofdm_case(self):
+        tbs = 552
+        target_code_rate = 120 / 1024
+        info = get_ulsch_ldpc_info(tbs, target_code_rate)
+        transport_block = np.random.default_rng(7).integers(0, 2, size=tbs, dtype=np.int8)
+        tb_with_crc = nrCRCEncode(transport_block, info.crc)[:, 0].astype(np.int8)
+        code_blocks = nrCodeBlockSegmentLDPC(tb_with_crc, info.base_graph)
+        encoded = encode_ldpc_codeblocks(code_blocks, info.base_graph)
+        rate_matched = rate_match_ulsch_ldpc(encoded, out_length=4608, rv=0, modulation="QPSK", num_layers=1)
+        llrs = (1 - 2 * rate_matched.astype(np.float64)) * 50.0
+        recovered = rate_recover_ulsch_ldpc(
+            llrs,
+            trblklen=tbs,
+            target_code_rate=target_code_rate,
+            rv=0,
+            modulation="QPSK",
+            num_layers=1,
+        )
+        decoded_cbs = decode_ulsch_ldpc(recovered, info, max_num_iter=25)
+        tb_with_crc_hat, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
+        decoded, crc_error = nrCRCDecode(tb_with_crc_hat.astype(np.int8), info.crc)
+        self.assertEqual(int(np.asarray(crc_error).reshape(-1)[0]), 0)
+        self.assertTrue(np.array_equal(np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8), transport_block))
+
+    def test_py3gpp_rate_recover_and_decode_contract_is_inconsistent(self):
+        tbs = 552
+        target_code_rate = 120 / 1024
+        info = nrDLSCHInfo(tbs, target_code_rate)
+        transport_block = np.random.default_rng(7).integers(0, 2, size=tbs, dtype=np.int8)
+        tb_with_crc = nrCRCEncode(transport_block, info["CRC"])[:, 0].astype(np.int8)
+        code_blocks = nrCodeBlockSegmentLDPC(tb_with_crc, info["BGN"])
+        encoded = nrLDPCEncode(code_blocks, info["BGN"], algo="thangaraj")
+        rate_matched = nrRateMatchLDPC(encoded, outlen=4608, rv=0, mod="QPSK", nLayers=1).astype(np.int8)
+        llrs = (1 - 2 * rate_matched.astype(np.float64)) * 50.0
+        recovered = nrRateRecoverLDPC(
+            llrs,
+            trblklen=tbs,
+            R=target_code_rate,
+            rv=0,
+            mod="QPSK",
+            nLayers=1,
+        )
+        self.assertEqual(recovered.shape[0], int(info["N"]))
+        decoded_cbs, _ = nrLDPCDecode(recovered, info["BGN"], maxNumIter=25)
+        tb_with_crc_hat, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
+        _, crc_error = nrCRCDecode(tb_with_crc_hat.astype(np.int8), info["CRC"])
+        self.assertNotEqual(int(np.asarray(crc_error).reshape(-1)[0]), 0)
 
 
 class ComponentAbstractionTest(unittest.TestCase):

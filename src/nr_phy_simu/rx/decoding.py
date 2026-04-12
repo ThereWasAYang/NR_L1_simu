@@ -7,12 +7,14 @@ import numpy as np
 from py3gpp import (
     nrCRCDecode,
     nrCodeBlockDesegmentLDPC,
-    nrDLSCHInfo,
-    nrLDPCDecode,
-    nrRateRecoverLDPC,
 )
 
 from nr_phy_simu.common.interfaces import ChannelDecoder
+from nr_phy_simu.common.ulsch_ldpc import (
+    decode_ulsch_ldpc,
+    get_ulsch_ldpc_info,
+    rate_recover_ulsch_ldpc,
+)
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -25,18 +27,18 @@ class NrLdpcDecoder(ChannelDecoder):
         if tbs <= 0:
             raise ValueError("transport_block_size must be resolved before LDPC decoding.")
 
-        info = nrDLSCHInfo(tbs, config.link.code_rate)
-        recovered = nrRateRecoverLDPC(
+        info = get_ulsch_ldpc_info(tbs, config.link.code_rate)
+        recovered = rate_recover_ulsch_ldpc(
             llrs,
             trblklen=tbs,
-            R=config.link.code_rate,
+            target_code_rate=config.link.code_rate,
             rv=int(config.link.mcs.rv),
-            mod=config.link.modulation,
-            nLayers=config.link.num_layers,
+            modulation=config.link.modulation,
+            num_layers=config.link.num_layers,
         )
-        decoded_cbs, _ = nrLDPCDecode(recovered, info["BGN"], maxNumIter=25)
+        decoded_cbs = decode_ulsch_ldpc(recovered, info, max_num_iter=25)
         with contextlib.redirect_stdout(io.StringIO()):
-            tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info["BGN"], tbs + info["L"])
-        decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info["CRC"])
+            tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
+        decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info.crc)
         self.last_crc_ok = bool(crc_error == 0)
         return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)
