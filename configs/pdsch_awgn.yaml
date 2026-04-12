@@ -49,7 +49,13 @@ dmrs:
   scrambling_id1: null          # DMRS scrambling ID 1
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
+  num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
   port_set: [0]                 # DMRS 端口集合
+
+# 仿真控制参数
+simulation:
+  num_ttis: 1                   # 连续仿真的 TTI 个数；大于 1 时统计最终 BLER（CRC 错包率）
+  result_output_path: null      # 多 TTI 结果文本文件路径；null 表示不落盘
 
 # 绘图控制参数
 plotting:

@@ -54,6 +54,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
+  data_mux_enabled: false       # DFT-s-OFDM 下该项固定等效为 false；保留此字段便于统一配置结构
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition
@@ -64,11 +65,17 @@ dmrs:
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
   n_pusch_identity: 1           # PUSCH-specific sequence identity
+  num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
+simulation:
+  num_ttis: 1                   # 连续仿真的 TTI 个数；大于 1 时统计最终 BLER（CRC 错包率）
+  result_output_path: null      # 多 TTI 结果文本文件路径；null 表示不落盘
+
+# 绘图控制参数
 plotting:
   enabled: true                 # 是否启用本次仿真的所有绘图
 
