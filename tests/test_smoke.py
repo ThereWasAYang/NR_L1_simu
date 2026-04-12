@@ -136,6 +136,32 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertIs(result.crc_ok, True)
 
 
+class BaselineRegressionTest(unittest.TestCase):
+    def test_pusch_baseline_cases(self):
+        cases = [
+            ("pusch_cp_ofdm_qam256_mcs0_awgn_snr0.yaml", 0.0, None),
+            ("pusch_dfts_ofdm_qam256_mcs0_awgn_snr0.yaml", 0.0, None),
+            ("pusch_cp_ofdm_qam256_mcs27_awgn_snr50.yaml", 0.0, None),
+            ("pusch_dfts_ofdm_qam256_mcs27_awgn_snr50.yaml", 0.0, 2.0),
+        ]
+        baseline_dir = ROOT / "configs" / "baseline"
+        for file_name, expected_bler, evm_upper_bound in cases:
+            config = load_simulation_config(baseline_dir / file_name)
+            result = MultiTtiSimulationRunner(config).run()
+            self.assertEqual(
+                result.block_error_rate,
+                expected_bler,
+                msg=f"{file_name} should satisfy BLER={expected_bler}",
+            )
+            if evm_upper_bound is not None:
+                self.assertIsNotNone(result.average_evm_percent, msg=f"{file_name} should report average EVM")
+                self.assertLess(
+                    result.average_evm_percent,
+                    evm_upper_bound,
+                    msg=f"{file_name} should satisfy average EVM < {evm_upper_bound}%",
+                )
+
+
 class PdschAwgnSmokeTest(unittest.TestCase):
     def test_pdsch_cp_ofdm_awgn_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
