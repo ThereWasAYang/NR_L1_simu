@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 from nr_phy_simu.common.mcs import bits_per_symbol
 from nr_phy_simu.common.types import MultiTtiSimulationResult
@@ -36,7 +37,7 @@ def _build_row(result: MultiTtiSimulationResult, config: SimulationConfig) -> li
         f"{result.last_result.snr_db:.2f}" if result.last_result is not None else f"{effective_config.snr_db:.2f}",
         f"{result.block_error_rate:.6f}",
         _format_optional(result.average_evm_percent, precision=6),
-        _format_optional(result.average_evm_snr_linear, precision=6),
+        _format_optional_db(result.average_evm_snr_linear, precision=6),
         f"{effective_config.link.prb_start}-{rb_end}",
         str(effective_config.link.mcs.index),
         str(result.num_ttis),
@@ -51,3 +52,10 @@ def _format_optional(value: float | None, precision: int) -> str:
     if value is None:
         return "N/A"
     return f"{value:.{precision}f}"
+
+
+def _format_optional_db(value_linear: float | None, precision: int) -> str:
+    if value_linear is None:
+        return "N/A"
+    value_db = 10.0 * math.log10(max(value_linear, 1e-24))
+    return f"{value_db:.{precision}f}"
