@@ -104,7 +104,7 @@ class DmrsConfig:
     nid_nscid: int | None = None
     n_scid: int = 0
     port_set: tuple[int, ...] = (0,)
-    num_cdm_groups_without_data: int = 1
+    num_cdm_groups_without_data: int | None = None
     n_pusch_identity: int | None = None
     sequence_hopping: bool = False
     group_hopping: bool = False

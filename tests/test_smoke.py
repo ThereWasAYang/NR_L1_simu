@@ -147,6 +147,22 @@ class DmrsSequenceTest(unittest.TestCase):
         for symbol_idx in dmrs_symbols:
             self.assertEqual(int(np.count_nonzero(data_mask[:, symbol_idx])), 0)
 
+    def test_type1_dmrs_power_boost_without_data_multiplexing(self):
+        config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
+        config.dmrs.config_type = 1
+        config.dmrs.data_mux_enabled = False
+        config.link.mcs.table = None
+        config.link.mcs.index = None
+        config.link.modulation = "QPSK"
+        mapper = FrequencyDomainResourceMapper(dmrs_generator=DmrsGenerator())
+        grid, dmrs_mask, data_mask, _ = mapper.map_to_grid(
+            np.ones(mapper.count_data_re(config), dtype=np.complex128),
+            config,
+        )
+        dmrs_power = float(np.mean(np.abs(grid[dmrs_mask]) ** 2))
+        data_power = float(np.mean(np.abs(grid[data_mask]) ** 2))
+        self.assertAlmostEqual(dmrs_power / data_power, 2.0, places=6)
+
 
 class ConfigLoaderTest(unittest.TestCase):
     def test_load_yaml_and_json_config(self):

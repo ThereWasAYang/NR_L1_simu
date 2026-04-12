@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from nr_phy_simu.common.interfaces import DmrsSequenceGenerator, ResourceMapper
@@ -47,6 +49,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
                 symbol_dmrs_offsets = self.symbol_dmrs_offsets(config, dmrs_info)
                 dmrs_subcarriers = allocated[symbol_dmrs_offsets]
                 dmrs_values = self.dmrs_generator.generate_for_symbol(symbol_idx, config)
+                dmrs_values = dmrs_values * self.dmrs_power_scale(config)
                 grid[dmrs_subcarriers, symbol_idx] = dmrs_values
                 dmrs_mask[dmrs_subcarriers, symbol_idx] = True
                 dmrs_sequence.append(dmrs_values)
@@ -118,3 +121,35 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
             return np.fft.fft(symbol_data, n=symbol_data.size) / np.sqrt(symbol_data.size)
         return symbol_data
+
+    @classmethod
+    def dmrs_power_scale(cls, config: SimulationConfig) -> float:
+        beta_db = cls.dmrs_epre_boost_db(config)
+        return 10.0 ** (beta_db / 20.0)
+
+    @classmethod
+    def dmrs_epre_boost_db(cls, config: SimulationConfig) -> float:
+        num_cdm_groups = cls._resolved_num_cdm_groups_without_data(config)
+        table = cls._power_boost_table_db(config.dmrs.config_type)
+        return table.get(num_cdm_groups, 0.0)
+
+    @staticmethod
+    def _power_boost_table_db(config_type: int) -> dict[int, float]:
+        if config_type == 1:
+            return {1: 0.0, 2: 10.0 * math.log10(2.0)}
+        if config_type == 2:
+            return {1: 0.0, 2: 10.0 * math.log10(2.0), 3: 10.0 * math.log10(3.0)}
+        raise ValueError(f"Unsupported DMRS configuration type: {config_type}")
+
+    @staticmethod
+    def _resolved_num_cdm_groups_without_data(config: SimulationConfig) -> int:
+        if config.dmrs.num_cdm_groups_without_data is not None:
+            return int(config.dmrs.num_cdm_groups_without_data)
+
+        no_data_on_dmrs_symbol = (
+            config.link.waveform.upper() == "DFT-S-OFDM"
+            or not config.dmrs.data_mux_enabled
+        )
+        if no_data_on_dmrs_symbol:
+            return 2
+        return 1
