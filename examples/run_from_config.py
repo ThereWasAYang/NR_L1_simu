@@ -17,6 +17,12 @@ from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.visualization import save_simulation_plots
 
 
+def _format_evm_snr_db(evm_snr_linear: float | None) -> str | None:
+    if evm_snr_linear is None:
+        return None
+    return f"{10.0 * np.log10(max(evm_snr_linear, 1e-24)):.6f}"
+
+
 def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     config_path = ROOT / config_relpath
     config = load_simulation_config(config_path)
@@ -59,16 +65,18 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"SNR: {result.snr_db:.2f} dB")
     if result.evm_percent is not None:
         print(f"EVM (last TTI): {result.evm_percent:.6f} %")
-    if result.evm_snr_linear is not None:
-        print(f"EVM_SNR (last TTI): {result.evm_snr_linear:.6f}")
+    evm_snr_db = _format_evm_snr_db(result.evm_snr_linear)
+    if evm_snr_db is not None:
+        print(f"EVM_SNR (last TTI): {evm_snr_db} dB")
     if batch_result is not None:
         print(f"TTIs: {batch_result.num_ttis}")
         print(f"Packet errors: {batch_result.packet_errors}")
         print(f"BLER: {batch_result.block_error_rate:.6f}")
         if batch_result.average_evm_percent is not None:
             print(f"Average EVM: {batch_result.average_evm_percent:.6f} %")
-        if batch_result.average_evm_snr_linear is not None:
-            print(f"Average EVM_SNR: {batch_result.average_evm_snr_linear:.6f}")
+        average_evm_snr_db = _format_evm_snr_db(batch_result.average_evm_snr_linear)
+        if average_evm_snr_db is not None:
+            print(f"Average EVM_SNR: {average_evm_snr_db} dB")
         if report_path is not None:
             print(f"Multi-TTI report: {report_path}")
     if result.interference_reports:
