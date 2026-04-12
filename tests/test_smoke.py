@@ -333,6 +333,21 @@ class UlschLdpcRegressionTest(unittest.TestCase):
         _, crc_error = nrCRCDecode(tb_with_crc_hat.astype(np.int8), info["CRC"])
         self.assertNotEqual(int(np.asarray(crc_error).reshape(-1)[0]), 0)
 
+    def test_local_decoder_recovers_low_snr_cp_ofdm_multi_tti_case(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        config.simulation.num_ttis = 20
+        config.link.waveform = "CP-OFDM"
+        config.link.num_prbs = 16
+        config.link.mcs.table = "qam64"
+        config.link.mcs.index = 0
+        config.dmrs.data_mux_enabled = False
+        config.channel.params["snr_db"] = 0.0
+
+        result = MultiTtiSimulationRunner(config).run()
+        self.assertEqual(result.packet_errors, 0)
+        self.assertEqual(result.block_error_rate, 0.0)
+
 
 class ComponentAbstractionTest(unittest.TestCase):
     def test_default_component_factory_builds_independent_stage_classes(self):
