@@ -27,7 +27,12 @@ class NrLdpcCoder(ChannelCoder):
         info = nrDLSCHInfo(tbs, config.link.code_rate)
         tb_crc = nrCRCEncode(bits.astype(np.int8), info["CRC"])[:, 0].astype(np.int8)
         cbs = nrCodeBlockSegmentLDPC(tb_crc, info["BGN"])
-        coded_cbs = nrLDPCEncode(cbs, info["BGN"])
+        try:
+            coded_cbs = nrLDPCEncode(cbs, info["BGN"])
+        except ValueError as exc:
+            if "dimension mismatch" not in str(exc):
+                raise
+            coded_cbs = nrLDPCEncode(cbs, info["BGN"], algo="thangaraj")
         return nrRateMatchLDPC(
             coded_cbs,
             outlen=int(config.link.coded_bit_capacity),

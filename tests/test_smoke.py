@@ -31,7 +31,9 @@ from nr_phy_simu.scenarios.component_factory import build_transmitter
 
 class PuschAwgnSmokeTest(unittest.TestCase):
     def test_pusch_multi_tti_bler_smoke(self):
-        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_multi_tti.yaml")
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.simulation.num_ttis = 20
+        config.plotting.enabled = False
         config.channel.params["snr_db"] = 30.0
         batch_result = MultiTtiSimulationRunner(config).run()
         self.assertEqual(batch_result.num_ttis, 20)
@@ -101,6 +103,19 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(len(result.interference_reports), 2)
         self.assertTrue(all(report.scale >= 0.0 for report in result.interference_reports))
         self.assertIs(result.crc_ok, True)
+
+    def test_pusch_cp_ofdm_low_mcs_with_dmrs_no_data_symbol(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.link.waveform = "CP-OFDM"
+        config.link.num_tx_ant = 1
+        config.link.num_rx_ant = 1
+        config.link.mcs.table = "qam64"
+        config.link.mcs.index = 0
+        config.dmrs.data_mux_enabled = False
+        config.channel.params["snr_db"] = 30.0
+        result = PuschSimulation(config).run()
+        self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
+        self.assertIsNotNone(result.crc_ok)
 
 
 class PdschAwgnSmokeTest(unittest.TestCase):
