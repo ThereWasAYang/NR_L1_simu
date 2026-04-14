@@ -37,11 +37,7 @@ from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.visualization import save_simulation_plots
-from nr_phy_simu.common.sequences.dmrs import (
-    DmrsGenerator,
-    SHORT_LOW_PAPR_TYPE2_BITS,
-    pi_over_two_bpsk_from_bits,
-)
+from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.mcs import resolve_mcs
 from nr_phy_simu.channels.channel_factory import DefaultChannelFactory
 from nr_phy_simu.channels.tdl import TdlChannel
@@ -200,45 +196,11 @@ class DmrsSequenceTest(unittest.TestCase):
             self.assertEqual(symbols.size, num_prbs * 6)
             self.assertTrue(np.allclose(np.abs(symbols), 1.0))
 
-    def test_transform_precoded_pusch_dmrs_type2_short_sequence_matches_table(self):
-        generator = DmrsGenerator()
+    def test_transform_precoded_pusch_rejects_dmrs_config_type2(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
-        config.link.mcs.table = "tp64qam"
-        config.link.mcs.index = 0
-        config.link.mcs.tp_pi2bpsk = True
-        config.link.modulation = "PI/2-BPSK"
-        config.link.num_prbs = 2
-        config.dmrs.uplink_transform_precoding = True
-        config.dmrs.n_scid = 0
-        config.dmrs.pi2bpsk_scrambling_id0 = 1
-        config.dmrs.group_hopping = False
-        config.dmrs.sequence_hopping = False
-
-        symbols = generator.generate_for_symbol(symbol=2, config=config)
-        expected_bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[12][1], dtype=np.int8)
-        expected = pi_over_two_bpsk_from_bits(expected_bits)
-        self.assertTrue(np.allclose(symbols, expected))
-
-    def test_transform_precoded_pusch_dmrs_type2_long_sequence_uses_pi_over_two_bpsk_branch(self):
-        generator = DmrsGenerator()
-        config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
-        config.link.mcs.table = "tp64qam"
-        config.link.mcs.index = 0
-        config.link.mcs.tp_pi2bpsk = True
-        config.link.modulation = "PI/2-BPSK"
-        config.link.num_prbs = 8
-        config.dmrs.uplink_transform_precoding = True
-        config.dmrs.pi2bpsk_scrambling_id0 = 1
-        config.dmrs.pi2bpsk_scrambling_id1 = 17
-        config.dmrs.n_scid = 0
-
-        seq0 = generator.generate_for_symbol(symbol=2, config=config)
-        config.dmrs.n_scid = 1
-        seq1 = generator.generate_for_symbol(symbol=2, config=config)
-        self.assertEqual(seq0.size, 48)
-        self.assertTrue(np.allclose(np.abs(seq0), 1.0))
-        self.assertTrue(np.allclose(np.abs(seq1), 1.0))
-        self.assertFalse(np.allclose(seq0, seq1))
+        config.dmrs.config_type = 2
+        with self.assertRaisesRegex(ValueError, "only supports DMRS configuration type 1"):
+            config._validate_protocol_constraints()
 
     def test_cp_ofdm_dmrs_can_disable_data_multiplexing(self):
         config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")

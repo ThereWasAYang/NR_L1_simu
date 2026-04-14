@@ -230,6 +230,9 @@ class SimulationConfig:
     random_seed: int = 7
     slot_index: int = 0
 
+    def __post_init__(self) -> None:
+        self._validate_protocol_constraints()
+
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "SimulationConfig":
         carrier_data = data.get("carrier", {})
@@ -267,6 +270,18 @@ class SimulationConfig:
             random_seed=int(data.get("random_seed", 7)),
             slot_index=int(data.get("slot_index", 0)),
         )
+
+    def _validate_protocol_constraints(self) -> None:
+        channel_type = self.link.channel_type.upper()
+        waveform = self.link.waveform.upper()
+        if (
+            channel_type == "PUSCH"
+            and waveform == "DFT-S-OFDM"
+            and int(self.dmrs.config_type) != 1
+        ):
+            raise ValueError(
+                "Transform-precoded PUSCH (DFT-s-OFDM) only supports DMRS configuration type 1."
+            )
 
 
 def _normalize_tuple_fields(data: dict[str, Any], tuple_fields: set[str]) -> dict[str, Any]:
