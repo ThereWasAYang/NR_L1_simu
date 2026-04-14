@@ -40,7 +40,7 @@ link:
 # DMRS 配置
 dmrs:
   config_type: 1                # DMRS configuration type：1 / 2
-  data_mux_enabled: true        # CP-OFDM 下导频符号是否允许数据与 DMRS 在同一 symbol 内按频域复用；DFT-s-OFDM 下忽略此项
+  data_mux_enabled: false       # DFT-s-OFDM 下不允许数据与 DMRS 共符号；CP-OFDM 下该字段才控制频域复用
   mapping_type: A               # DMRS mapping type：A / B
   type_a_position: 2            # Type A DMRS 的首符号位置
   additional_positions: 1       # additionalPosition
@@ -51,7 +51,7 @@ dmrs:
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
   n_pusch_identity: 1           # PUSCH-specific sequence identity
-  num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
+  num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；DFT-s-OFDM 下 null 等效按协议约束取 2
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
   port_set: [0]                 # DMRS 端口集合

@@ -202,6 +202,18 @@ class DmrsSequenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "only supports DMRS configuration type 1"):
             config._validate_protocol_constraints()
 
+    def test_transform_precoded_pusch_rejects_data_dmrs_symbol_multiplexing(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
+        config.dmrs.data_mux_enabled = True
+        with self.assertRaisesRegex(ValueError, "does not support data/DMRS symbol multiplexing"):
+            config._validate_protocol_constraints()
+
+    def test_transform_precoded_pusch_requires_two_cdm_groups_without_data(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
+        config.dmrs.num_cdm_groups_without_data = 1
+        with self.assertRaisesRegex(ValueError, "requires num_cdm_groups_without_data = 2"):
+            config._validate_protocol_constraints()
+
     def test_cp_ofdm_dmrs_can_disable_data_multiplexing(self):
         config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
         config.dmrs.data_mux_enabled = False

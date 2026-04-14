@@ -274,13 +274,22 @@ class SimulationConfig:
     def _validate_protocol_constraints(self) -> None:
         channel_type = self.link.channel_type.upper()
         waveform = self.link.waveform.upper()
-        if (
-            channel_type == "PUSCH"
-            and waveform == "DFT-S-OFDM"
-            and int(self.dmrs.config_type) != 1
-        ):
+        transform_precoded_pusch = channel_type == "PUSCH" and waveform == "DFT-S-OFDM"
+        if transform_precoded_pusch and int(self.dmrs.config_type) != 1:
             raise ValueError(
                 "Transform-precoded PUSCH (DFT-s-OFDM) only supports DMRS configuration type 1."
+            )
+        if transform_precoded_pusch and bool(self.dmrs.data_mux_enabled):
+            raise ValueError(
+                "Transform-precoded PUSCH (DFT-s-OFDM) does not support data/DMRS symbol multiplexing."
+            )
+        if (
+            transform_precoded_pusch
+            and self.dmrs.num_cdm_groups_without_data is not None
+            and int(self.dmrs.num_cdm_groups_without_data) != 2
+        ):
+            raise ValueError(
+                "Transform-precoded PUSCH (DFT-s-OFDM) requires num_cdm_groups_without_data = 2."
             )
 
 
