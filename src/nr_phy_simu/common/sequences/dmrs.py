@@ -285,10 +285,6 @@ def pi_over_two_bpsk_from_bits(bits: np.ndarray) -> np.ndarray:
     return (real + 1j * imag) / np.sqrt(2.0)
 
 
-def normalized_dft(sequence: np.ndarray) -> np.ndarray:
-    return np.fft.fft(np.asarray(sequence, dtype=np.complex128)) / np.sqrt(len(sequence))
-
-
 def _largest_prime_less_than_or_equal(value: int) -> int:
     if value <= 2:
         return 2
@@ -492,15 +488,14 @@ class DmrsGenerator(DmrsSequenceGenerator):
     ) -> np.ndarray:
         if length == 6:
             phases = np.array(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=np.float64)
-            base_sequence = np.exp(1j * np.pi * phases / 4.0)
-            return normalized_dft(base_sequence)
+            return np.exp(1j * np.pi * phases / 4.0)
 
         if length in SHORT_LOW_PAPR_TYPE2_BITS:
             bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[length][self._type2_u_index(symbol, config)], dtype=np.int8)
-            return normalized_dft(pi_over_two_bpsk_from_bits(bits))
+            return pi_over_two_bpsk_from_bits(bits)
 
         bits = gold_sequence(self._pi2_bpsk_dmrs_c_init(symbol, config), length)
-        return normalized_dft(pi_over_two_bpsk_from_bits(bits))
+        return pi_over_two_bpsk_from_bits(bits)
 
     def _type2_u_index(self, symbol: int, config: SimulationConfig) -> int:
         n_id = self._effective_pi2_bpsk_scrambling_id(config)

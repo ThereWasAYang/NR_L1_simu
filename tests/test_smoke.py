@@ -40,7 +40,6 @@ from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import (
     DmrsGenerator,
     SHORT_LOW_PAPR_TYPE2_BITS,
-    normalized_dft,
     pi_over_two_bpsk_from_bits,
 )
 from nr_phy_simu.common.mcs import resolve_mcs
@@ -217,7 +216,7 @@ class DmrsSequenceTest(unittest.TestCase):
 
         symbols = generator.generate_for_symbol(symbol=2, config=config)
         expected_bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[12][1], dtype=np.int8)
-        expected = normalized_dft(pi_over_two_bpsk_from_bits(expected_bits))
+        expected = pi_over_two_bpsk_from_bits(expected_bits)
         self.assertTrue(np.allclose(symbols, expected))
 
     def test_transform_precoded_pusch_dmrs_type2_long_sequence_uses_pi_over_two_bpsk_branch(self):
@@ -237,8 +236,8 @@ class DmrsSequenceTest(unittest.TestCase):
         config.dmrs.n_scid = 1
         seq1 = generator.generate_for_symbol(symbol=2, config=config)
         self.assertEqual(seq0.size, 48)
-        self.assertAlmostEqual(float(np.mean(np.abs(seq0) ** 2)), 1.0, places=6)
-        self.assertAlmostEqual(float(np.mean(np.abs(seq1) ** 2)), 1.0, places=6)
+        self.assertTrue(np.allclose(np.abs(seq0), 1.0))
+        self.assertTrue(np.allclose(np.abs(seq1), 1.0))
         self.assertFalse(np.allclose(seq0, seq1))
 
     def test_cp_ofdm_dmrs_can_disable_data_multiplexing(self):
