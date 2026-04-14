@@ -327,7 +327,15 @@ class DmrsGenerator(DmrsSequenceGenerator):
     """
 
     def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
-        if config.dmrs.config_type == 1:
+        if (
+            config.link.channel_type.upper() == "PUSCH"
+            and config.link.waveform.upper() == "DFT-S-OFDM"
+        ):
+            # For transform-precoded PUSCH DM-RS, clause 6.4.1.1.3 uses
+            # k = 4n + 2k' + Δ with k' = 0,1, which gives 6 RE/PRB in the
+            # current single-port implementation.
+            re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
+        elif config.dmrs.config_type == 1:
             re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
         elif config.dmrs.config_type == 2:
             re_offsets = np.array([0, 1, 6, 7], dtype=int)
