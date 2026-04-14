@@ -120,6 +120,138 @@ SHORT_LOW_PAPR_TYPE1_PHASES: dict[int, dict[int, tuple[int, ...]]] = {
     },
 }
 
+SHORT_LOW_PAPR_TYPE2_PHASES_6: dict[int, tuple[int, ...]] = {
+    0: (0, 0, 0, 0, 0, 0),
+    1: (0, 1, 0, 3, 0, 5),
+    2: (0, 2, 0, 2, 0, 2),
+    3: (0, 3, 0, 1, 0, 7),
+    4: (0, 4, 0, 0, 0, 4),
+    5: (0, 5, 0, 7, 0, 3),
+    6: (0, 6, 0, 6, 0, 6),
+    7: (0, 7, 0, 5, 0, 1),
+    8: (1, 0, 3, 0, 5, 0),
+    9: (1, 1, 3, 3, 5, 5),
+    10: (1, 2, 3, 2, 5, 2),
+    11: (1, 3, 3, 1, 5, 7),
+    12: (1, 4, 3, 0, 5, 4),
+    13: (1, 5, 3, 7, 5, 3),
+    14: (1, 6, 3, 6, 5, 6),
+    15: (1, 7, 3, 5, 5, 1),
+    16: (2, 0, 2, 0, 2, 0),
+    17: (2, 1, 2, 3, 2, 5),
+    18: (2, 2, 2, 2, 2, 2),
+    19: (2, 3, 2, 1, 2, 7),
+    20: (2, 4, 2, 0, 2, 4),
+    21: (2, 5, 2, 7, 2, 3),
+    22: (2, 6, 2, 6, 2, 6),
+    23: (2, 7, 2, 5, 2, 1),
+    24: (3, 0, 1, 0, 7, 0),
+    25: (3, 1, 1, 3, 7, 5),
+    26: (3, 2, 1, 2, 7, 2),
+    27: (3, 3, 1, 1, 7, 7),
+    28: (3, 4, 1, 0, 7, 4),
+    29: (3, 5, 1, 7, 7, 3),
+}
+
+SHORT_LOW_PAPR_TYPE2_BITS: dict[int, dict[int, tuple[int, ...]]] = {
+    12: {
+        0: (0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0),
+        1: (0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0),
+        2: (0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0),
+        3: (0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0),
+        4: (0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0),
+        5: (0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0),
+        6: (0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0),
+        7: (0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0),
+        8: (0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0),
+        9: (0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0),
+        10: (1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0),
+        11: (1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0),
+        12: (1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0),
+        13: (1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0),
+        14: (1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0),
+        15: (1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0),
+        16: (1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0),
+        17: (1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0),
+        18: (1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0),
+        19: (1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0),
+        20: (1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0),
+        21: (1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0),
+        22: (1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0),
+        23: (1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0),
+        24: (1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0),
+        25: (1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0),
+        26: (0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+        27: (0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0),
+        28: (0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0),
+        29: (0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0),
+    },
+    18: {
+        0: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0),
+        1: (0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0),
+        2: (0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0),
+        3: (0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0),
+        4: (0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0),
+        5: (0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0),
+        6: (0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0),
+        7: (0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0),
+        8: (0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0),
+        9: (0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0),
+        10: (1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0),
+        11: (1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0),
+        12: (1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0),
+        13: (1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0),
+        14: (1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0),
+        15: (1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0),
+        16: (1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0),
+        17: (1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0),
+        18: (1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0),
+        19: (1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0),
+        20: (1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0),
+        21: (1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0),
+        22: (1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0),
+        23: (1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0),
+        24: (1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0),
+        25: (1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0),
+        26: (0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0),
+        27: (0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0),
+        28: (0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0),
+        29: (0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0),
+    },
+    24: {
+        0: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0),
+        1: (0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0),
+        2: (0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0),
+        3: (0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0),
+        4: (0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0),
+        5: (0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0),
+        6: (0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0),
+        7: (0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0),
+        8: (0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0),
+        9: (0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
+        10: (1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0),
+        11: (1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0),
+        12: (1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0),
+        13: (1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0),
+        14: (1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0),
+        15: (1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0),
+        16: (1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0),
+        17: (1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0),
+        18: (1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0),
+        19: (1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0),
+        20: (1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0),
+        21: (1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0),
+        22: (1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0),
+        23: (1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0),
+        24: (1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0),
+        25: (1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0),
+        26: (0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0),
+        27: (0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0),
+        28: (0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0),
+        29: (0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0),
+    },
+}
+
 
 def gold_sequence(c_init: int, length: int) -> np.ndarray:
     nc = 1600
@@ -142,6 +274,19 @@ def qpsk_from_prbs(bits: np.ndarray) -> np.ndarray:
     real = 1 - 2 * bits[0::2]
     imag = 1 - 2 * bits[1::2]
     return (real + 1j * imag) / np.sqrt(2.0)
+
+
+def pi_over_two_bpsk_from_bits(bits: np.ndarray) -> np.ndarray:
+    bits = np.asarray(bits, dtype=np.int8).reshape(-1)
+    real = np.where(bits == 0, 1.0, -1.0)
+    imag = real.copy()
+    odd = np.arange(bits.size) % 2 == 1
+    real[odd] *= -1.0
+    return (real + 1j * imag) / np.sqrt(2.0)
+
+
+def normalized_dft(sequence: np.ndarray) -> np.ndarray:
+    return np.fft.fft(np.asarray(sequence, dtype=np.complex128)) / np.sqrt(len(sequence))
 
 
 def _largest_prime_less_than_or_equal(value: int) -> int:
@@ -179,9 +324,10 @@ class DmrsGenerator(DmrsSequenceGenerator):
 
     Sequence initialization follows the standard Gold-sequence form used by
     TS 38.211 for PDSCH DM-RS and for PUSCH when transform precoding is
-    disabled. For transform-precoded PUSCH, the implementation uses the
-    dedicated low-PAPR branch with short-sequence tables and Zadoff-Chu
-    extension for longer allocations.
+    disabled. For transform-precoded PUSCH, the implementation follows the
+    low-PAPR sequence rules from clauses 5.2.2 and 5.2.3, including the
+    short-sequence tables and the pi/2-BPSK DM-RS branch introduced by
+    dmrs-UplinkTransformPrecoding-r16.
     """
 
     def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
@@ -297,16 +443,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
         config: SimulationConfig,
     ) -> np.ndarray:
         length = num_prbs * info.re_per_prb
-        if config.link.modulation.upper() == "PI/2-BPSK":
-            bits = gold_sequence(self._dmrs_c_init(symbol, config), 2 * length)
-            return qpsk_from_prbs(bits)
+        if self._use_type2_low_papr_sequence(config):
+            return self._generate_type2_low_papr_sequence(symbol, length, config)
 
-        u, v = self._pusch_low_papr_group_sequence_numbers(symbol, config)
+        u, v = self._pusch_low_papr_group_sequence_numbers(symbol, length, config)
         return self._low_papr_type1(u=u, v=v, length=length)
 
     def _pusch_low_papr_group_sequence_numbers(
         self,
         symbol: int,
+        sequence_length: int,
         config: SimulationConfig,
     ) -> tuple[int, int]:
         n_id_rs = config.dmrs.n_pusch_identity
@@ -324,7 +470,7 @@ class DmrsGenerator(DmrsSequenceGenerator):
             f_gh = int(np.sum(hop_bits * (2 ** np.arange(8)))) % 30
 
         v = 0
-        if config.dmrs.sequence_hopping and config.link.num_prbs * 6 >= 72:
+        if config.dmrs.sequence_hopping and not config.dmrs.group_hopping and sequence_length >= 72:
             prbs = gold_sequence(c_init=int(n_id_rs // 30), length=linear_symbol + 1)
             v = int(prbs[linear_symbol])
 
@@ -337,6 +483,63 @@ class DmrsGenerator(DmrsSequenceGenerator):
             sequence = np.exp(1j * np.pi * phases / 4.0)
             return sequence / np.sqrt(np.mean(np.abs(sequence) ** 2))
         return self._zc_low_papr_sequence(u=u, v=v, length=length)
+
+    def _generate_type2_low_papr_sequence(
+        self,
+        symbol: int,
+        length: int,
+        config: SimulationConfig,
+    ) -> np.ndarray:
+        if length == 6:
+            phases = np.array(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=np.float64)
+            base_sequence = np.exp(1j * np.pi * phases / 4.0)
+            return normalized_dft(base_sequence)
+
+        if length in SHORT_LOW_PAPR_TYPE2_BITS:
+            bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[length][self._type2_u_index(symbol, config)], dtype=np.int8)
+            return normalized_dft(pi_over_two_bpsk_from_bits(bits))
+
+        bits = gold_sequence(self._pi2_bpsk_dmrs_c_init(symbol, config), length)
+        return normalized_dft(pi_over_two_bpsk_from_bits(bits))
+
+    def _type2_u_index(self, symbol: int, config: SimulationConfig) -> int:
+        n_id = self._effective_pi2_bpsk_scrambling_id(config)
+        slot = config.slot_index
+        symbols_per_slot = config.carrier.symbols_per_slot
+        linear_symbol = slot * symbols_per_slot + symbol
+        if config.dmrs.group_hopping:
+            prbs = gold_sequence(c_init=int(n_id // 30), length=8 * (linear_symbol + 1))
+            hop_bits = prbs[8 * linear_symbol : 8 * (linear_symbol + 1)]
+            f_gh = int(np.sum(hop_bits * (2 ** np.arange(8)))) % 30
+        else:
+            f_gh = 0
+        return (f_gh + int(n_id)) % 30
+
+    def _effective_pi2_bpsk_scrambling_id(self, config: SimulationConfig) -> int:
+        if config.dmrs.n_scid == 0 and config.dmrs.pi2bpsk_scrambling_id0 is not None:
+            return int(config.dmrs.pi2bpsk_scrambling_id0)
+        if config.dmrs.n_scid == 1 and config.dmrs.pi2bpsk_scrambling_id1 is not None:
+            return int(config.dmrs.pi2bpsk_scrambling_id1)
+        return self._effective_scrambling_id(config)
+
+    def _pi2_bpsk_dmrs_c_init(self, symbol: int, config: SimulationConfig) -> int:
+        nid = self._effective_pi2_bpsk_scrambling_id(config)
+        slot = config.slot_index
+        symbols_per_slot = config.carrier.symbols_per_slot
+        return (
+            (1 << 17) * (symbols_per_slot * slot + symbol + 1) * (2 * nid + 1)
+            + 2 * nid
+            + config.dmrs.n_scid
+        ) % (1 << 31)
+
+    @staticmethod
+    def _use_type2_low_papr_sequence(config: SimulationConfig) -> bool:
+        return (
+            config.link.channel_type.upper() == "PUSCH"
+            and config.link.waveform.upper() == "DFT-S-OFDM"
+            and config.link.modulation.upper() == "PI/2-BPSK"
+            and bool(config.dmrs.uplink_transform_precoding)
+        )
 
     @staticmethod
     def _zc_low_papr_sequence(u: int, v: int, length: int) -> np.ndarray:

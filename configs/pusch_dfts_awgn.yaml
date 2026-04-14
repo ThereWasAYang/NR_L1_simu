@@ -54,6 +54,9 @@ dmrs:
   num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
+  uplink_transform_precoding: false   # 是否启用 dmrs-UplinkTransformPrecoding-r16 分支；与 pi/2-BPSK 联合时走 38.211 5.2.3
+  pi2bpsk_scrambling_id0: null  # pi/2-BPSK DMRS scrambling ID 0；null 表示回退到 DMRS/小区扰码 ID
+  pi2bpsk_scrambling_id1: null  # pi/2-BPSK DMRS scrambling ID 1；null 表示回退到 DMRS/小区扰码 ID
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数

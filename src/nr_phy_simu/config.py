@@ -108,6 +108,9 @@ class DmrsConfig:
     n_pusch_identity: int | None = None
     sequence_hopping: bool = False
     group_hopping: bool = False
+    uplink_transform_precoding: bool = False
+    pi2bpsk_scrambling_id0: int | None = None
+    pi2bpsk_scrambling_id1: int | None = None
 
 
 @dataclass

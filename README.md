@@ -20,15 +20,17 @@
 - 基于 3GPP TR 38.901 profile 的 `TDL/CDL` 信道实现
 - 可替换的编码、调制、映射、OFDM、估计、均衡、解调、译码模块
 - 基于 `MCS table + MCS index` 自动解析调制方式、目标码率和 `TBS`
-- 基于 `py3gpp` 的 NR `CRC/LDPC/rate matching/rate recovery`
+- 本地可控的 `UL-SCH LDPC / rate matching / rate recovery / decoding` 主路径
 - 基于协议参数建模的 DMRS 插入与 LS 信道估计
+- `transform-precoded PUSCH DMRS` 的 38.211 clause `5.2.2 / 5.2.3` 双分支实现
+- 支持多发多收的 `TDL/CDL` 基础 MIMO 传播
 - 每次示例仿真自动输出信噪比、解调星座图、导频信道估计幅度/相位图
 
 当前版本仍需进一步补齐：
 
 - 完整的 PUSCH/PDSCH 映射规则与多天线预编码流程
-- 继续补齐 DMRS/PTRS/CSI-RS 等协议表项，尤其是 transform-precoded PUSCH DMRS 的 clause 5.2.2/5.2.3 完整细节
-- `TDL/CDL` 的完整 MIMO 天线阵列、极化与空间一致性增强
+- `PTRS / CSI-RS` 等协议信号与更完整的表项覆盖
+- `TDL/CDL` 的完整阵列、极化、XPR 与空间一致性增强
 
 因此，这个版本更适合作为“工程基础框架 + 可扩展参考实现”，而不是“已完成全部 R18 细节校准的协议级金模型”。协议严格化工作已经在结构上预留好了接入点。
 
@@ -102,6 +104,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - `DMRS config type`
 - `DMRS symbol positions`
 - `DMRS scrambling IDs / n_SCID / hopping`
+- `DMRS uplink_transform_precoding / pi2bpsk scrambling IDs`
 - `RV`
 - `layer number`
 - `antenna number`
@@ -221,7 +224,10 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 
 - `PDSCH DMRS` 采用 38.211 中的 Gold 序列初始化形式
 - `PUSCH DMRS` 在 `transform precoding disabled` 时走同类 Gold 序列初始化路径
-- `PUSCH DFT-s-OFDM` 已拆出独立分支，并依据 38.211 中 transform precoding enabled 时的 low-PAPR type 1 路径生成序列
+- `PUSCH DFT-s-OFDM` 已拆出独立分支：
+  - 普通 transform-precoded DMRS 走 38.211 clause `5.2.2` low-PAPR sequence type 1
+  - `pi/2-BPSK + dmrs-UplinkTransformPrecoding-r16` 场景走 clause `5.2.3` low-PAPR sequence type 2
+  - `M_ZC < 30` 时使用协议短序列表，较长长度时按协议公式生成并做归一化 DFT
 
 数据扰码实现在 [src/nr_phy_simu/common/sequences/scrambling.py](src/nr_phy_simu/common/sequences/scrambling.py)：
 
@@ -244,8 +250,9 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - profile 归一化时延按目标 `delay spread` 缩放
 - 基于 UE 速度/载频的多普勒频移建模
 - `LOS` profile 的 Rician 分量
+- 基于阵列响应的基础 `num_tx_ant / num_rx_ant` MIMO 传播
 
-当前这版 `TDL/CDL` 先面向现有链路接口实现为 `SISO`。如果后续你要把 `num_tx_ant / num_rx_ant > 1` 的阵列、极化、角域响应也纳入同一套仿真，我建议下一步把当前 `ChannelModel` 接口扩成显式 MIMO 通道矩阵/多分支波形接口。
+当前这版 `TDL/CDL` 已支持基础多发多收，但仍未补齐完整的 38.901 阵列、极化/XPR 与空间一致性模型。如果后续要进一步做协议级对齐，建议继续把当前 `ChannelModel` 接口往显式阵列参数与空间一致性状态扩展。
 
 ## 接收数据维度
 
