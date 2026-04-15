@@ -22,13 +22,13 @@ from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.channel_estimation import LeastSquaresEstimator
-from nr_phy_simu.rx.decoding import NrLdpcDecoder
+from nr_phy_simu.rx.decoding import HardDecisionBypassDecoder, NrLdpcDecoder
 from nr_phy_simu.rx.demodulation import QamDemodulator
 from nr_phy_simu.rx.equalization import OneTapMmseEqualizer
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.rx.chain import Receiver
 from nr_phy_simu.tx.chain import Transmitter
-from nr_phy_simu.tx.codec import NrLdpcCoder
+from nr_phy_simu.tx.codec import NrLdpcCoder, RandomBitCoder
 from nr_phy_simu.tx.modulation import QamModulator
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 
@@ -79,14 +79,14 @@ class DefaultSimulationComponentFactory(SimulationComponentFactory):
     """Default assembly for all PHY processing blocks."""
 
     def create_components(self, config: SimulationConfig) -> SimulationComponents:
-        del config
         dmrs_generator = DmrsGenerator()
         scrambler = NrDataScrambler()
         time_processor = OfdmProcessor()
+        bypass_channel_coding = bool(config.simulation.bypass_channel_coding)
         return SimulationComponents(
             shared=SharedComponents(dmrs_generator=dmrs_generator),
             transmitter=TransmitterComponents(
-                coder=NrLdpcCoder(),
+                coder=RandomBitCoder() if bypass_channel_coding else NrLdpcCoder(),
                 scrambler=scrambler,
                 modulator=QamModulator(),
                 mapper=FrequencyDomainResourceMapper(dmrs_generator=dmrs_generator),
@@ -99,7 +99,7 @@ class DefaultSimulationComponentFactory(SimulationComponentFactory):
                 equalizer=OneTapMmseEqualizer(),
                 demodulator=QamDemodulator(),
                 scrambler=scrambler,
-                decoder=NrLdpcDecoder(),
+                decoder=HardDecisionBypassDecoder() if bypass_channel_coding else NrLdpcDecoder(),
             ),
         )
 

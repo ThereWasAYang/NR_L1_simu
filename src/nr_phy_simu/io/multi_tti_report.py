@@ -35,7 +35,7 @@ def _build_row(result: MultiTtiSimulationResult, config: SimulationConfig) -> li
     modulation_order = bits_per_symbol(effective_config.link.modulation)
     return [
         f"{result.last_result.snr_db:.2f}" if result.last_result is not None else f"{effective_config.snr_db:.2f}",
-        f"{result.block_error_rate:.6f}",
+        _format_optional(result.block_error_rate if math.isfinite(result.block_error_rate) else None, precision=6),
         _format_optional(result.average_evm_percent, precision=6),
         _format_optional_db(result.average_evm_snr_linear, precision=6),
         f"{effective_config.link.prb_start}-{rb_end}",

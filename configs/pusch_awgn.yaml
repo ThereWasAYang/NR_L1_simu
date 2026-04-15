@@ -60,6 +60,7 @@ dmrs:
 simulation:
   num_ttis: 1                  # 连续仿真的 TTI 个数；大于 1 时统计最终 BLER（CRC 错包率）
   result_output_path: null     # 多 TTI 结果文本文件路径；null 表示不落盘
+  bypass_channel_coding: false # 是否跳过编码与译码；true 时以随机编码比特直接调制，且不做 CRC 校验
 
 # 绘图控制参数
 plotting:

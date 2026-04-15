@@ -111,6 +111,7 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 - `slot index`
 - `simulation.num_ttis`
 - `simulation.result_output_path`
+- `simulation.bypass_channel_coding`
 - `waveform_input.waveform_path`
 - `waveform_input.num_samples_per_tti`
 - `waveform_input.noise_variance`
@@ -132,6 +133,14 @@ python examples/run_from_config.py configs/pusch_replay_template.yaml
 当 `simulation.num_ttis > 1` 时，系统会连续运行多个 TTI，并统计最终 `BLER`。这里的误包定义为：`CRC` 错误的 TTI。
 如果同时配置了 `simulation.result_output_path`，系统还会把多 TTI 结果按 CSV 风格追加写入文本文件；文件不存在时会自动创建，空文件会先写标题行。
 结果文件当前列顺序为：`信噪比, BLER, EVM, EVM_SNR, RB位置, MCS阶数, 总TTI数, 误包数, 码率, 调制阶数, TBsize`。
+
+当 `simulation.bypass_channel_coding = true` 时：
+
+- 发端跳过 `CRC/LDPC/rate matching`，改为生成与 `coded_bit_capacity` 等长的伪随机比特序列
+- 收端跳过译码，只对解扰后的 LLR 做硬判决
+- `CRC` 不再校验，因此单 TTI 的 `crc_ok` 为 `None`
+- 多 TTI 模式下 `BLER` 会显示为 `N/A`
+- 该模式适合做调制、EVM、波形和接收前端处理链验证，不作为标准协议链路统计结果
 
 ## 设计原则
 

@@ -37,3 +37,21 @@ class NrLdpcCoder(ChannelCoder):
             modulation=config.link.modulation,
             num_layers=config.link.num_layers,
         ).astype(np.int8)
+
+
+class RandomBitCoder(ChannelCoder):
+    """
+    Bypass mode for link-level EVM or waveform studies.
+
+    When channel coding is disabled, generate a deterministic pseudo-random
+    bitstream with the same length as the coded-bit capacity and feed it
+    directly into scrambling/modulation.
+    """
+
+    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        del bits
+        if config.link.coded_bit_capacity is None:
+            raise ValueError("coded_bit_capacity must be resolved before bypass coding.")
+
+        rng = np.random.default_rng(config.random_seed + 1000)
+        return rng.integers(0, 2, size=int(config.link.coded_bit_capacity), dtype=np.int8)

@@ -42,3 +42,13 @@ class NrLdpcDecoder(ChannelDecoder):
         decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info.crc)
         self.last_crc_ok = bool(crc_error == 0)
         return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)
+
+
+class HardDecisionBypassDecoder(ChannelDecoder):
+    def __init__(self) -> None:
+        self.last_crc_ok: bool | None = None
+
+    def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        del config
+        self.last_crc_ok = None
+        return (np.asarray(llrs).reshape(-1) < 0.0).astype(np.int8)

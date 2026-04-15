@@ -62,6 +62,8 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"Modulation: {effective_config.link.modulation}")
     print(f"Code rate: {effective_config.link.code_rate:.6f}")
     print(f"TBS: {effective_config.link.transport_block_size}")
+    if effective_config.simulation.bypass_channel_coding:
+        print("Channel coding: bypassed (random coded-bit sequence, no decoding, no CRC)")
     print(f"SNR: {result.snr_db:.2f} dB")
     if result.evm_percent is not None:
         print(f"EVM (last TTI): {result.evm_percent:.6f} %")
@@ -71,7 +73,10 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     if batch_result is not None:
         print(f"TTIs: {batch_result.num_ttis}")
         print(f"Packet errors: {batch_result.packet_errors}")
-        print(f"BLER: {batch_result.block_error_rate:.6f}")
+        if np.isfinite(batch_result.block_error_rate):
+            print(f"BLER: {batch_result.block_error_rate:.6f}")
+        else:
+            print("BLER: N/A (CRC disabled in bypass-channel-coding mode)")
         if batch_result.average_evm_percent is not None:
             print(f"Average EVM: {batch_result.average_evm_percent:.6f} %")
         average_evm_snr_db = _format_evm_snr_db(batch_result.average_evm_snr_linear)

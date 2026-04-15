@@ -26,6 +26,7 @@ class MultiTtiSimulationRunner:
 
         tti_results: list[SimulationResult] = []
         packet_errors = 0
+        crc_checked_ttis = 0
         final_config = None
         evm_values: list[float] = []
         evm_snr_values: list[float] = []
@@ -36,6 +37,8 @@ class MultiTtiSimulationRunner:
             tti_result = self._build_simulation(tti_config).run()
             tti_results.append(tti_result)
             final_config = tti_config
+            if tti_result.crc_ok is not None:
+                crc_checked_ttis += 1
             if tti_result.crc_ok is False:
                 packet_errors += 1
             if tti_result.evm_percent is not None:
@@ -46,7 +49,7 @@ class MultiTtiSimulationRunner:
         return MultiTtiSimulationResult(
             num_ttis=num_ttis,
             packet_errors=packet_errors,
-            block_error_rate=packet_errors / num_ttis,
+            block_error_rate=(packet_errors / crc_checked_ttis) if crc_checked_ttis else float("nan"),
             average_evm_percent=(sum(evm_values) / len(evm_values)) if evm_values else None,
             average_evm_snr_linear=(sum(evm_snr_values) / len(evm_snr_values)) if evm_snr_values else None,
             tti_results=tuple(tti_results),

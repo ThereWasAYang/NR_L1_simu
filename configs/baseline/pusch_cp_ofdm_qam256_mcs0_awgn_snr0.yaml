@@ -64,6 +64,7 @@ dmrs:
 simulation:
   num_ttis: 20                  # 连续仿真的 TTI 个数；用于底线 BLER 校验
   result_output_path: null      # 多 TTI 结果文本文件路径；null 表示不落盘
+  bypass_channel_coding: false  # 是否跳过编码与译码；底线用例要求保持标准协议链路
 
 # 绘图控制参数
 plotting:

@@ -135,6 +135,26 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.bit_error_rate, 0.0)
         self.assertIs(result.crc_ok, True)
 
+    def test_bypass_channel_coding_uses_random_coded_bits_without_crc(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.channel.params["snr_db"] = 30.0
+        config.simulation.bypass_channel_coding = True
+        result = PuschSimulation(config).run()
+        self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
+        self.assertIsNone(result.crc_ok)
+        self.assertEqual(result.tx.coded_bits.size, config.link.coded_bit_capacity)
+        self.assertEqual(result.rx.decoded_bits.size, result.tx.coded_bits.size)
+
+    def test_bypass_channel_coding_multi_tti_reports_bler_as_nan(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.simulation.num_ttis = 3
+        config.simulation.bypass_channel_coding = True
+        config.plotting.enabled = False
+        result = MultiTtiSimulationRunner(config).run()
+        self.assertEqual(result.packet_errors, 0)
+        self.assertTrue(np.isnan(result.block_error_rate))
+        self.assertTrue(all(tti_result.crc_ok is None for tti_result in result.tti_results))
+
 
 class BaselineRegressionTest(unittest.TestCase):
     def test_pusch_baseline_cases(self):

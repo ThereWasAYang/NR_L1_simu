@@ -179,6 +179,7 @@ class PlottingConfig:
 class SimulationControlConfig:
     num_ttis: int = 1
     result_output_path: str | None = None
+    bypass_channel_coding: bool = False
 
 
 @dataclass

@@ -64,9 +64,14 @@ class SharedChannelSimulation:
             noise_variance=float(channel_info["noise_variance"]),
             config=self.config,
         )
-        decoded = rx_payload.decoded_bits[: transport_block.size]
-        bit_errors = int(np.sum(decoded != transport_block))
-        ber = bit_errors / transport_block.size
+        if self.config.simulation.bypass_channel_coding:
+            reference_bits = tx_payload.coded_bits
+            decoded = rx_payload.decoded_bits[: reference_bits.size]
+        else:
+            reference_bits = transport_block
+            decoded = rx_payload.decoded_bits[: reference_bits.size]
+        bit_errors = int(np.sum(decoded != reference_bits))
+        ber = bit_errors / reference_bits.size
         evm_percent, evm_snr_linear = self._compute_evm_metrics(tx_payload.tx_symbols, rx_payload.equalized_symbols)
         return SimulationResult(
             tx=tx_payload,
