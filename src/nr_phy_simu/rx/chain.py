@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.interfaces import (
     BitScrambler,
@@ -14,6 +14,7 @@ from nr_phy_simu.common.interfaces import (
 )
 from nr_phy_simu.common.types import RxPayload
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, as_complex_tensor
 
 
 class Receiver:
@@ -39,13 +40,15 @@ class Receiver:
 
     def receive(
         self,
-        rx_waveform: np.ndarray,
-        dmrs_symbols: np.ndarray,
-        dmrs_mask: np.ndarray,
-        data_mask: np.ndarray,
+        rx_waveform: torch.Tensor,
+        dmrs_symbols: torch.Tensor,
+        dmrs_mask: torch.Tensor,
+        data_mask: torch.Tensor,
         noise_variance: float,
         config: SimulationConfig,
     ) -> RxPayload:
+        rx_waveform = as_complex_tensor(rx_waveform)
+        dmrs_symbols = as_complex_tensor(dmrs_symbols, device=rx_waveform.device)
         rx_grid = self.time_processor.demodulate(rx_waveform, config)
         channel_estimation = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
 
@@ -76,17 +79,20 @@ class Receiver:
 
     @staticmethod
     def _despread_equalized(
-        equalized_symbols: np.ndarray,
-        data_mask: np.ndarray,
+        equalized_symbols: torch.Tensor,
+        data_mask: torch.Tensor,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         despread = []
         cursor = 0
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
-            count = int(np.count_nonzero(data_mask[:, symbol_idx]))
+            count = int(torch.count_nonzero(data_mask[:, symbol_idx]).item())
             if count == 0:
                 continue
             symbol_values = equalized_symbols[cursor : cursor + count]
             cursor += count
-            despread.append(np.fft.ifft(symbol_values, n=count) * np.sqrt(count))
-        return np.concatenate(despread) if despread else np.array([], dtype=np.complex128)
+            despread.append(
+                torch.fft.ifft(symbol_values, n=count)
+                * torch.sqrt(torch.tensor(float(count), dtype=torch.float64, device=symbol_values.device))
+            )
+        return torch.cat(despread) if despread else torch.zeros(0, dtype=COMPLEX_DTYPE, device=equalized_symbols.device)

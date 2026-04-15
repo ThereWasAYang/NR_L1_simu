@@ -48,6 +48,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from nr_phy_simu.common.types import SimulationResult
+from nr_phy_simu.common.torch_utils import to_numpy
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -90,7 +91,7 @@ def _build_constellation_figures(
     config: SimulationConfig,
 ) -> dict[str, object]:
     del config
-    symbols = result.rx.equalized_symbols
+    symbols = to_numpy(result.rx.equalized_symbols)
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
     ax.set_title(f"Equalized Constellation (SNR={result.snr_db:.2f} dB)")
@@ -108,12 +109,14 @@ def _build_pilot_estimate_figures(
 ) -> dict[str, object]:
     del config
     channel_estimation = result.rx.channel_estimation
-    channel_estimate = channel_estimation.channel_estimate
+    channel_estimate = to_numpy(channel_estimation.channel_estimate)
     if channel_estimate.ndim == 2:
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
-    dmrs_mask = result.tx.dmrs_mask
+    dmrs_mask = to_numpy(result.tx.dmrs_mask)
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
+    pilot_estimates = to_numpy(channel_estimation.pilot_estimates)
+    pilot_symbol_indices = to_numpy(channel_estimation.pilot_symbol_indices)
     max_cols = 4
     ant_cols = min(num_ant, max_cols)
     ant_rows = int(np.ceil(num_ant / ant_cols))
@@ -141,7 +144,7 @@ def _build_pilot_estimate_figures(
 
         for symbol_idx in dmrs_symbols:
             pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
-            pilot_values = channel_estimation.pilot_estimates[ant_idx, channel_estimation.pilot_symbol_indices == symbol_idx]
+            pilot_values = pilot_estimates[ant_idx, pilot_symbol_indices == symbol_idx]
             mag_ax.plot(
                 pilot_sc,
                 np.abs(pilot_values),
@@ -180,7 +183,7 @@ def _build_pilot_estimate_figures(
 
 
 def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    waveform = result.rx.rx_waveform
+    waveform = to_numpy(result.rx.rx_waveform)
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
     cp_lengths = config.carrier.cyclic_prefix_lengths
@@ -215,7 +218,7 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
 
 
 def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    rx_grid = result.rx.rx_grid
+    rx_grid = to_numpy(result.rx.rx_grid)
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
     n_sc = config.carrier.n_subcarriers

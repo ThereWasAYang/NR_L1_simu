@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.interfaces import (
     BitScrambler,
@@ -31,7 +31,7 @@ class Transmitter:
         self.dmrs_generator = dmrs_generator
         self.scrambler = scrambler
 
-    def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
+    def transmit(self, transport_block: torch.Tensor, config: SimulationConfig) -> TxPayload:
         coded_bits = self.coder.encode(transport_block, config)
         scrambled_bits = self.scrambler.scramble(coded_bits, config)
         tx_symbols = self.modulator.map_bits(scrambled_bits, config)

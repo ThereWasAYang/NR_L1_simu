@@ -1,26 +1,28 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.interfaces import BitScrambler
 from nr_phy_simu.common.sequences.dmrs import gold_sequence
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_int_tensor
 
 
 class NrDataScrambler(BitScrambler):
     """3GPP NR data scrambling/descrambling helper for shared channels."""
 
-    def scramble(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        sequence = self._scrambling_sequence(bits.size, config)
-        return np.bitwise_xor(bits.astype(np.int8), sequence)
+    def scramble(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        bits = as_int_tensor(bits, dtype=BIT_DTYPE)
+        sequence = self._scrambling_sequence(bits.numel(), config)
+        return torch.bitwise_xor(bits, sequence)
 
-    def descramble_llrs(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        sequence = self._scrambling_sequence(llrs.size, config)
-        signs = 1.0 - 2.0 * sequence.astype(np.float64)
+    def descramble_llrs(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        sequence = self._scrambling_sequence(llrs.numel(), config)
+        signs = 1.0 - 2.0 * sequence.to(dtype=REAL_DTYPE, device=llrs.device)
         return llrs * signs
 
-    def _scrambling_sequence(self, length: int, config: SimulationConfig) -> np.ndarray:
-        return gold_sequence(self._c_init(config), length).astype(np.int8)
+    def _scrambling_sequence(self, length: int, config: SimulationConfig) -> torch.Tensor:
+        return gold_sequence(self._c_init(config), length).to(dtype=BIT_DTYPE)
 
     @staticmethod
     def _c_init(config: SimulationConfig) -> int:

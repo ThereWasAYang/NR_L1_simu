@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 import numpy as np
+import torch
 
 from nr_phy_simu.channels.awgn import AwgnChannel
 from nr_phy_simu.channels.cdl import CdlChannel
@@ -22,7 +23,7 @@ class DefaultChannelFactory(ChannelFactory):
     def create(self, config: SimulationConfig):
         model = config.channel.model.upper()
         if model == "AWGN":
-            return AwgnChannel(rng=np.random.default_rng(config.random_seed))
+            return AwgnChannel(rng=torch.Generator().manual_seed(config.random_seed))
         if model == "TDL":
             return TdlChannel(rng=np.random.default_rng(config.random_seed))
         if model == "CDL":

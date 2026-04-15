@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.common.types import SimulationResult, TxPayload
@@ -13,6 +13,7 @@ from nr_phy_simu.scenarios.component_factory import (
     SimulationComponentFactory,
     build_receiver,
 )
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, COMPLEX_DTYPE, as_complex_tensor
 
 
 class WaveformReplaySimulation:
@@ -59,11 +60,14 @@ class WaveformReplaySimulation:
             config=self.config,
         )
         tx_placeholder = TxPayload(
-            transport_block=np.array([], dtype=np.int8),
-            coded_bits=np.array([], dtype=np.int8),
-            tx_symbols=np.array([], dtype=np.complex128),
-            resource_grid=np.zeros((self.config.carrier.n_subcarriers, self.config.carrier.symbols_per_slot), dtype=np.complex128),
-            waveform=np.asarray(waveform, dtype=np.complex128),
+            transport_block=torch.zeros(0, dtype=BIT_DTYPE),
+            coded_bits=torch.zeros(0, dtype=BIT_DTYPE),
+            tx_symbols=torch.zeros(0, dtype=COMPLEX_DTYPE),
+            resource_grid=torch.zeros(
+                (self.config.carrier.n_subcarriers, self.config.carrier.symbols_per_slot),
+                dtype=COMPLEX_DTYPE,
+            ),
+            waveform=as_complex_tensor(waveform),
             dmrs_symbols=dmrs_symbols,
             dmrs_mask=dmrs_mask,
             data_mask=data_mask,
@@ -80,18 +84,18 @@ class WaveformReplaySimulation:
             interference_reports=interference_reports,
         )
 
-    def _build_reference_masks(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        dummy_symbols = np.zeros(self.mapper.count_data_re(self.config), dtype=np.complex128)
+    def _build_reference_masks(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        dummy_symbols = torch.zeros(self.mapper.count_data_re(self.config), dtype=COMPLEX_DTYPE)
         _, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(dummy_symbols, self.config)
         return dmrs_mask, data_mask, dmrs_symbols
 
-    def _resolve_noise_variance(self, waveform: np.ndarray) -> float:
+    def _resolve_noise_variance(self, waveform: torch.Tensor) -> float:
         if self.config.waveform_input.noise_variance is not None:
             return float(self.config.waveform_input.noise_variance)
 
         snr_db = float(self.config.channel.params.get("snr_db", self.config.snr_db))
         snr_linear = 10 ** (snr_db / 10.0)
-        signal_power = np.mean(np.abs(waveform) ** 2)
+        signal_power = float(torch.mean(torch.abs(as_complex_tensor(waveform)) ** 2).item())
         return float(signal_power / max(snr_linear, 1e-12))
 
     def _bits_per_symbol(self) -> int:

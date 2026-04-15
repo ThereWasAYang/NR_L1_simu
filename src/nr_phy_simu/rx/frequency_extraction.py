@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.interfaces import FrequencyExtractor
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, as_complex_tensor
 
 
 class FrequencyDomainExtractor(FrequencyExtractor):
@@ -11,39 +12,42 @@ class FrequencyDomainExtractor(FrequencyExtractor):
 
     def extract(
         self,
-        grid: np.ndarray,
-        data_mask: np.ndarray,
+        grid: torch.Tensor,
+        data_mask: torch.Tensor,
         config: SimulationConfig,
         despread: bool = True,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
+        grid = as_complex_tensor(grid)
         if grid.ndim == 3:
             per_antenna = [
                 self._extract_single(grid[antenna_idx], data_mask, config, despread)
                 for antenna_idx in range(grid.shape[0])
             ]
-            return np.stack(per_antenna, axis=0)
+            return torch.stack(per_antenna, dim=0)
         return self._extract_single(grid, data_mask, config, despread)
 
     @staticmethod
     def _extract_single(
-        grid: np.ndarray,
-        data_mask: np.ndarray,
+        grid: torch.Tensor,
+        data_mask: torch.Tensor,
         config: SimulationConfig,
         despread: bool,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         symbols = []
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
             symbol_values = grid[:, symbol_idx][data_mask[:, symbol_idx]]
-            if symbol_values.size == 0:
+            if symbol_values.numel() == 0:
                 continue
             if (
                 despread
                 and config.link.channel_type.upper() == "PUSCH"
                 and config.link.waveform.upper() == "DFT-S-OFDM"
             ):
-                symbol_values = np.fft.ifft(symbol_values, n=symbol_values.size) * np.sqrt(symbol_values.size)
+                symbol_values = torch.fft.ifft(symbol_values, n=symbol_values.numel()) * torch.sqrt(
+                    torch.tensor(float(symbol_values.numel()), dtype=torch.float64, device=symbol_values.device)
+                )
             symbols.append(symbol_values)
 
         if not symbols:
-            return np.array([], dtype=np.complex128)
-        return np.concatenate(symbols)
+            return torch.zeros(0, dtype=COMPLEX_DTYPE, device=grid.device)
+        return torch.cat(symbols)

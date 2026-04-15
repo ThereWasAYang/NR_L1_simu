@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 
-import numpy as np
+import torch
 from py3gpp import (
     nrCRCDecode,
     nrCodeBlockDesegmentLDPC,
@@ -16,20 +16,22 @@ from nr_phy_simu.common.ulsch_ldpc import (
     rate_recover_ulsch_ldpc,
 )
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_real_tensor, to_numpy
 
 
 class NrLdpcDecoder(ChannelDecoder):
     def __init__(self) -> None:
         self.last_crc_ok: bool | None = None
 
-    def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def decode(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         tbs = int(config.link.transport_block_size or 0)
         if tbs <= 0:
             raise ValueError("transport_block_size must be resolved before LDPC decoding.")
 
+        llrs = as_real_tensor(llrs)
         info = get_ulsch_ldpc_info(tbs, config.link.code_rate)
         recovered = rate_recover_ulsch_ldpc(
-            llrs,
+            to_numpy(llrs),
             trblklen=tbs,
             target_code_rate=config.link.code_rate,
             rv=int(config.link.mcs.rv),
@@ -39,16 +41,17 @@ class NrLdpcDecoder(ChannelDecoder):
         decoded_cbs = decode_ulsch_ldpc(recovered, info, max_num_iter=25)
         with contextlib.redirect_stdout(io.StringIO()):
             tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
-        decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info.crc)
+        decoded, crc_error = nrCRCDecode(tb_with_crc.astype("int8"), info.crc)
         self.last_crc_ok = bool(crc_error == 0)
-        return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)
+        return torch.as_tensor(decoded, dtype=BIT_DTYPE).reshape(-1)[:tbs]
 
 
 class HardDecisionBypassDecoder(ChannelDecoder):
     def __init__(self) -> None:
         self.last_crc_ok: bool | None = None
 
-    def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def decode(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         del config
         self.last_crc_ok = None
-        return (np.asarray(llrs).reshape(-1) < 0.0).astype(np.int8)
+        llrs = as_real_tensor(llrs)
+        return (llrs.reshape(-1) < 0.0).to(dtype=BIT_DTYPE)

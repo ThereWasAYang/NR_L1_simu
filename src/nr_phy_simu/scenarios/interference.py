@@ -3,11 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.config import InterferenceSourceConfig, SimulationConfig
 from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory, build_transmitter
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, COMPLEX_DTYPE, as_complex_tensor, to_numpy
 
 
 @dataclass(frozen=True)
@@ -27,14 +28,14 @@ class InterferenceMixer:
 
     def apply(
         self,
-        waveform: np.ndarray,
+        waveform: torch.Tensor,
         noise_variance: float,
         config: SimulationConfig,
-    ) -> tuple[np.ndarray, tuple[InterferenceReport, ...]]:
+    ) -> tuple[torch.Tensor, tuple[InterferenceReport, ...]]:
         if not config.interference.enabled:
             return waveform, ()
 
-        composite = np.array(waveform, copy=True)
+        composite = as_complex_tensor(waveform).clone()
         reports: list[InterferenceReport] = []
         for index, source in enumerate(config.interference.sources):
             if not source.enabled:
@@ -51,7 +52,7 @@ class InterferenceMixer:
             reports.append(report)
         return composite, tuple(reports)
 
-    def _generate_interferer_waveform(self, config: SimulationConfig) -> np.ndarray:
+    def _generate_interferer_waveform(self, config: SimulationConfig) -> torch.Tensor:
         components = self.component_factory.create_components(config)
         transmitter = build_transmitter(components)
         channel = self.component_factory.create_channel_factory().create(config)
@@ -61,16 +62,11 @@ class InterferenceMixer:
         config.link.coded_bit_capacity = data_re * bits_per_symbol
         if not config.link.transport_block_size:
             config.link.transport_block_size = resolve_transport_block_size(config, data_re)
-        rng = np.random.default_rng(config.random_seed)
-        transport_block = rng.integers(
-            0,
-            2,
-            size=int(config.link.transport_block_size),
-            dtype=np.int8,
-        )
+        generator = torch.Generator().manual_seed(config.random_seed)
+        transport_block = torch.randint(0, 2, (int(config.link.transport_block_size),), dtype=BIT_DTYPE, generator=generator)
         tx_payload = transmitter.transmit(transport_block, config)
-        rx_waveform, _ = channel.propagate(tx_payload.waveform, config)
-        return np.asarray(rx_waveform, dtype=np.complex128)
+        rx_waveform, _ = channel.propagate(to_numpy(tx_payload.waveform), config)
+        return as_complex_tensor(rx_waveform)
 
     def _build_interferer_config(
         self,
@@ -119,14 +115,15 @@ class InterferenceMixer:
 
     @staticmethod
     def _scale_to_inr(
-        waveform: np.ndarray,
+        waveform: torch.Tensor,
         noise_variance: float,
         source: InterferenceSourceConfig,
         index: int,
-    ) -> tuple[np.ndarray, InterferenceReport]:
-        rx_power = float(np.mean(np.abs(waveform) ** 2))
+    ) -> tuple[torch.Tensor, InterferenceReport]:
+        waveform = as_complex_tensor(waveform)
+        rx_power = float(torch.mean(torch.abs(waveform) ** 2).item())
         target_power = float(noise_variance * (10 ** (source.inr_db / 10.0)))
-        scale = 0.0 if rx_power <= 0.0 else np.sqrt(target_power / rx_power)
+        scale = 0.0 if rx_power <= 0.0 else float(target_power / rx_power) ** 0.5
         label = source.label or f"interferer_{index}"
         return waveform * scale, InterferenceReport(
             label=label,

@@ -47,6 +47,18 @@ from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.scenarios.component_factory import build_transmitter
 
 
+def _numel(value) -> int:
+    if hasattr(value, "numel"):
+        return int(value.numel())
+    return int(np.size(value))
+
+
+def _as_numpy(value):
+    if hasattr(value, "detach"):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
+
 class PuschAwgnSmokeTest(unittest.TestCase):
     def test_pusch_multi_tti_bler_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
@@ -82,7 +94,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
+        self.assertGreater(_numel(result.rx.channel_estimation.pilot_estimates), 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.channel_estimation.channel_estimate.ndim, 3)
         self.assertEqual(result.rx.rx_grid.shape[0], config.link.num_rx_ant)
@@ -98,7 +110,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
+        self.assertGreater(_numel(result.rx.channel_estimation.pilot_estimates), 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
@@ -142,8 +154,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertIsNone(result.crc_ok)
-        self.assertEqual(result.tx.coded_bits.size, config.link.coded_bit_capacity)
-        self.assertEqual(result.rx.decoded_bits.size, result.tx.coded_bits.size)
+        self.assertEqual(_numel(result.tx.coded_bits), config.link.coded_bit_capacity)
+        self.assertEqual(_numel(result.rx.decoded_bits), _numel(result.tx.coded_bits))
 
     def test_bypass_channel_coding_multi_tti_reports_bler_as_nan(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
@@ -188,7 +200,7 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         config.channel.params["snr_db"] = 30.0
         result = PdschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
-        self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
+        self.assertGreater(_numel(result.rx.channel_estimation.pilot_estimates), 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
@@ -213,7 +225,7 @@ class DmrsSequenceTest(unittest.TestCase):
             config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")
             config.link.num_prbs = num_prbs
             symbols = generator.generate_for_symbol(symbol=2, config=config)
-            self.assertEqual(symbols.size, num_prbs * 6)
+            self.assertEqual(_numel(symbols), num_prbs * 6)
             self.assertTrue(np.allclose(np.abs(symbols), 1.0))
 
     def test_transform_precoded_pusch_rejects_dmrs_config_type2(self):
@@ -239,10 +251,12 @@ class DmrsSequenceTest(unittest.TestCase):
         config.dmrs.data_mux_enabled = False
         mapper = FrequencyDomainResourceMapper(dmrs_generator=DmrsGenerator())
         grid, dmrs_mask, data_mask, _ = mapper.map_to_grid(np.ones(mapper.count_data_re(config), dtype=np.complex128), config)
-        dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
-        self.assertGreater(dmrs_symbols.size, 0)
+        dmrs_mask_np = _as_numpy(dmrs_mask)
+        data_mask_np = _as_numpy(data_mask)
+        dmrs_symbols = np.where(np.any(dmrs_mask_np, axis=0))[0]
+        self.assertGreater(_numel(dmrs_symbols), 0)
         for symbol_idx in dmrs_symbols:
-            self.assertEqual(int(np.count_nonzero(data_mask[:, symbol_idx])), 0)
+            self.assertEqual(int(np.count_nonzero(data_mask_np[:, symbol_idx])), 0)
 
     def test_type1_dmrs_power_boost_without_data_multiplexing(self):
         config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
@@ -256,8 +270,11 @@ class DmrsSequenceTest(unittest.TestCase):
             np.ones(mapper.count_data_re(config), dtype=np.complex128),
             config,
         )
-        dmrs_power = float(np.mean(np.abs(grid[dmrs_mask]) ** 2))
-        data_power = float(np.mean(np.abs(grid[data_mask]) ** 2))
+        grid_np = _as_numpy(grid)
+        dmrs_mask_np = _as_numpy(dmrs_mask)
+        data_mask_np = _as_numpy(data_mask)
+        dmrs_power = float(np.mean(np.abs(grid_np[dmrs_mask_np]) ** 2))
+        data_power = float(np.mean(np.abs(grid_np[data_mask_np]) ** 2))
         self.assertAlmostEqual(dmrs_power / data_power, 2.0, places=6)
 
 
@@ -417,7 +434,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
         waveform = np.ones(2048, dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(rx_waveform.shape, (4, _numel(waveform)))
         self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
         self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
 
@@ -427,7 +444,7 @@ class WaveformReplaySmokeTest(unittest.TestCase):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_replay_template.yaml")
         result = WaveformReplaySimulation(cfg).run()
         self.assertTrue(np.isnan(result.bit_error_rate))
-        self.assertGreater(result.rx.decoded_bits.size, 0)
+        self.assertGreater(_numel(result.rx.decoded_bits), 0)
         self.assertIs(result.crc_ok, True)
 
     def test_replay_waveform_file_into_receiver(self):
@@ -459,7 +476,7 @@ class WaveformReplaySmokeTest(unittest.TestCase):
             replay_cfg.link.coded_bit_capacity = cfg.link.coded_bit_capacity
             result = WaveformReplaySimulation(replay_cfg).run()
             self.assertTrue(np.isnan(result.bit_error_rate))
-            self.assertTrue(np.array_equal(result.rx.decoded_bits[: transport_block.size], transport_block))
+            self.assertTrue(np.array_equal(result.rx.decoded_bits[: _numel(transport_block)], transport_block))
             self.assertIs(result.crc_ok, True)
 
     def test_cdl_channel_propagates(self):
@@ -479,7 +496,7 @@ class WaveformReplaySmokeTest(unittest.TestCase):
         waveform = np.ones(2048, dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(rx_waveform.shape, (4, _numel(waveform)))
         self.assertEqual(info["path_coefficients"].shape[0], 4)
         self.assertEqual(info["path_coefficients"].shape[1], 2)
 

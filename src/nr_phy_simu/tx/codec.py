@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 from py3gpp import (
     nrCRCEncode,
     nrCodeBlockSegmentLDPC,
@@ -13,6 +13,7 @@ from nr_phy_simu.common.ulsch_ldpc import (
     rate_match_ulsch_ldpc,
 )
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, as_int_tensor, to_numpy
 
 
 class NrLdpcCoder(ChannelCoder):
@@ -21,22 +22,24 @@ class NrLdpcCoder(ChannelCoder):
     TB CRC -> code block segmentation -> LDPC encode -> rate matching.
     """
 
-    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def encode(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         if config.link.coded_bit_capacity is None:
             raise ValueError("coded_bit_capacity must be resolved before LDPC encoding.")
 
-        tbs = int(bits.size)
+        bits = as_int_tensor(bits, dtype=BIT_DTYPE)
+        tbs = int(bits.numel())
         info = get_ulsch_ldpc_info(tbs, config.link.code_rate)
-        tb_crc = nrCRCEncode(bits.astype(np.int8), info.crc)[:, 0].astype(np.int8)
+        tb_crc = nrCRCEncode(to_numpy(bits), info.crc)[:, 0].astype("int8")
         cbs = nrCodeBlockSegmentLDPC(tb_crc, info.base_graph)
         coded_cbs = encode_ldpc_codeblocks(cbs, info.base_graph)
-        return rate_match_ulsch_ldpc(
+        coded = rate_match_ulsch_ldpc(
             coded_cbs,
             out_length=int(config.link.coded_bit_capacity),
             rv=int(config.link.mcs.rv),
             modulation=config.link.modulation,
             num_layers=config.link.num_layers,
-        ).astype(np.int8)
+        ).astype("int8")
+        return torch.as_tensor(coded, dtype=BIT_DTYPE)
 
 
 class RandomBitCoder(ChannelCoder):
@@ -48,10 +51,10 @@ class RandomBitCoder(ChannelCoder):
     directly into scrambling/modulation.
     """
 
-    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def encode(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         del bits
         if config.link.coded_bit_capacity is None:
             raise ValueError("coded_bit_capacity must be resolved before bypass coding.")
 
-        rng = np.random.default_rng(config.random_seed + 1000)
-        return rng.integers(0, 2, size=int(config.link.coded_bit_capacity), dtype=np.int8)
+        generator = torch.Generator().manual_seed(config.random_seed + 1000)
+        return torch.randint(0, 2, (int(config.link.coded_bit_capacity),), dtype=BIT_DTYPE, generator=generator)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-import numpy as np
+import torch
 
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.types import ChannelEstimateResult
@@ -10,29 +10,29 @@ from nr_phy_simu.common.types import ChannelEstimateResult
 
 class ChannelCoder(ABC):
     @abstractmethod
-    def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def encode(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
 
 class ChannelDecoder(ABC):
     @abstractmethod
-    def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def decode(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
 
 class BitScrambler(ABC):
     @abstractmethod
-    def scramble(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def scramble(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
     @abstractmethod
-    def descramble_llrs(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def descramble_llrs(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
 
 class Modulator(ABC):
     @abstractmethod
-    def map_bits(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def map_bits(self, bits: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -40,10 +40,10 @@ class Demodulator(ABC):
     @abstractmethod
     def demap_symbols(
         self,
-        symbols: np.ndarray,
+        symbols: torch.Tensor,
         noise_variance: float,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -51,9 +51,9 @@ class ResourceMapper(ABC):
     @abstractmethod
     def map_to_grid(
         self,
-        data_symbols: np.ndarray,
+        data_symbols: torch.Tensor,
         config: SimulationConfig,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     @abstractmethod
@@ -63,11 +63,11 @@ class ResourceMapper(ABC):
 
 class TimeDomainProcessor(ABC):
     @abstractmethod
-    def modulate(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def modulate(self, grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
     @abstractmethod
-    def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def demodulate(self, waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -75,9 +75,9 @@ class ChannelModel(ABC):
     @abstractmethod
     def propagate(
         self,
-        waveform: np.ndarray,
+        waveform: torch.Tensor,
         config: SimulationConfig,
-    ) -> tuple[np.ndarray, dict]:
+    ) -> tuple[torch.Tensor, dict]:
         raise NotImplementedError
 
 
@@ -85,11 +85,11 @@ class FrequencyExtractor(ABC):
     @abstractmethod
     def extract(
         self,
-        grid: np.ndarray,
-        data_mask: np.ndarray,
+        grid: torch.Tensor,
+        data_mask: torch.Tensor,
         config: SimulationConfig,
         despread: bool = True,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -97,9 +97,9 @@ class ChannelEstimator(ABC):
     @abstractmethod
     def estimate(
         self,
-        rx_grid: np.ndarray,
-        dmrs_symbols: np.ndarray,
-        dmrs_mask: np.ndarray,
+        rx_grid: torch.Tensor,
+        dmrs_symbols: torch.Tensor,
+        dmrs_mask: torch.Tensor,
         config: SimulationConfig,
     ) -> ChannelEstimateResult:
         raise NotImplementedError
@@ -109,11 +109,11 @@ class MimoEqualizer(ABC):
     @abstractmethod
     def equalize(
         self,
-        rx_symbols: np.ndarray,
-        channel_estimate: np.ndarray,
+        rx_symbols: torch.Tensor,
+        channel_estimate: torch.Tensor,
         noise_variance: float,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -123,5 +123,5 @@ class DmrsSequenceGenerator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> np.ndarray:
+    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> torch.Tensor:
         raise NotImplementedError

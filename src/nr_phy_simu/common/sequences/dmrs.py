@@ -4,9 +4,11 @@ from dataclasses import dataclass
 import math
 
 import numpy as np
+import torch
 
 from nr_phy_simu.common.interfaces import DmrsSequenceGenerator
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, COMPLEX_DTYPE
 
 
 SHORT_LOW_PAPR_TYPE1_PHASES: dict[int, dict[int, tuple[int, ...]]] = {
@@ -253,7 +255,7 @@ SHORT_LOW_PAPR_TYPE2_BITS: dict[int, dict[int, tuple[int, ...]]] = {
 }
 
 
-def gold_sequence(c_init: int, length: int) -> np.ndarray:
+def gold_sequence(c_init: int, length: int) -> torch.Tensor:
     nc = 1600
     seq_len = nc + length + 31
     x1 = np.zeros(seq_len, dtype=np.int8)
@@ -267,22 +269,26 @@ def gold_sequence(c_init: int, length: int) -> np.ndarray:
         x1[idx] = (x1[idx - 28] + x1[idx - 31]) & 1
         x2[idx] = (x2[idx - 28] + x2[idx - 29] + x2[idx - 30] + x2[idx - 31]) & 1
 
-    return (x1[nc : nc + length] + x2[nc : nc + length]) & 1
+    return torch.as_tensor((x1[nc : nc + length] + x2[nc : nc + length]) & 1, dtype=BIT_DTYPE)
 
 
-def qpsk_from_prbs(bits: np.ndarray) -> np.ndarray:
+def qpsk_from_prbs(bits: torch.Tensor | np.ndarray) -> torch.Tensor:
+    if not isinstance(bits, torch.Tensor):
+        bits = torch.as_tensor(bits, dtype=BIT_DTYPE)
     real = 1 - 2 * bits[0::2]
     imag = 1 - 2 * bits[1::2]
-    return (real + 1j * imag) / np.sqrt(2.0)
+    return torch.complex(real.to(torch.float64), imag.to(torch.float64)) / math.sqrt(2.0)
 
 
-def pi_over_two_bpsk_from_bits(bits: np.ndarray) -> np.ndarray:
-    bits = np.asarray(bits, dtype=np.int8).reshape(-1)
-    real = np.where(bits == 0, 1.0, -1.0)
-    imag = real.copy()
-    odd = np.arange(bits.size) % 2 == 1
+def pi_over_two_bpsk_from_bits(bits: torch.Tensor | np.ndarray) -> torch.Tensor:
+    if not isinstance(bits, torch.Tensor):
+        bits = torch.as_tensor(bits, dtype=BIT_DTYPE)
+    bits = bits.reshape(-1).to(dtype=BIT_DTYPE)
+    real = torch.where(bits == 0, torch.tensor(1.0), torch.tensor(-1.0))
+    imag = real.clone()
+    odd = (torch.arange(bits.numel()) % 2) == 1
     real[odd] *= -1.0
-    return (real + 1j * imag) / np.sqrt(2.0)
+    return torch.complex(real.to(torch.float64), imag.to(torch.float64)) / math.sqrt(2.0)
 
 
 def _largest_prime_less_than_or_equal(value: int) -> int:
@@ -310,7 +316,7 @@ def _zadoff_chu_extension(root: int, length: int) -> np.ndarray:
 @dataclass(frozen=True)
 class DmrsInfo:
     symbol_indices: tuple[int, ...]
-    re_offsets: np.ndarray
+    re_offsets: torch.Tensor
     re_per_prb: int
 
 
@@ -334,21 +340,21 @@ class DmrsGenerator(DmrsSequenceGenerator):
             # For transform-precoded PUSCH DM-RS, clause 6.4.1.1.3 uses
             # k = 4n + 2k' + Δ with k' = 0,1, which gives 6 RE/PRB in the
             # current single-port implementation.
-            re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
+            re_offsets = torch.tensor([0, 2, 4, 6, 8, 10], dtype=torch.int64)
         elif config.dmrs.config_type == 1:
-            re_offsets = np.array([0, 2, 4, 6, 8, 10], dtype=int)
+            re_offsets = torch.tensor([0, 2, 4, 6, 8, 10], dtype=torch.int64)
         elif config.dmrs.config_type == 2:
-            re_offsets = np.array([0, 1, 6, 7], dtype=int)
+            re_offsets = torch.tensor([0, 1, 6, 7], dtype=torch.int64)
         else:
             raise ValueError(f"Unsupported DMRS configuration type: {config.dmrs.config_type}")
 
         return DmrsInfo(
             symbol_indices=self._dmrs_symbol_indices(config),
             re_offsets=re_offsets,
-            re_per_prb=re_offsets.size,
+            re_per_prb=re_offsets.numel(),
         )
 
-    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> np.ndarray:
+    def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> torch.Tensor:
         info = self.get_dmrs_info(config)
         num_prbs = config.link.num_prbs
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
@@ -432,7 +438,7 @@ class DmrsGenerator(DmrsSequenceGenerator):
         num_prbs: int,
         info: DmrsInfo,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         dmrs_begin = info.re_per_prb * config.link.prb_start * 2
         dmrs_end = info.re_per_prb * (config.link.prb_start + num_prbs) * 2
         dmrs_size = info.re_per_prb * config.carrier.n_size_grid * 2
@@ -445,7 +451,7 @@ class DmrsGenerator(DmrsSequenceGenerator):
         num_prbs: int,
         info: DmrsInfo,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         length = num_prbs * info.re_per_prb
         if self._use_type2_low_papr_sequence(config):
             return self._generate_type2_low_papr_sequence(symbol, length, config)
@@ -471,7 +477,8 @@ class DmrsGenerator(DmrsSequenceGenerator):
         if config.dmrs.group_hopping:
             prbs = gold_sequence(c_init=int(n_id_rs // 30), length=8 * (linear_symbol + 1))
             hop_bits = prbs[8 * linear_symbol : 8 * (linear_symbol + 1)]
-            f_gh = int(np.sum(hop_bits * (2 ** np.arange(8)))) % 30
+            weights = torch.pow(torch.tensor(2, dtype=torch.int64), torch.arange(8, dtype=torch.int64))
+            f_gh = int(torch.sum(hop_bits * weights).item()) % 30
 
         v = 0
         if config.dmrs.sequence_hopping and not config.dmrs.group_hopping and sequence_length >= 72:
@@ -481,11 +488,11 @@ class DmrsGenerator(DmrsSequenceGenerator):
         u = (f_gh + int(n_id_rs)) % 30
         return u, v
 
-    def _low_papr_type1(self, u: int, v: int, length: int) -> np.ndarray:
+    def _low_papr_type1(self, u: int, v: int, length: int) -> torch.Tensor:
         if length in SHORT_LOW_PAPR_TYPE1_PHASES:
             phases = np.array(SHORT_LOW_PAPR_TYPE1_PHASES[length][u], dtype=np.float64)
             sequence = np.exp(1j * np.pi * phases / 4.0)
-            return sequence / np.sqrt(np.mean(np.abs(sequence) ** 2))
+            return torch.as_tensor(sequence / np.sqrt(np.mean(np.abs(sequence) ** 2)), dtype=COMPLEX_DTYPE)
         return self._zc_low_papr_sequence(u=u, v=v, length=length)
 
     def _generate_type2_low_papr_sequence(
@@ -493,10 +500,10 @@ class DmrsGenerator(DmrsSequenceGenerator):
         symbol: int,
         length: int,
         config: SimulationConfig,
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         if length == 6:
             phases = np.array(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=np.float64)
-            return np.exp(1j * np.pi * phases / 4.0)
+            return torch.as_tensor(np.exp(1j * np.pi * phases / 4.0), dtype=COMPLEX_DTYPE)
 
         if length in SHORT_LOW_PAPR_TYPE2_BITS:
             bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[length][self._type2_u_index(symbol, config)], dtype=np.int8)
@@ -513,7 +520,8 @@ class DmrsGenerator(DmrsSequenceGenerator):
         if config.dmrs.group_hopping:
             prbs = gold_sequence(c_init=int(n_id // 30), length=8 * (linear_symbol + 1))
             hop_bits = prbs[8 * linear_symbol : 8 * (linear_symbol + 1)]
-            f_gh = int(np.sum(hop_bits * (2 ** np.arange(8)))) % 30
+            weights = torch.pow(torch.tensor(2, dtype=torch.int64), torch.arange(8, dtype=torch.int64))
+            f_gh = int(torch.sum(hop_bits * weights).item()) % 30
         else:
             f_gh = 0
         return (f_gh + int(n_id)) % 30
@@ -545,11 +553,11 @@ class DmrsGenerator(DmrsSequenceGenerator):
         )
 
     @staticmethod
-    def _zc_low_papr_sequence(u: int, v: int, length: int) -> np.ndarray:
+    def _zc_low_papr_sequence(u: int, v: int, length: int) -> torch.Tensor:
         nzc = _largest_prime_less_than_or_equal(length)
         q_bar = nzc * (u + 1) / 31.0
         q = int(np.floor(q_bar + 0.5)) + v * ((-1) ** int(np.floor(2 * q_bar)))
         n = np.arange(nzc)
         base = np.exp(-1j * np.pi * q * n * (n + 1) / nzc)
         sequence = base[np.mod(np.arange(length), nzc)]
-        return sequence / np.sqrt(np.mean(np.abs(sequence) ** 2))
+        return torch.as_tensor(sequence / np.sqrt(np.mean(np.abs(sequence) ** 2)), dtype=COMPLEX_DTYPE)

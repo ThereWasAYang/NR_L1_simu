@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
+import torch
 
-ComplexArray = np.ndarray
-RealArray = np.ndarray
-BitArray = np.ndarray
+ComplexArray = torch.Tensor
+RealArray = torch.Tensor
+BitArray = torch.Tensor
 
 
 @dataclass
@@ -18,15 +18,15 @@ class TxPayload:
     resource_grid: ComplexArray
     waveform: ComplexArray
     dmrs_symbols: ComplexArray
-    dmrs_mask: np.ndarray
-    data_mask: np.ndarray
+    dmrs_mask: torch.Tensor
+    data_mask: torch.Tensor
 
 
 @dataclass
 class ChannelEstimateResult:
     channel_estimate: ComplexArray
     pilot_estimates: ComplexArray
-    pilot_symbol_indices: np.ndarray
+    pilot_symbol_indices: torch.Tensor
 
 
 @dataclass

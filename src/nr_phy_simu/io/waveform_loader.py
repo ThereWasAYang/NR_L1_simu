@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
+import torch
 
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE
 
 
-def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray:
+def load_text_waveform(path: str | Path, config: SimulationConfig) -> torch.Tensor:
     resolved = Path(path).expanduser().resolve()
     values = [_parse_complex_line(line) for line in resolved.read_text().splitlines() if line.strip()]
     if not values:
@@ -26,7 +27,7 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
             f"Waveform samples per antenna ({num_samples}) do not match expected TTI length ({expected_samples})."
         )
 
-    waveform = np.asarray(values, dtype=np.complex128).reshape(num_rx_ant, num_samples)
+    waveform = torch.as_tensor(values, dtype=COMPLEX_DTYPE).reshape(num_rx_ant, num_samples)
     return waveform[0] if num_rx_ant == 1 else waveform
 
 

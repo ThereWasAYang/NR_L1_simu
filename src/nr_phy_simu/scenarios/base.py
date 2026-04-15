@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.common.types import SimulationResult
@@ -14,6 +14,7 @@ from nr_phy_simu.scenarios.component_factory import (
     build_transmitter,
 )
 from nr_phy_simu.tx.chain import Transmitter
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_complex_tensor, to_numpy
 
 
 class SharedChannelSimulation:
@@ -42,15 +43,17 @@ class SharedChannelSimulation:
         if not self.config.link.transport_block_size:
             self.config.link.transport_block_size = resolve_transport_block_size(self.config, data_re)
 
-        rng = np.random.default_rng(self.config.random_seed)
-        transport_block = rng.integers(
+        generator = torch.Generator().manual_seed(self.config.random_seed)
+        transport_block = torch.randint(
             0,
             2,
-            size=int(self.config.link.transport_block_size),
-            dtype=np.int8,
+            (int(self.config.link.transport_block_size),),
+            dtype=BIT_DTYPE,
+            generator=generator,
         )
         tx_payload = self.transmitter.transmit(transport_block, self.config)
-        rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
+        rx_waveform, channel_info = self.channel.propagate(to_numpy(tx_payload.waveform), self.config)
+        rx_waveform = as_complex_tensor(rx_waveform)
         rx_waveform, interference_reports = self.interference_mixer.apply(
             rx_waveform,
             noise_variance=float(channel_info["noise_variance"]),
@@ -66,12 +69,12 @@ class SharedChannelSimulation:
         )
         if self.config.simulation.bypass_channel_coding:
             reference_bits = tx_payload.coded_bits
-            decoded = rx_payload.decoded_bits[: reference_bits.size]
+            decoded = rx_payload.decoded_bits[: reference_bits.numel()]
         else:
             reference_bits = transport_block
-            decoded = rx_payload.decoded_bits[: reference_bits.size]
-        bit_errors = int(np.sum(decoded != reference_bits))
-        ber = bit_errors / reference_bits.size
+            decoded = rx_payload.decoded_bits[: reference_bits.numel()]
+        bit_errors = int(torch.sum(decoded != reference_bits).item())
+        ber = bit_errors / reference_bits.numel()
         evm_percent, evm_snr_linear = self._compute_evm_metrics(tx_payload.tx_symbols, rx_payload.equalized_symbols)
         return SimulationResult(
             tx=tx_payload,
@@ -92,19 +95,19 @@ class SharedChannelSimulation:
 
     @staticmethod
     def _compute_evm_metrics(
-        reference_symbols: np.ndarray,
-        equalized_symbols: np.ndarray,
+        reference_symbols: torch.Tensor,
+        equalized_symbols: torch.Tensor,
     ) -> tuple[float | None, float | None]:
-        if reference_symbols.size == 0 or equalized_symbols.size == 0:
+        if reference_symbols.numel() == 0 or equalized_symbols.numel() == 0:
             return None, None
 
-        count = min(reference_symbols.size, equalized_symbols.size)
-        reference = np.asarray(reference_symbols[:count], dtype=np.complex128)
-        measured = np.asarray(equalized_symbols[:count], dtype=np.complex128)
-        symbol_magnitude = np.maximum(np.abs(reference), 1e-12)
-        error_vector = np.abs(measured - reference)
+        count = min(reference_symbols.numel(), equalized_symbols.numel())
+        reference = as_complex_tensor(reference_symbols[:count])
+        measured = as_complex_tensor(equalized_symbols[:count], device=reference.device)
+        symbol_magnitude = torch.clamp(torch.abs(reference), min=1e-12)
+        error_vector = torch.abs(measured - reference)
         evm_ratio = error_vector / symbol_magnitude
-        mean_evm_ratio = float(np.mean(evm_ratio))
+        mean_evm_ratio = float(torch.mean(evm_ratio.to(dtype=REAL_DTYPE)).item())
         evm_percent = mean_evm_ratio * 100.0
         evm_snr_linear = float(1.0 / max(mean_evm_ratio**2, 1e-24))
         return evm_percent, evm_snr_linear

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import numpy as np
+import torch
 
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.interfaces import TimeDomainProcessor
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, as_complex_tensor
 
 
 class OfdmProcessor(TimeDomainProcessor):
     """CP-OFDM processor shared by CP-OFDM and DFT-s-OFDM chains."""
 
-    def modulate(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def modulate(self, grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        grid = as_complex_tensor(grid)
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers
@@ -20,26 +22,27 @@ class OfdmProcessor(TimeDomainProcessor):
 
         for symbol_idx in range(grid.shape[1]):
             cp_length = cp_lengths[symbol_idx % len(cp_lengths)]
-            fft_bins = np.zeros(fft_size, dtype=np.complex128)
+            fft_bins = torch.zeros(fft_size, dtype=COMPLEX_DTYPE, device=grid.device)
             fft_bins[start:stop] = grid[:, symbol_idx]
-            time_domain = np.fft.ifft(np.fft.ifftshift(fft_bins))
+            time_domain = torch.fft.ifft(torch.fft.ifftshift(fft_bins))
             cp = time_domain[-cp_length:]
-            waveform_symbols.append(np.concatenate([cp, time_domain]))
+            waveform_symbols.append(torch.cat([cp, time_domain]))
 
-        return np.concatenate(waveform_symbols)
+        return torch.cat(waveform_symbols)
 
-    def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def demodulate(self, waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        waveform = as_complex_tensor(waveform)
         if waveform.ndim == 2:
-            return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
-        return self._demodulate_single(waveform, config)[np.newaxis, ...]
+            return torch.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], dim=0)
+        return self._demodulate_single(waveform, config).unsqueeze(0)
 
-    def _demodulate_single(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+    def _demodulate_single(self, waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers
         symbols_per_slot = config.carrier.symbols_per_slot
 
-        grid = np.zeros((n_sc, symbols_per_slot), dtype=np.complex128)
+        grid = torch.zeros((n_sc, symbols_per_slot), dtype=COMPLEX_DTYPE, device=waveform.device)
         start = (fft_size - n_sc) // 2
         stop = start + n_sc
 
@@ -48,7 +51,7 @@ class OfdmProcessor(TimeDomainProcessor):
             cp_length = cp_lengths[symbol_idx % len(cp_lengths)]
             symbol_length = fft_size + cp_length
             symbol = waveform[offset + cp_length : offset + symbol_length]
-            fft_bins = np.fft.fftshift(np.fft.fft(symbol, n=fft_size))
+            fft_bins = torch.fft.fftshift(torch.fft.fft(symbol, n=fft_size))
             grid[:, symbol_idx] = fft_bins[start:stop]
             offset += symbol_length
 
