@@ -187,6 +187,14 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_waveform.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
 
+    def test_external_frequency_response_sample_config_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_external_freqresp_fd.yaml")
+        config.plotting.enabled = False
+        result = PuschSimulation(config).run()
+        self.assertIs(result.crc_ok, True)
+        self.assertEqual(result.bit_error_rate, 0.0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+
 
 class BaselineRegressionTest(unittest.TestCase):
     def test_pusch_baseline_cases(self):
