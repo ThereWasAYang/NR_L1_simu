@@ -22,6 +22,15 @@ class NrLdpcCoder(ChannelCoder):
     """
 
     def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Encode one transport block with the NR UL-SCH LDPC chain.
+
+        Args:
+            bits: Input transport-block bits before CRC and LDPC processing.
+            config: Full simulation configuration that defines rate-matching targets.
+
+        Returns:
+            Rate-matched coded bit sequence ready for scrambling.
+        """
         if config.link.coded_bit_capacity is None:
             raise ValueError("coded_bit_capacity must be resolved before LDPC encoding.")
 
@@ -49,6 +58,15 @@ class RandomBitCoder(ChannelCoder):
     """
 
     def encode(self, bits: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Generate deterministic pseudo-random coded bits in bypass mode.
+
+        Args:
+            bits: Unused transport-block input kept for interface compatibility.
+            config: Full simulation configuration that defines coded-bit capacity.
+
+        Returns:
+            Pseudo-random bit sequence with the same length as coded-bit capacity.
+        """
         del bits
         if config.link.coded_bit_capacity is None:
             raise ValueError("coded_bit_capacity must be resolved before bypass coding.")

@@ -10,6 +10,15 @@ class OfdmProcessor(TimeDomainProcessor):
     """CP-OFDM processor shared by CP-OFDM and DFT-s-OFDM chains."""
 
     def modulate(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Apply OFDM modulation and cyclic-prefix insertion.
+
+        Args:
+            grid: Frequency-domain slot grid with shape ``(n_subcarriers, n_symbols)``.
+            config: Full simulation configuration that defines FFT size and CP lengths.
+
+        Returns:
+            Serialized time-domain waveform for one slot.
+        """
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers
@@ -29,11 +38,29 @@ class OfdmProcessor(TimeDomainProcessor):
         return np.concatenate(waveform_symbols)
 
     def demodulate(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Apply cyclic-prefix removal and FFT demodulation.
+
+        Args:
+            waveform: Received time-domain waveform, optionally stacked by antenna.
+            config: Full simulation configuration that defines FFT size and CP lengths.
+
+        Returns:
+            Frequency-domain grid with an explicit receive-antenna dimension.
+        """
         if waveform.ndim == 2:
             return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
         return self._demodulate_single(waveform, config)[np.newaxis, ...]
 
     def _demodulate_single(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Demodulate a single-antenna waveform into one slot grid.
+
+        Args:
+            waveform: Time-domain waveform for one receive antenna.
+            config: Full simulation configuration that defines FFT size and CP lengths.
+
+        Returns:
+            Frequency-domain resource grid for that antenna.
+        """
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers

@@ -16,6 +16,17 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         config: SimulationConfig,
         despread: bool = True,
     ) -> np.ndarray:
+        """Extract scheduled data REs from a slot grid or estimate grid.
+
+        Args:
+            grid: Input grid, optionally stacked by receive antenna.
+            data_mask: Boolean mask that marks scheduled data REs.
+            config: Full simulation configuration that defines waveform behavior.
+            despread: Whether to undo DFT spreading for DFT-s-OFDM PUSCH.
+
+        Returns:
+            Serialized extracted values, keeping antenna stacking when present.
+        """
         if grid.ndim == 3:
             per_antenna = [
                 self._extract_single(grid[antenna_idx], data_mask, config, despread)
@@ -31,6 +42,17 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         config: SimulationConfig,
         despread: bool,
     ) -> np.ndarray:
+        """Extract scheduled data REs from a single-antenna grid.
+
+        Args:
+            grid: Single-antenna frequency-domain grid.
+            data_mask: Boolean mask that marks scheduled data REs.
+            config: Full simulation configuration that defines waveform behavior.
+            despread: Whether to undo DFT spreading for DFT-s-OFDM PUSCH.
+
+        Returns:
+            Serialized extracted values for the scheduled data REs.
+        """
         symbols = []
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
             symbol_values = grid[:, symbol_idx][data_mask[:, symbol_idx]]

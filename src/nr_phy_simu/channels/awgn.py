@@ -15,6 +15,15 @@ class AwgnChannel(ChannelModel):
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
+        """Apply receive-branch expansion and AWGN impairment.
+
+        Args:
+            waveform: Transmit waveform for one or more transmit branches.
+            config: Full simulation configuration that defines receive antennas and SNR.
+
+        Returns:
+            Tuple of ``(rx_waveform, channel_info)`` with added noise statistics.
+        """
         tx_waveform = self._expand_receive_branches(waveform, config)
         if not bool(config.channel.params.get("add_noise", True)):
             return tx_waveform, {"noise_variance": 0.0, "snr_db": float("inf")}
@@ -31,6 +40,15 @@ class AwgnChannel(ChannelModel):
 
     @staticmethod
     def _expand_receive_branches(waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Replicate a single received stream across configured receive branches.
+
+        Args:
+            waveform: Input waveform before receive-antenna expansion.
+            config: Full simulation configuration that defines ``num_rx_ant``.
+
+        Returns:
+            Waveform stacked by receive antenna when expansion is required.
+        """
         if waveform.ndim == 2:
             return waveform
 

@@ -17,6 +17,16 @@ class QamDemodulator(Demodulator):
         noise_variance: float,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Compute max-log LLRs for the configured constellation.
+
+        Args:
+            symbols: Equalized complex data symbols to demodulate.
+            noise_variance: Receiver noise variance used for LLR normalization.
+            config: Full simulation configuration that defines modulation order.
+
+        Returns:
+            Flat LLR array with one value per coded bit.
+        """
         constellation, bit_labels = self._constellation(config.link.modulation)
         metric = np.empty((symbols.size, constellation.size), dtype=np.float64)
         for idx, point in enumerate(constellation):
@@ -31,6 +41,14 @@ class QamDemodulator(Demodulator):
         return np.column_stack(llrs).reshape(-1)
 
     def _constellation(self, modulation: str) -> tuple[np.ndarray, np.ndarray]:
+        """Build constellation points and bit labels for one modulation.
+
+        Args:
+            modulation: Modulation name used by the link configuration.
+
+        Returns:
+            Tuple of ``(symbols, bit_labels)`` for the full constellation.
+        """
         bps = bits_per_symbol(modulation)
         bit_patterns = np.array(list(itertools.product([0, 1], repeat=bps)), dtype=np.int8)
         symbols = QamModulator.map_bits_for_modulation(bit_patterns.reshape(-1), modulation)

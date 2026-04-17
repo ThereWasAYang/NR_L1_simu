@@ -14,6 +14,17 @@ class OneTapMmseEqualizer(MimoEqualizer):
         noise_variance: float,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Apply one-tap MMSE equalization to extracted data symbols.
+
+        Args:
+            rx_symbols: Received data symbols, optionally stacked by receive antenna.
+            channel_estimate: Channel estimate sampled on the same data REs.
+            noise_variance: Receiver noise variance used in MMSE weighting.
+            config: Full simulation configuration, unused by this implementation.
+
+        Returns:
+            Equalized symbol stream after receive combining.
+        """
         del config
         if rx_symbols.ndim == 2:
             numerator = np.sum(np.conj(channel_estimate) * rx_symbols, axis=0)

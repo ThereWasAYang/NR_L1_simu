@@ -15,6 +15,17 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> ChannelEstimateResult:
+        """Estimate the full slot channel response from DMRS observations.
+
+        Args:
+            rx_grid: Received slot grid, optionally stacked by receive antenna.
+            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            config: Full simulation configuration for estimation context.
+
+        Returns:
+            Structured channel-estimation result with full-grid and pilot-only views.
+        """
         if rx_grid.ndim == 2:
             rx_grid = rx_grid[np.newaxis, ...]
         channel_estimate = np.stack(
@@ -35,38 +46,121 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Estimate the channel for one receive antenna across the full slot.
+
+        Args:
+            rx_grid: Single-antenna received slot grid.
+            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            config: Full simulation configuration, unused by this LS implementation.
+
+        Returns:
+            Full-grid complex channel estimate for one receive antenna.
+        """
         del config
-        channel = np.ones_like(rx_grid, dtype=np.complex128)
         if dmrs_symbols.size == 0:
-            return channel
+            return np.ones_like(rx_grid, dtype=np.complex128)
 
+        dmrs_symbol_indices, dmrs_estimates = self._estimate_dmrs_symbols(rx_grid, dmrs_symbols, dmrs_mask)
+        return self._interpolate_time(dmrs_symbol_indices, dmrs_estimates, rx_grid.shape[1])
+
+    @staticmethod
+    def _estimate_dmrs_symbols(
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Estimate channel values on all DMRS symbols after frequency interpolation.
+
+        Args:
+            rx_grid: Single-antenna received slot grid.
+            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+
+        Returns:
+            Tuple of ``(dmrs_symbol_indices, dmrs_estimates)`` where:
+            - ``dmrs_symbol_indices`` lists OFDM symbols carrying DMRS.
+            - ``dmrs_estimates`` stores one full-band estimate per DMRS symbol.
+        """
         dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
-        dmrs_estimates: dict[int, np.ndarray] = {}
+        dmrs_estimates = np.zeros((dmrs_symbol_indices.size, rx_grid.shape[0]), dtype=np.complex128)
         dmrs_cursor = 0
-        full_sc = np.arange(rx_grid.shape[0])
-        for symbol_idx in dmrs_symbol_indices:
-            symbol_mask = dmrs_mask[:, symbol_idx]
-            pilot_sc = np.flatnonzero(symbol_mask)
-            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_sc.size]
-            dmrs_cursor += pilot_sc.size
-            pilot_values = rx_grid[pilot_sc, symbol_idx] / symbol_dmrs
-            channel[pilot_sc, symbol_idx] = pilot_values
-            real = np.interp(full_sc, pilot_sc, pilot_values.real)
-            imag = np.interp(full_sc, pilot_sc, pilot_values.imag)
-            dmrs_estimates[symbol_idx] = real + 1j * imag
-            channel[:, symbol_idx] = dmrs_estimates[symbol_idx]
+        for dmrs_idx, symbol_idx in enumerate(dmrs_symbol_indices):
+            pilot_subcarriers = np.flatnonzero(dmrs_mask[:, symbol_idx])
+            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_subcarriers.size]
+            dmrs_cursor += pilot_subcarriers.size
+            pilot_values = LeastSquaresEstimator._ls_estimate(
+                rx_grid[pilot_subcarriers, symbol_idx],
+                symbol_dmrs,
+            )
+            dmrs_estimates[dmrs_idx] = LeastSquaresEstimator._interpolate_frequency(
+                pilot_subcarriers,
+                pilot_values,
+                rx_grid.shape[0],
+            )
+        return dmrs_symbol_indices, dmrs_estimates
 
-        if len(dmrs_symbol_indices) == 1:
-            channel[:, :] = channel[:, dmrs_symbol_indices[0]][:, np.newaxis]
-            return channel
+    @staticmethod
+    def _ls_estimate(rx_pilots: np.ndarray, reference_pilots: np.ndarray) -> np.ndarray:
+        """Compute least-squares channel estimates on pilot RE locations.
 
-        for sc_idx in range(rx_grid.shape[0]):
-            known_symbols = dmrs_symbol_indices.astype(np.float64)
-            known_values = np.array([dmrs_estimates[int(symbol_idx)][sc_idx] for symbol_idx in dmrs_symbol_indices])
-            real_interp = np.interp(np.arange(rx_grid.shape[1], dtype=np.float64), known_symbols, known_values.real)
-            imag_interp = np.interp(np.arange(rx_grid.shape[1], dtype=np.float64), known_symbols, known_values.imag)
+        Args:
+            rx_pilots: Received pilot RE values sampled from the slot grid.
+            reference_pilots: Known transmitted DMRS values on the same REs.
+
+        Returns:
+            LS channel estimates on the pilot RE locations.
+        """
+        return rx_pilots / reference_pilots
+
+    @staticmethod
+    def _interpolate_frequency(
+        pilot_subcarriers: np.ndarray,
+        pilot_values: np.ndarray,
+        num_subcarriers: int,
+    ) -> np.ndarray:
+        """Interpolate pilot-only estimates across the frequency axis.
+
+        Args:
+            pilot_subcarriers: Subcarrier indices where DMRS pilots are present.
+            pilot_values: LS channel estimates at the pilot subcarriers.
+            num_subcarriers: Full subcarrier count of the slot grid.
+
+        Returns:
+            Full-band estimate for one OFDM symbol after frequency interpolation.
+        """
+        full_subcarriers = np.arange(num_subcarriers, dtype=np.float64)
+        real = np.interp(full_subcarriers, pilot_subcarriers, pilot_values.real)
+        imag = np.interp(full_subcarriers, pilot_subcarriers, pilot_values.imag)
+        return real + 1j * imag
+
+    @staticmethod
+    def _interpolate_time(
+        dmrs_symbol_indices: np.ndarray,
+        dmrs_estimates: np.ndarray,
+        num_symbols: int,
+    ) -> np.ndarray:
+        """Interpolate full-band DMRS estimates across OFDM symbols.
+
+        Args:
+            dmrs_symbol_indices: OFDM symbol indices where DMRS is present.
+            dmrs_estimates: Full-band channel estimates on the DMRS symbols.
+            num_symbols: Total OFDM symbol count in the slot.
+
+        Returns:
+            Full-grid channel estimate after time interpolation.
+        """
+        if dmrs_symbol_indices.size == 1:
+            return np.repeat(dmrs_estimates[:1].T, num_symbols, axis=1)
+
+        channel = np.zeros((dmrs_estimates.shape[1], num_symbols), dtype=np.complex128)
+        known_symbols = dmrs_symbol_indices.astype(np.float64)
+        target_symbols = np.arange(num_symbols, dtype=np.float64)
+        for sc_idx in range(dmrs_estimates.shape[1]):
+            known_values = dmrs_estimates[:, sc_idx]
+            real_interp = np.interp(target_symbols, known_symbols, known_values.real)
+            imag_interp = np.interp(target_symbols, known_symbols, known_values.imag)
             channel[sc_idx, :] = real_interp + 1j * imag_interp
-
         return channel
 
     @staticmethod
@@ -74,6 +168,17 @@ class LeastSquaresEstimator(ChannelEstimator):
         channel_estimate: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Extract pilot-only channel estimates for plotting and debug views.
+
+        Args:
+            channel_estimate: Full-grid estimate, optionally stacked by antenna.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+
+        Returns:
+            Tuple of ``(pilot_estimates, pilot_symbol_indices)`` where:
+            - ``pilot_estimates`` is grouped by receive antenna.
+            - ``pilot_symbol_indices`` identifies which OFDM symbol each pilot came from.
+        """
         if channel_estimate.ndim == 2:
             channel_estimate = channel_estimate[np.newaxis, ...]
 

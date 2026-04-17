@@ -23,6 +23,15 @@ class NrLdpcDecoder(ChannelDecoder):
         self.last_crc_ok: bool | None = None
 
     def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Decode one transport block from descrambled soft bits.
+
+        Args:
+            llrs: Descrambled LLR sequence for the scheduled codeword.
+            config: Full simulation configuration that defines UL-SCH parameters.
+
+        Returns:
+            Decoded transport-block bit sequence after CRC removal.
+        """
         tbs = int(config.link.transport_block_size or 0)
         if tbs <= 0:
             raise ValueError("transport_block_size must be resolved before LDPC decoding.")
@@ -49,6 +58,15 @@ class HardDecisionBypassDecoder(ChannelDecoder):
         self.last_crc_ok: bool | None = None
 
     def decode(self, llrs: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Convert descrambled LLRs to hard bits when channel decoding is bypassed.
+
+        Args:
+            llrs: Descrambled LLR sequence for the scheduled codeword.
+            config: Full simulation configuration, unused by this bypass decoder.
+
+        Returns:
+            Hard-decision bit sequence derived directly from the LLR signs.
+        """
         del config
         self.last_crc_ok = None
         return (np.asarray(llrs).reshape(-1) < 0.0).astype(np.int8)

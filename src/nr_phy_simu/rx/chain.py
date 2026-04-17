@@ -46,6 +46,19 @@ class Receiver:
         noise_variance: float,
         config: SimulationConfig,
     ) -> RxPayload:
+        """Run the complete receive chain for one slot.
+
+        Args:
+            rx_waveform: Received time-domain waveform, optionally stacked by antenna.
+            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            noise_variance: Receiver noise variance used for equalization and demodulation.
+            config: Full simulation configuration for waveform and link parameters.
+
+        Returns:
+            Structured RX payload containing intermediate buffers and decoded bits.
+        """
         rx_grid = self.time_processor.demodulate(rx_waveform, config)
         channel_estimation = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
 
@@ -80,6 +93,16 @@ class Receiver:
         data_mask: np.ndarray,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Undo DFT spreading on equalized PUSCH symbols.
+
+        Args:
+            equalized_symbols: Serialized equalized data symbols before de-spreading.
+            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            config: Full simulation configuration that defines scheduled symbols.
+
+        Returns:
+            De-spread equalized symbol sequence for DFT-s-OFDM PUSCH.
+        """
         despread = []
         cursor = 0
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):

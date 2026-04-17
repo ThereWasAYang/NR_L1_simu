@@ -32,6 +32,15 @@ class Transmitter:
         self.scrambler = scrambler
 
     def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
+        """Run the complete transmit chain for one slot.
+
+        Args:
+            transport_block: Input payload bits before CRC, coding, and scrambling.
+            config: Full simulation configuration for waveform and link parameters.
+
+        Returns:
+            Structured TX payload containing intermediate buffers and final waveform.
+        """
         coded_bits = self.coder.encode(transport_block, config)
         scrambled_bits = self.scrambler.scramble(coded_bits, config)
         tx_symbols = self.modulator.map_bits(scrambled_bits, config)

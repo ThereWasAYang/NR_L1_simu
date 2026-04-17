@@ -36,6 +36,14 @@ class SharedChannelSimulation:
         self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
+        """Run one end-to-end shared-channel simulation for a single TTI.
+
+        Args:
+            None.
+
+        Returns:
+            Structured simulation result containing TX/RX buffers and KPIs.
+        """
         apply_mcs_to_link(self.config)
         data_re = self.mapper.count_data_re(self.config)
         self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()
@@ -86,6 +94,14 @@ class SharedChannelSimulation:
         )
 
     def _bits_per_symbol(self) -> int:
+        """Resolve bits per modulation symbol from the configured modulation name.
+
+        Args:
+            None.
+
+        Returns:
+            Number of coded bits carried by one modulation symbol.
+        """
         modulation = self.config.link.modulation.upper()
         mapping = {"PI/2-BPSK": 1, "BPSK": 1, "QPSK": 2, "16QAM": 4, "64QAM": 6, "256QAM": 8}
         return mapping[modulation]
@@ -95,6 +111,15 @@ class SharedChannelSimulation:
         reference_symbols: np.ndarray,
         equalized_symbols: np.ndarray,
     ) -> tuple[float | None, float | None]:
+        """Compute mean EVM and derived EVM-SNR from equalized symbols.
+
+        Args:
+            reference_symbols: Ideal transmitted data symbols before the channel.
+            equalized_symbols: Equalized received data symbols after the receiver.
+
+        Returns:
+            Tuple of ``(evm_percent, evm_snr_linear)`` for the compared symbols.
+        """
         if reference_symbols.size == 0 or equalized_symbols.size == 0:
             return None, None
 
