@@ -8,7 +8,7 @@ carrier:
 
 # 信道模型配置
 channel:
-  model: TDL                    # 信道类型：AWGN / TDL / CDL
+  model: TDL                     # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   params:
     profile: TDL-C              # 38.901 TDL profile：TDL-A / TDL-B / TDL-C / TDL-D / TDL-E
     delay_spread_ns: 300.0      # 该字段在显式逐径模式下仅作说明；实际时延以 path_delays_ns 为准
@@ -23,6 +23,9 @@ channel:
     ue_speed_mps: 3.0           # UE 速度，单位 m/s
     num_sinusoids: 32           # Jakes 近似正弦数
     snr_db: 12.0                # 接收信噪比，单位 dB
+    frequency_response_path: null  # 外部频域信道系数文本文件路径；EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD 时可用
+    frequency_response: null       # 外部频域信道系数数组；长度必须等于小区带宽子载波数
+    time_domain_tap_length: null   # EXTERNAL_FREQRESP_TD 时保留的时域滤波 tap 数；null 表示保留 IFFT 全长
     tx_antenna_spacing_lambda: 0.5  # 发射阵列天线间距，单位波长
     rx_antenna_spacing_lambda: 0.5  # 接收阵列天线间距，单位波长
 
