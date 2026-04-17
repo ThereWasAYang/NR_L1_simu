@@ -37,6 +37,14 @@ def _resolve_relative_paths(data: dict, base_dir: Path) -> None:
         if isinstance(result_output_path, str) and result_output_path.strip() != "":
             simulation["result_output_path"] = str(_resolve_path_string(result_output_path, base_dir))
 
+    channel = data.get("channel")
+    if isinstance(channel, dict):
+        params = channel.get("params")
+        if isinstance(params, dict):
+            frequency_response_path = params.get("frequency_response_path")
+            if isinstance(frequency_response_path, str) and frequency_response_path.strip() != "":
+                params["frequency_response_path"] = str(_resolve_path_string(frequency_response_path, base_dir))
+
 
 def _resolve_path_string(path_value: str, base_dir: Path) -> Path:
     candidate = Path(path_value).expanduser()

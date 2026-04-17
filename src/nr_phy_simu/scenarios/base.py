@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
@@ -57,21 +59,62 @@ class SharedChannelSimulation:
             size=int(self.config.link.transport_block_size),
             dtype=np.int8,
         )
-        tx_payload = self.transmitter.transmit(transport_block, self.config)
-        rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
-        rx_waveform, interference_reports = self.interference_mixer.apply(
-            rx_waveform,
-            noise_variance=float(channel_info["noise_variance"]),
-            config=self.config,
+        if self._uses_frequency_domain_channel():
+            if self.config.interference.enabled:
+                raise NotImplementedError("Frequency-domain direct channel does not currently support interference injection.")
+            tx_payload = self.transmitter.build_slot_payload(transport_block, self.config)
+            rx_grid, channel_info = self.channel.propagate_grid(tx_payload.resource_grid, self.config)
+            rx_payload = self.receiver.receive_from_grid(
+                rx_grid=rx_grid,
+                dmrs_symbols=tx_payload.dmrs_symbols,
+                dmrs_mask=tx_payload.dmrs_mask,
+                data_mask=tx_payload.data_mask,
+                noise_variance=float(channel_info["noise_variance"]),
+                config=self.config,
+                rx_waveform=None,
+            )
+        else:
+            tx_payload = self.transmitter.transmit(transport_block, self.config)
+            rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
+            rx_waveform, interference_reports = self.interference_mixer.apply(
+                rx_waveform,
+                noise_variance=float(channel_info["noise_variance"]),
+                config=self.config,
+            )
+            rx_payload = self.receiver.receive(
+                rx_waveform=rx_waveform,
+                dmrs_symbols=tx_payload.dmrs_symbols,
+                dmrs_mask=tx_payload.dmrs_mask,
+                data_mask=tx_payload.data_mask,
+                noise_variance=float(channel_info["noise_variance"]),
+                config=self.config,
+            )
+            return self._build_result(
+                tx_payload=tx_payload,
+                rx_payload=rx_payload,
+                transport_block=transport_block,
+                channel_info=channel_info,
+                interference_reports=interference_reports,
+            )
+
+        tx_payload = replace(tx_payload, waveform=np.asarray([], dtype=np.complex128))
+        return self._build_result(
+            tx_payload=tx_payload,
+            rx_payload=rx_payload,
+            transport_block=transport_block,
+            channel_info=channel_info,
+            interference_reports=(),
         )
-        rx_payload = self.receiver.receive(
-            rx_waveform=rx_waveform,
-            dmrs_symbols=tx_payload.dmrs_symbols,
-            dmrs_mask=tx_payload.dmrs_mask,
-            data_mask=tx_payload.data_mask,
-            noise_variance=float(channel_info["noise_variance"]),
-            config=self.config,
-        )
+
+    def _build_result(
+        self,
+        tx_payload,
+        rx_payload,
+        transport_block: np.ndarray,
+        channel_info: dict,
+        interference_reports: tuple,
+    ) -> SimulationResult:
+        """Build the final simulation result object from chain outputs."""
         if self.config.simulation.bypass_channel_coding:
             reference_bits = tx_payload.coded_bits
             decoded = rx_payload.decoded_bits[: reference_bits.size]
@@ -92,6 +135,10 @@ class SharedChannelSimulation:
             evm_snr_linear=evm_snr_linear,
             interference_reports=interference_reports,
         )
+
+    def _uses_frequency_domain_channel(self) -> bool:
+        """Return whether the configured channel bypasses time-domain processing."""
+        return self.config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
 
     def _bits_per_symbol(self) -> int:
         """Resolve bits per modulation symbol from the configured modulation name.

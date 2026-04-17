@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+
+def load_frequency_response(
+    *,
+    values: Any = None,
+    path: str | Path | None = None,
+) -> np.ndarray:
+    """Load complex frequency-response coefficients from config values or a text file.
+
+    Args:
+        values: In-memory coefficient list. Each element may be a complex number,
+            a real scalar, a string such as ``"1+0j"``, or a 2-item real/imag pair.
+        path: Optional text file path. Each non-empty line follows the same formats
+            accepted by :func:`_parse_complex_value`.
+
+    Returns:
+        One-dimensional complex frequency-response array.
+    """
+    if values is None and path is None:
+        raise ValueError("Either in-memory frequency_response values or frequency_response_path must be provided.")
+
+    if path is not None:
+        resolved = Path(path).expanduser().resolve()
+        entries = [_parse_complex_value(line) for line in resolved.read_text().splitlines() if line.strip()]
+    else:
+        if not isinstance(values, (list, tuple, np.ndarray)):
+            raise ValueError("channel.params.frequency_response must be a sequence of complex coefficients.")
+        entries = [_parse_complex_value(item) for item in values]
+
+    if not entries:
+        raise ValueError("Frequency-response input is empty.")
+    return np.asarray(entries, dtype=np.complex128).reshape(-1)
+
+
+def _parse_complex_value(value: Any) -> complex:
+    """Parse one complex coefficient from config/file input.
+
+    Args:
+        value: Raw coefficient representation from config or text input.
+
+    Returns:
+        Parsed complex coefficient.
+    """
+    if isinstance(value, complex):
+        return value
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return complex(float(value), 0.0)
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return complex(float(value[0]), float(value[1]))
+    if isinstance(value, str):
+        stripped = value.strip().strip("()")
+        comma_parts = [part.strip() for part in stripped.split(",")]
+        if len(comma_parts) == 2:
+            return complex(float(comma_parts[0]), float(comma_parts[1]))
+        space_parts = stripped.split()
+        if len(space_parts) == 2:
+            return complex(float(space_parts[0]), float(space_parts[1]))
+        normalized = stripped.replace("i", "j").replace("I", "j")
+        return complex(normalized)
+    raise ValueError(f"Unsupported complex coefficient format: {value!r}")

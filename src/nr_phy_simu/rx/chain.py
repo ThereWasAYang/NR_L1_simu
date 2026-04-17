@@ -60,6 +60,42 @@ class Receiver:
             Structured RX payload containing intermediate buffers and decoded bits.
         """
         rx_grid = self.time_processor.demodulate(rx_waveform, config)
+        return self.receive_from_grid(
+            rx_grid=rx_grid,
+            dmrs_symbols=dmrs_symbols,
+            dmrs_mask=dmrs_mask,
+            data_mask=data_mask,
+            noise_variance=noise_variance,
+            config=config,
+            rx_waveform=rx_waveform,
+        )
+
+    def receive_from_grid(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        data_mask: np.ndarray,
+        noise_variance: float,
+        config: SimulationConfig,
+        rx_waveform: np.ndarray | None = None,
+    ) -> RxPayload:
+        """Run the receive chain starting from an already demodulated grid.
+
+        Args:
+            rx_grid: Received frequency-domain slot grid, optionally stacked by antenna.
+            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
+            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            noise_variance: Receiver noise variance used for equalization and demodulation.
+            config: Full simulation configuration for waveform and link parameters.
+            rx_waveform: Optional received waveform. Use ``None`` when bypassing time domain.
+
+        Returns:
+            Structured RX payload containing intermediate buffers and decoded bits.
+        """
+        if rx_grid.ndim == 2:
+            rx_grid = rx_grid[np.newaxis, ...]
         channel_estimation = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
 
         rx_data_symbols = self.extractor.extract(rx_grid, data_mask, config, despread=False)
@@ -77,7 +113,7 @@ class Receiver:
         decoded_bits = self.decoder.decode(descrambled_llrs, config)
         crc_ok = getattr(self.decoder, "last_crc_ok", None)
         return RxPayload(
-            rx_waveform=rx_waveform,
+            rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
             rx_grid=rx_grid,
             channel_estimation=channel_estimation,
             equalized_symbols=equalized_symbols,

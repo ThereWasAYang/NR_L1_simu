@@ -155,6 +155,38 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertTrue(np.isnan(result.block_error_rate))
         self.assertTrue(all(tti_result.crc_ok is None for tti_result in result.tti_results))
 
+    def test_external_frequency_response_time_domain_channel_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        config.link.num_tx_ant = 1
+        config.link.num_rx_ant = 1
+        config.channel.model = "EXTERNAL_FREQRESP_TD"
+        config.channel.params = {
+            "frequency_response": [[1.0, 0.0]] * config.carrier.n_subcarriers,
+            "add_noise": False,
+        }
+        result = PuschSimulation(config).run()
+        self.assertIs(result.crc_ok, True)
+        self.assertEqual(result.bit_error_rate, 0.0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+
+    def test_external_frequency_response_frequency_domain_channel_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        config.link.num_tx_ant = 1
+        config.link.num_rx_ant = 1
+        config.channel.model = "EXTERNAL_FREQRESP_FD"
+        config.channel.params = {
+            "frequency_response": [[1.0, 0.0]] * config.carrier.n_subcarriers,
+            "add_noise": False,
+        }
+        result = PuschSimulation(config).run()
+        self.assertIs(result.crc_ok, True)
+        self.assertEqual(result.bit_error_rate, 0.0)
+        self.assertEqual(result.tx.waveform.size, 0)
+        self.assertEqual(result.rx.rx_waveform.size, 0)
+        self.assertEqual(result.rx.rx_grid.ndim, 3)
+
 
 class BaselineRegressionTest(unittest.TestCase):
     def test_pusch_baseline_cases(self):
@@ -282,6 +314,34 @@ class ConfigLoaderTest(unittest.TestCase):
             Path(yaml_replay_cfg.waveform_input.waveform_path),
             (ROOT / "inputs" / "pusch_capture.txt").resolve(),
         )
+
+    def test_resolve_frequency_response_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            response_path = tmpdir_path / "freq_resp.txt"
+            response_path.write_text("\n".join(["1.0 0.0"] * 624), encoding="utf-8")
+            config_path = tmpdir_path / "freq_resp.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 52",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "channel:",
+                        "  model: EXTERNAL_FREQRESP_TD",
+                        "  params:",
+                        "    frequency_response_path: ./freq_resp.txt",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_simulation_config(config_path)
+            self.assertEqual(
+                Path(cfg.channel.params["frequency_response_path"]),
+                response_path.resolve(),
+            )
 
 
 class McsTableTest(unittest.TestCase):

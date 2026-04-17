@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
 from nr_phy_simu.common.interfaces import (
@@ -31,6 +33,32 @@ class Transmitter:
         self.dmrs_generator = dmrs_generator
         self.scrambler = scrambler
 
+    def build_slot_payload(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
+        """Build all transmit-domain buffers up to the frequency-domain slot grid.
+
+        Args:
+            transport_block: Input payload bits before CRC, coding, and scrambling.
+            config: Full simulation configuration for waveform and link parameters.
+
+        Returns:
+            Structured TX payload with the frequency-domain grid populated and an
+            empty waveform placeholder.
+        """
+        coded_bits = self.coder.encode(transport_block, config)
+        scrambled_bits = self.scrambler.scramble(coded_bits, config)
+        tx_symbols = self.modulator.map_bits(scrambled_bits, config)
+        grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(tx_symbols, config)
+        return TxPayload(
+            transport_block=transport_block,
+            coded_bits=coded_bits,
+            tx_symbols=tx_symbols,
+            resource_grid=grid,
+            waveform=np.array([], dtype=np.complex128),
+            dmrs_symbols=dmrs_symbols,
+            dmrs_mask=dmrs_mask,
+            data_mask=data_mask,
+        )
+
     def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
         """Run the complete transmit chain for one slot.
 
@@ -41,18 +69,6 @@ class Transmitter:
         Returns:
             Structured TX payload containing intermediate buffers and final waveform.
         """
-        coded_bits = self.coder.encode(transport_block, config)
-        scrambled_bits = self.scrambler.scramble(coded_bits, config)
-        tx_symbols = self.modulator.map_bits(scrambled_bits, config)
-        grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(tx_symbols, config)
-        waveform = self.time_processor.modulate(grid, config)
-        return TxPayload(
-            transport_block=transport_block,
-            coded_bits=coded_bits,
-            tx_symbols=tx_symbols,
-            resource_grid=grid,
-            waveform=waveform,
-            dmrs_symbols=dmrs_symbols,
-            dmrs_mask=dmrs_mask,
-            data_mask=data_mask,
-        )
+        payload = self.build_slot_payload(transport_block, config)
+        waveform = self.time_processor.modulate(payload.resource_grid, config)
+        return replace(payload, waveform=waveform)

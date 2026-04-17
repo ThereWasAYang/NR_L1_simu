@@ -181,6 +181,8 @@ def _build_pilot_estimate_figures(
 
 def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
     waveform = result.rx.rx_waveform
+    if waveform.size == 0:
+        return {}
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
     cp_lengths = config.carrier.cyclic_prefix_lengths
