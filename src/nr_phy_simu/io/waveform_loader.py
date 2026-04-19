@@ -6,10 +6,16 @@ import numpy as np
 
 from nr_phy_simu.config import SimulationConfig
 
+_TEXT_FILE_READ_ENCODING = "utf-8-sig"
+
 
 def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray:
     resolved = Path(path).expanduser().resolve()
-    values = [_parse_complex_line(line) for line in resolved.read_text().splitlines() if line.strip()]
+    values = [
+        _parse_complex_line(line)
+        for line in resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING).splitlines()
+        if line.strip()
+    ]
     if not values:
         raise ValueError(f"No waveform samples found in '{resolved}'.")
 

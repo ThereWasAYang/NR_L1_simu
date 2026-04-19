@@ -351,6 +351,31 @@ class ConfigLoaderTest(unittest.TestCase):
                 response_path.resolve(),
             )
 
+    def test_load_yaml_with_utf8_bom_and_chinese_comments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            config_path = tmpdir_path / "bom_config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "# 中文注释：这是一个 Windows 兼容性回归测试",
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 52",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "channel:",
+                        "  model: AWGN",
+                        "  params:",
+                        "    snr_db: 30.0",
+                    ]
+                ),
+                encoding="utf-8-sig",
+            )
+            cfg = load_simulation_config(config_path)
+            self.assertEqual(cfg.link.channel_type, "PUSCH")
+            self.assertEqual(cfg.channel.model, "AWGN")
+
 
 class McsTableTest(unittest.TestCase):
     def test_pdsch_all_mcs_tables(self):

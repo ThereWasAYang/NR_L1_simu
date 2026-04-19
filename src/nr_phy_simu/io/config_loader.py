@@ -8,16 +8,27 @@ import yaml
 
 from nr_phy_simu.config import SimulationConfig, config_path
 
+_TEXT_FILE_READ_ENCODING = "utf-8-sig"
+
 
 def load_simulation_config(path: str | Path) -> SimulationConfig:
+    """Load a simulation config file using a Windows-safe UTF-8 reader.
+
+    Args:
+        path: Config file path. Supported suffixes are JSON, YAML/YML and XML.
+
+    Returns:
+        Parsed :class:`SimulationConfig` instance.
+    """
     resolved = config_path(path)
     suffix = resolved.suffix.lower()
     if suffix == ".json":
-        data = json.loads(resolved.read_text())
+        data = json.loads(resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING))
     elif suffix in {".yaml", ".yml"}:
-        data = yaml.safe_load(resolved.read_text())
+        data = yaml.safe_load(resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING))
     elif suffix == ".xml":
-        data = _xml_to_mapping(ET.parse(resolved).getroot())
+        with resolved.open("r", encoding=_TEXT_FILE_READ_ENCODING) as handle:
+            data = _xml_to_mapping(ET.parse(handle).getroot())
     else:
         raise ValueError(f"Unsupported config format: {resolved.suffix}")
     _resolve_relative_paths(data, resolved.parent)
