@@ -5,12 +5,33 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+import tempfile
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path("/tmp/mplconfig")))
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "nr_phy_simu_mplconfig"))
 
 import matplotlib
 
 _PREFERRED_BACKEND_ENV = "NR_PHY_SIMU_PLOT_BACKEND"
+_WINDOWS_FONT_CANDIDATES = [
+    "Microsoft YaHei",
+    "Microsoft JhengHei",
+    "SimHei",
+    "SimSun",
+]
+_MACOS_FONT_CANDIDATES = [
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Heiti SC",
+    "Arial Unicode MS",
+]
+_LINUX_FONT_CANDIDATES = [
+    "Noto Sans CJK SC",
+    "WenQuanYi Zen Hei",
+    "Source Han Sans SC",
+]
+_COMMON_FONT_CANDIDATES = [
+    "DejaVu Sans",
+]
 
 
 def _configure_matplotlib_backend() -> None:
@@ -30,6 +51,21 @@ def _configure_matplotlib_backend() -> None:
         matplotlib.use("TkAgg")
 
 
+def _configure_matplotlib_fonts() -> None:
+    """Set cross-platform Chinese font fallbacks for plot labels and titles."""
+    preferred_fonts: list[str] = []
+    system = platform.system()
+    if system == "Windows":
+        preferred_fonts.extend(_WINDOWS_FONT_CANDIDATES)
+    elif system == "Darwin":
+        preferred_fonts.extend(_MACOS_FONT_CANDIDATES)
+    else:
+        preferred_fonts.extend(_LINUX_FONT_CANDIDATES)
+    preferred_fonts.extend(_COMMON_FONT_CANDIDATES)
+    matplotlib.rcParams["font.sans-serif"] = preferred_fonts
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
+
 def _is_foreground_session() -> bool:
     return bool(os.environ.get("PYCHARM_HOSTED")) or sys.stdout.isatty()
 
@@ -43,6 +79,7 @@ def _has_tkinter() -> bool:
 
 
 _configure_matplotlib_backend()
+_configure_matplotlib_fonts()
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -269,10 +306,15 @@ def _show_plots(paths: list[Path], block: bool) -> None:
 
 
 def _use_system_viewer() -> bool:
-    return platform.system() == "Darwin" and _is_foreground_session()
+    return platform.system() in {"Darwin", "Windows"} and _is_foreground_session()
 
 
 def _open_with_system_viewer(paths: list[Path]) -> None:
+    if platform.system() == "Windows":
+        for path in paths:
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        return
+
     subprocess.Popen(
         ["open", *[str(path) for path in paths]],
         stdout=subprocess.DEVNULL,

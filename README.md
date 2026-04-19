@@ -62,8 +62,51 @@ python examples/run_from_config.py configs/pusch_awgn_multi_tti.yaml
 python examples/run_from_config.py configs/pusch_replay_template.yaml
 ```
 
-前台运行示例脚本时，星座图和导频信道估计图会直接显示；同时仍会保存到 `outputs/`。在 macOS 前台运行时，默认会直接调用系统图片查看器打开生成的 PNG，因此不会阻塞 Python 主进程，也不会依赖 `matplotlib` 的 GUI 事件循环。
-如果当前环境没有图形显示能力，则会自动退化为仅保存图片。若需要手动指定 `matplotlib` backend，可设置环境变量 `NR_PHY_SIMU_PLOT_BACKEND`，例如 `macosx` 或 `TkAgg`。
+### Windows 11 一键环境配置
+
+对于不熟悉 Python 环境配置的使用者，仓库提供了 Windows 一键安装脚本：
+
+```bat
+scripts\setup_windows.bat
+```
+
+该脚本会自动完成：
+
+- 检测 `py` 或 `python`
+- 创建 `.venv` 虚拟环境
+- 升级 `pip / setuptools / wheel`
+- 以 editable 模式安装本工程
+- 校验关键依赖是否安装成功
+
+如果你更习惯 PowerShell，也可以直接运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup_windows.ps1
+```
+
+安装完成后，在 Windows 下可这样运行：
+
+```bat
+.venv\Scripts\activate
+python examples\run_from_config.py configs\pusch_awgn.yaml
+```
+
+### 绘图与中文显示
+
+前台运行示例脚本时，星座图和导频信道估计图会直接显示；同时仍会保存到 `outputs/`。
+
+- 在 macOS 前台运行时，默认会调用系统图片查看器打开 PNG，因此不会阻塞 Python 主进程，也不会依赖 `matplotlib` 的 GUI 事件循环。
+- 在 Windows 前台运行时，默认会调用系统图片查看器打开 PNG。
+- 如果当前环境没有图形显示能力，则会自动退化为仅保存图片。
+- 若需要手动指定 `matplotlib` backend，可设置环境变量 `NR_PHY_SIMU_PLOT_BACKEND`，例如 `TkAgg`。
+
+为了尽量避免中文乱码，工程会在绘图时自动配置常见中文字体回退：
+
+- Windows：`Microsoft YaHei / SimHei / SimSun`
+- macOS：`PingFang SC / Hiragino Sans GB`
+- Linux：`Noto Sans CJK SC / WenQuanYi Zen Hei`
+
+如果你在 Windows 上仍然遇到中文方框或乱码，通常说明系统缺少上述字体之一；优先建议安装或启用 `Microsoft YaHei`。
 
 绘图调用链和如何新增绘图节点的开发说明见：
 
