@@ -47,8 +47,8 @@ _configure_matplotlib_backend()
 import matplotlib.pyplot as plt
 import numpy as np
 
-from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.common.torch_utils import to_numpy
+from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -184,6 +184,8 @@ def _build_pilot_estimate_figures(
 
 def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
     waveform = to_numpy(result.rx.rx_waveform)
+    if waveform.size == 0:
+        return {}
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
     cp_lengths = config.carrier.cyclic_prefix_lengths
@@ -254,28 +256,22 @@ def _show_plots(paths: list[Path], block: bool) -> None:
         axis = figure.subplots()
         axis.imshow(image)
         axis.axis("off")
+        figure.tight_layout()
 
-    manager_backend = plt.get_backend().lower()
-    if "agg" in manager_backend:
-        for figure in figures:
-            plt.close(figure)
-        return
-
-    plt.ioff()
     plt.show(block=block)
-    plt.pause(0.001)
-    if block:
-        for figure in figures:
-            plt.close(figure)
 
 
 def _use_system_viewer() -> bool:
-    return platform.system() == "Darwin" and _is_foreground_session()
+    backend = matplotlib.get_backend().lower()
+    return backend == "agg"
 
 
 def _open_with_system_viewer(paths: list[Path]) -> None:
-    subprocess.Popen(
-        ["open", *[str(path) for path in paths]],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    system = platform.system()
+    for path in paths:
+        if system == "Darwin":
+            subprocess.Popen(["open", str(path)])
+        elif system == "Windows":
+            os.startfile(path)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", str(path)])

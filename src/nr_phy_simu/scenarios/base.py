@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import torch
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_complex_tensor
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
-from nr_phy_simu.scenarios.interference import InterferenceMixer
 from nr_phy_simu.scenarios.component_factory import (
     DefaultSimulationComponentFactory,
     SimulationComponentFactory,
     build_receiver,
     build_transmitter,
 )
+from nr_phy_simu.scenarios.interference import InterferenceMixer
 from nr_phy_simu.tx.chain import Transmitter
-from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_complex_tensor, to_numpy
 
 
 class SharedChannelSimulation:
@@ -37,6 +39,7 @@ class SharedChannelSimulation:
         self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
+        """Run one end-to-end shared-channel simulation for a single TTI."""
         apply_mcs_to_link(self.config)
         data_re = self.mapper.count_data_re(self.config)
         self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()
@@ -51,8 +54,35 @@ class SharedChannelSimulation:
             dtype=BIT_DTYPE,
             generator=generator,
         )
+
+        if self._uses_frequency_domain_channel():
+            if self.config.interference.enabled:
+                raise NotImplementedError("Frequency-domain direct channel does not currently support interference injection.")
+            tx_payload = self.transmitter.build_slot_payload(transport_block, self.config)
+            rx_grid, channel_info = self.channel.propagate_grid(tx_payload.resource_grid, self.config)
+            rx_payload = self.receiver.receive_from_grid(
+                rx_grid=rx_grid,
+                dmrs_symbols=tx_payload.dmrs_symbols,
+                dmrs_mask=tx_payload.dmrs_mask,
+                data_mask=tx_payload.data_mask,
+                noise_variance=float(channel_info["noise_variance"]),
+                config=self.config,
+                rx_waveform=None,
+            )
+            tx_payload = replace(
+                tx_payload,
+                waveform=torch.zeros(0, dtype=tx_payload.resource_grid.dtype, device=tx_payload.resource_grid.device),
+            )
+            return self._build_result(
+                tx_payload=tx_payload,
+                rx_payload=rx_payload,
+                transport_block=transport_block,
+                channel_info=channel_info,
+                interference_reports=(),
+            )
+
         tx_payload = self.transmitter.transmit(transport_block, self.config)
-        rx_waveform, channel_info = self.channel.propagate(to_numpy(tx_payload.waveform), self.config)
+        rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
         rx_waveform = as_complex_tensor(rx_waveform)
         rx_waveform, interference_reports = self.interference_mixer.apply(
             rx_waveform,
@@ -67,6 +97,23 @@ class SharedChannelSimulation:
             noise_variance=float(channel_info["noise_variance"]),
             config=self.config,
         )
+        return self._build_result(
+            tx_payload=tx_payload,
+            rx_payload=rx_payload,
+            transport_block=transport_block,
+            channel_info=channel_info,
+            interference_reports=interference_reports,
+        )
+
+    def _build_result(
+        self,
+        tx_payload,
+        rx_payload,
+        transport_block: torch.Tensor,
+        channel_info: dict,
+        interference_reports: tuple,
+    ) -> SimulationResult:
+        """Build the final simulation result object from chain outputs."""
         if self.config.simulation.bypass_channel_coding:
             reference_bits = tx_payload.coded_bits
             decoded = rx_payload.decoded_bits[: reference_bits.numel()]
@@ -88,7 +135,12 @@ class SharedChannelSimulation:
             interference_reports=interference_reports,
         )
 
+    def _uses_frequency_domain_channel(self) -> bool:
+        """Return whether the configured channel bypasses time-domain processing."""
+        return self.config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
+
     def _bits_per_symbol(self) -> int:
+        """Resolve bits per modulation symbol from the configured modulation name."""
         modulation = self.config.link.modulation.upper()
         mapping = {"PI/2-BPSK": 1, "BPSK": 1, "QPSK": 2, "16QAM": 4, "64QAM": 6, "256QAM": 8}
         return mapping[modulation]
@@ -98,6 +150,7 @@ class SharedChannelSimulation:
         reference_symbols: torch.Tensor,
         equalized_symbols: torch.Tensor,
     ) -> tuple[float | None, float | None]:
+        """Compute mean EVM and derived EVM-SNR from equalized symbols."""
         if reference_symbols.numel() == 0 or equalized_symbols.numel() == 0:
             return None, None
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 
 from nr_phy_simu.common.interfaces import MimoEqualizer
-from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.torch_utils import as_complex_tensor
+from nr_phy_simu.config import SimulationConfig
 
 
 class OneTapMmseEqualizer(MimoEqualizer):
@@ -15,6 +15,7 @@ class OneTapMmseEqualizer(MimoEqualizer):
         noise_variance: float,
         config: SimulationConfig,
     ) -> torch.Tensor:
+        """Apply one-tap MMSE equalization to extracted data symbols."""
         del config
         rx_symbols = as_complex_tensor(rx_symbols)
         channel_estimate = as_complex_tensor(channel_estimate, device=rx_symbols.device)

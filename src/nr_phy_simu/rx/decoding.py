@@ -4,19 +4,16 @@ import contextlib
 import io
 
 import torch
-from py3gpp import (
-    nrCRCDecode,
-    nrCodeBlockDesegmentLDPC,
-)
+from py3gpp import nrCRCDecode, nrCodeBlockDesegmentLDPC
 
 from nr_phy_simu.common.interfaces import ChannelDecoder
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, as_real_tensor, to_numpy
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
     get_ulsch_ldpc_info,
     rate_recover_ulsch_ldpc,
 )
 from nr_phy_simu.config import SimulationConfig
-from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_real_tensor, to_numpy
 
 
 class NrLdpcDecoder(ChannelDecoder):
@@ -24,6 +21,7 @@ class NrLdpcDecoder(ChannelDecoder):
         self.last_crc_ok: bool | None = None
 
     def decode(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Decode one transport block from descrambled soft bits."""
         tbs = int(config.link.transport_block_size or 0)
         if tbs <= 0:
             raise ValueError("transport_block_size must be resolved before LDPC decoding.")
@@ -51,6 +49,7 @@ class HardDecisionBypassDecoder(ChannelDecoder):
         self.last_crc_ok: bool | None = None
 
     def decode(self, llrs: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Convert descrambled LLRs to hard bits when channel decoding is bypassed."""
         del config
         self.last_crc_ok = None
         llrs = as_real_tensor(llrs)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from nr_phy_simu.common.interfaces import ChannelModel
-from nr_phy_simu.common.torch_utils import REAL_DTYPE, as_complex_tensor, complex_randn
+from nr_phy_simu.common.torch_utils import as_complex_tensor, complex_randn
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -16,6 +16,7 @@ class AwgnChannel(ChannelModel):
         waveform: torch.Tensor,
         config: SimulationConfig,
     ) -> tuple[torch.Tensor, dict]:
+        """Apply receive-branch expansion and AWGN impairment."""
         tx_waveform = self._expand_receive_branches(as_complex_tensor(waveform), config)
         if not bool(config.channel.params.get("add_noise", True)):
             return tx_waveform, {"noise_variance": 0.0, "snr_db": float("inf")}
@@ -34,6 +35,7 @@ class AwgnChannel(ChannelModel):
 
     @staticmethod
     def _expand_receive_branches(waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Replicate a single received stream across configured receive branches."""
         if waveform.ndim == 2:
             return waveform
 

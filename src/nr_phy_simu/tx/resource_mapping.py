@@ -20,6 +20,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         data_symbols: torch.Tensor,
         config: SimulationConfig,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Map serialized data symbols and DMRS into the scheduled slot grid."""
         data_symbols = as_complex_tensor(data_symbols)
         n_sc = config.carrier.n_subcarriers
         n_sym = config.carrier.symbols_per_slot
@@ -86,6 +87,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         return grid, dmrs_mask, data_mask, dmrs_symbols
 
     def count_data_re(self, config: SimulationConfig) -> int:
+        """Count how many REs in the scheduled slot can carry data."""
         allocated = self.allocated_subcarriers(config)
         dmrs_info = self.dmrs_generator.get_dmrs_info(config)
         dmrs_symbol_set = {int(v) for v in dmrs_info.symbol_indices}
@@ -110,12 +112,14 @@ class FrequencyDomainResourceMapper(ResourceMapper):
 
     @staticmethod
     def allocated_subcarriers(config: SimulationConfig) -> torch.Tensor:
+        """Build absolute subcarrier indices for the scheduled PRB allocation."""
         start = config.link.prb_start * 12
         stop = start + config.link.num_prbs * 12
         return torch.arange(start, stop, dtype=torch.int64)
 
     @staticmethod
     def symbol_dmrs_offsets(config: SimulationConfig, dmrs_info) -> torch.Tensor:
+        """Expand per-PRB DMRS offsets across all scheduled PRBs."""
         per_prb = []
         re_offsets = as_int_tensor(dmrs_info.re_offsets, dtype=torch.int64)
         for prb in range(config.link.num_prbs):
@@ -125,6 +129,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
 
     @staticmethod
     def map_allocated_symbol(symbol_data: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Apply optional transform precoding before grid mapping."""
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
             size = symbol_data.numel()
             return torch.fft.fft(symbol_data, n=size) / torch.sqrt(
@@ -134,11 +139,13 @@ class FrequencyDomainResourceMapper(ResourceMapper):
 
     @classmethod
     def dmrs_power_scale(cls, config: SimulationConfig) -> float:
+        """Convert DMRS EPRE boost from dB to linear amplitude scale."""
         beta_db = cls.dmrs_epre_boost_db(config)
         return 10.0 ** (beta_db / 20.0)
 
     @classmethod
     def dmrs_epre_boost_db(cls, config: SimulationConfig) -> float:
+        """Resolve the DMRS-to-data EPRE offset in dB."""
         num_cdm_groups = cls._resolved_num_cdm_groups_without_data(config)
         table = cls._power_boost_table_db(config.dmrs.config_type)
         return table.get(num_cdm_groups, 0.0)
@@ -156,10 +163,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         if config.dmrs.num_cdm_groups_without_data is not None:
             return int(config.dmrs.num_cdm_groups_without_data)
 
-        no_data_on_dmrs_symbol = (
-            config.link.waveform.upper() == "DFT-S-OFDM"
-            or not config.dmrs.data_mux_enabled
-        )
+        no_data_on_dmrs_symbol = config.link.waveform.upper() == "DFT-S-OFDM" or not config.dmrs.data_mux_enabled
         if no_data_on_dmrs_symbol:
             return 2
         return 1

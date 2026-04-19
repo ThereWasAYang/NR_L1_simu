@@ -3,8 +3,6 @@ from __future__ import annotations
 import torch
 
 from nr_phy_simu.common.interfaces import ChannelEstimator
-from nr_phy_simu.common.types import ChannelEstimateResult
-from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.torch_utils import (
     COMPLEX_DTYPE,
     REAL_DTYPE,
@@ -12,6 +10,8 @@ from nr_phy_simu.common.torch_utils import (
     ensure_antenna_axis,
     interp1d_complex,
 )
+from nr_phy_simu.common.types import ChannelEstimateResult
+from nr_phy_simu.config import SimulationConfig
 
 
 class LeastSquaresEstimator(ChannelEstimator):
@@ -22,6 +22,7 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: torch.Tensor,
         config: SimulationConfig,
     ) -> ChannelEstimateResult:
+        """Estimate the full slot channel response from DMRS observations."""
         rx_grid = ensure_antenna_axis(as_complex_tensor(rx_grid))
         dmrs_symbols = as_complex_tensor(dmrs_symbols, device=rx_grid.device)
         channel_estimate = torch.stack(
@@ -42,6 +43,7 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: torch.Tensor,
         config: SimulationConfig,
     ) -> torch.Tensor:
+        """Estimate the channel for one receive antenna across the full slot."""
         del config
         channel = torch.ones_like(rx_grid, dtype=COMPLEX_DTYPE)
         if dmrs_symbols.numel() == 0:
@@ -79,8 +81,8 @@ class LeastSquaresEstimator(ChannelEstimator):
         channel_estimate: torch.Tensor,
         dmrs_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Extract pilot-only channel estimates for plotting and debug views."""
         channel_estimate = ensure_antenna_axis(as_complex_tensor(channel_estimate))
-
         pilot_symbol_indices: list[torch.Tensor] = []
         estimates_per_ant = []
         for antenna_idx in range(channel_estimate.shape[0]):

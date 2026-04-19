@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import torch
 
-from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.interfaces import TimeDomainProcessor
 from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, as_complex_tensor
+from nr_phy_simu.config import SimulationConfig
 
 
 class OfdmProcessor(TimeDomainProcessor):
     """CP-OFDM processor shared by CP-OFDM and DFT-s-OFDM chains."""
 
     def modulate(self, grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Apply OFDM modulation and cyclic-prefix insertion."""
         grid = as_complex_tensor(grid)
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
@@ -31,12 +32,14 @@ class OfdmProcessor(TimeDomainProcessor):
         return torch.cat(waveform_symbols)
 
     def demodulate(self, waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Apply cyclic-prefix removal and FFT demodulation."""
         waveform = as_complex_tensor(waveform)
         if waveform.ndim == 2:
             return torch.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], dim=0)
         return self._demodulate_single(waveform, config).unsqueeze(0)
 
     def _demodulate_single(self, waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Demodulate a single-antenna waveform into one slot grid."""
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers

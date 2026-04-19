@@ -6,8 +6,8 @@ import torch
 
 from nr_phy_simu.common.interfaces import Demodulator
 from nr_phy_simu.common.mcs import bits_per_symbol
-from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_complex_tensor
+from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.tx.modulation import QamModulator
 
 
@@ -18,6 +18,7 @@ class QamDemodulator(Demodulator):
         noise_variance: float,
         config: SimulationConfig,
     ) -> torch.Tensor:
+        """Compute max-log LLRs for the configured constellation."""
         symbols = as_complex_tensor(symbols)
         constellation, bit_labels = self._constellation(config.link.modulation)
         metric = torch.empty((symbols.numel(), constellation.numel()), dtype=REAL_DTYPE, device=symbols.device)
@@ -34,6 +35,7 @@ class QamDemodulator(Demodulator):
         return torch.stack(llrs, dim=1).reshape(-1)
 
     def _constellation(self, modulation: str) -> tuple[torch.Tensor, torch.Tensor]:
+        """Build constellation points and bit labels for one modulation."""
         bps = bits_per_symbol(modulation)
         bit_patterns = torch.tensor(list(itertools.product([0, 1], repeat=bps)), dtype=BIT_DTYPE)
         symbols = QamModulator.map_bits_for_modulation(bit_patterns.reshape(-1), modulation)

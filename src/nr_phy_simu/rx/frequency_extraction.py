@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 
 from nr_phy_simu.common.interfaces import FrequencyExtractor
-from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, as_complex_tensor
+from nr_phy_simu.config import SimulationConfig
 
 
 class FrequencyDomainExtractor(FrequencyExtractor):
@@ -17,6 +17,7 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         config: SimulationConfig,
         despread: bool = True,
     ) -> torch.Tensor:
+        """Extract scheduled data REs from a slot grid or estimate grid."""
         grid = as_complex_tensor(grid)
         if grid.ndim == 3:
             per_antenna = [
@@ -33,6 +34,7 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         config: SimulationConfig,
         despread: bool,
     ) -> torch.Tensor:
+        """Extract scheduled data REs from a single-antenna grid."""
         symbols = []
         for symbol_idx in range(config.link.start_symbol, config.link.start_symbol + config.link.num_symbols):
             symbol_values = grid[:, symbol_idx][data_mask[:, symbol_idx]]

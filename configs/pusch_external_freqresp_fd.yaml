@@ -1,10 +1,9 @@
-# PUSCH 底线测试用例 1
-# 多 TTI，CP-OFDM，256QAM MCS 表，MCS0，SNR=0 dB，AWGN。
-# 期望：BLER = 0。
+# PUSCH 典型外部频域信道系数用例
+# 使用外部输入的每子载波频域信道系数，直接在频域资源栅格上过信道。
 
 # 载波与 numerology 配置
 carrier:
-  cell_bandwidth_rbs: 52        # 小区带宽，单位 PRB
+  cell_bandwidth_rbs: 24        # 小区带宽，单位 PRB；因此频域信道系数文件长度需为 24*12=288
   subcarrier_spacing_khz: 30    # 子载波间隔，单位 kHz
   cyclic_prefix: NormalCP       # 循环前缀类型：NormalCP / ECP
   fft_size: null                # FFT 点数；null 表示自动选择满足带宽要求的最小 2 的整数次幂
@@ -12,12 +11,12 @@ carrier:
 
 # 信道模型配置
 channel:
-  model: AWGN                    # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
+  model: EXTERNAL_FREQRESP_FD   # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   params:
-    snr_db: 0.0                 # 加性白噪声信噪比，单位 dB
-    frequency_response_path: null  # 外部频域信道系数文本文件路径；EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD 时可用
-    frequency_response: null       # 外部频域信道系数数组；长度必须等于小区带宽子载波数
-    time_domain_tap_length: null   # EXTERNAL_FREQRESP_TD 时保留的时域滤波 tap 数；null 表示保留 IFFT 全长
+    snr_db: 25.0                # 加性白噪声信噪比，单位 dB
+    frequency_response_path: ../inputs/frequency_response_typical_24rb.txt  # 外部频域信道系数文本文件路径
+    frequency_response: null    # 若直接在 YAML 中给数组，则可填这里；与 frequency_response_path 二选一
+    time_domain_tap_length: null  # 仅 EXTERNAL_FREQRESP_TD 时使用；FD 直通模式下忽略
 
 # 数据扰码配置
 scrambling:
@@ -29,17 +28,17 @@ scrambling:
 # 共享信道链路配置
 link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
-  waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM
+  waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM；本用例示范 CP-OFDM 频域直通过信道
   num_layers: 1                 # 传输层数
-  num_tx_ant: 1                 # 发射天线数
-  num_rx_ant: 1                 # 接收天线数
+  num_tx_ant: 1                 # 发射天线数；外部频响模式当前要求 SISO
+  num_rx_ant: 1                 # 接收天线数；外部频响模式当前要求 SISO
   prb_start: 4                  # 资源分配起始 PRB
   num_prbs: 16                  # 用户占用带宽，单位 PRB
   start_symbol: 0               # 时域起始 OFDM symbol
   num_symbols: 14               # 时域连续占用 symbol 数
   mcs:
-    table: qam256               # MCS table type
-    index: 0                    # MCS index
+    table: qam64                # MCS table type：qam64 / qam256 / qam64lowse / tp64qam / tp64lowse；PDSCH 另支持 qam1024
+    index: 10                   # MCS index
     tp_pi2bpsk: false           # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0                       # 冗余版本号 RV
     x_overhead: 0               # TBS 计算中的 xOh
@@ -65,14 +64,14 @@ dmrs:
 
 # 仿真控制参数
 simulation:
-  num_ttis: 20                  # 连续仿真的 TTI 个数；用于底线 BLER 校验
+  num_ttis: 1                   # 连续仿真的 TTI 个数
   result_output_path: null      # 多 TTI 结果文本文件路径；null 表示不落盘
-  bypass_channel_coding: false  # 是否跳过编码与译码；底线用例要求保持标准协议链路
+  bypass_channel_coding: false  # 是否跳过编码与译码；true 时以随机编码比特直接调制，且不做 CRC 校验
 
 # 绘图控制参数
 plotting:
-  enabled: false                # 底线测试默认关闭绘图
+  enabled: true                 # 是否启用本次仿真的所有绘图
 
 # 仿真控制参数
 random_seed: 7                  # 随机种子
-slot_index: 0                   # 起始槽号；多 TTI 运行时会逐 TTI 递增
+slot_index: 0                   # 槽号

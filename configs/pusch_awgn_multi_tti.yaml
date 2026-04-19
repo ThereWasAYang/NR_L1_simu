@@ -8,9 +8,12 @@ carrier:
 
 # 信道模型配置
 channel:
-  model: AWGN                   # 信道类型：AWGN / TDL / CDL
+  model: AWGN                    # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   params:
-    snr_db: 30                # 加性白噪声信噪比，单位 dB
+    snr_db: 0                # 加性白噪声信噪比，单位 dB
+    frequency_response_path: null  # 外部频域信道系数文本文件路径；EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD 时可用
+    frequency_response: null       # 外部频域信道系数数组；长度必须等于小区带宽子载波数
+    time_domain_tap_length: null   # EXTERNAL_FREQRESP_TD 时保留的时域滤波 tap 数；null 表示保留 IFFT 全长
 
 # 数据扰码配置
 scrambling:
@@ -60,6 +63,7 @@ dmrs:
 simulation:
   num_ttis: 20                  # 连续仿真的 TTI 个数；最终统计 BLER（CRC 错包率）
   result_output_path: ../outputs/pusch_awgn_multi_tti_results.csv  # 多 TTI 结果文本文件；不存在则创建，存在则追加
+  bypass_channel_coding: false # 是否跳过编码与译码；true 时以随机编码比特直接调制，且不做 CRC 校验
 
 # 绘图控制参数
 plotting:
