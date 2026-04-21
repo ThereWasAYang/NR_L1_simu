@@ -61,6 +61,8 @@ plotting:
   画接收机入口时域幅值图
 - `_build_rx_frequency_domain_figures(result, config)`
   画接收机时域处理后的频域幅值图
+- `_build_plot_artifact_figures(result, config)`
+  自动绘制算法模块挂载的通用中间变量图
 
 统一入口现在的组织方式大致如下：
 
@@ -70,6 +72,7 @@ figure_builders = (
     _build_pilot_estimate_figures,
     _build_rx_time_domain_figures,
     _build_rx_frequency_domain_figures,
+    _build_plot_artifact_figures,
 )
 
 figures = {}
@@ -101,6 +104,8 @@ for builder in figure_builders:
   每个导频估计值对应的 DMRS symbol 编号
 - `result.rx.equalized_symbols`
   均衡后的调制符号
+- `result.rx.plot_artifacts`
+  算法模块主动挂载的通用绘图中间变量
 - `result.tx.dmrs_mask`
   DMRS 资源位置
 - `config.carrier`
@@ -110,7 +115,48 @@ for builder in figure_builders:
 
 - `src/nr_phy_simu/common/types.py`
 
-## 5. 如果要新增一个绘图节点，应该改哪里
+## 5. 最简单的新增绘图方式：挂载 PlotArtifact
+
+如果你的新算法只是想把某个中间变量画出来，优先不要改 `visualization.py`。
+
+推荐在算法返回结果里挂一个 `PlotArtifact`：
+
+```python
+from nr_phy_simu.common.types import ChannelEstimateResult, PlotArtifact
+
+return ChannelEstimateResult(
+    channel_estimate=channel_estimate,
+    pilot_estimates=pilot_estimates,
+    pilot_symbol_indices=pilot_symbol_indices,
+    plot_artifacts=(
+        PlotArtifact(
+            name="my_estimator_metric",
+            values=my_metric,
+            title="My Estimator Metric",
+            plot_type="magnitude",
+            xlabel="Subcarrier Index",
+        ),
+    ),
+)
+```
+
+系统会自动把它保存成：
+
+```text
+outputs/<prefix>_artifact_my_estimator_metric.png
+```
+
+当前通用 `plot_type` 包括：
+
+- `magnitude`：画复数或实数序列的幅度
+- `phase` / `angle`：画复数相位
+- `real` / `i`：画实部
+- `imag` / `q`：画虚部
+- `image`：把二维矩阵按热力图方式画出
+
+这种方式适合算法开发阶段快速观察中间量，只需要改产生该变量的算法模块，不需要再额外改 `rx/chain.py` 和 `visualization.py`。
+
+## 6. 如果要新增一个固定绘图节点，应该改哪里
 
 推荐做法是只改两个地方：
 
@@ -144,7 +190,7 @@ figure_builders = (
 - 在前台显示
 - 在 `run_from_config.py` 里打印对应路径
 
-## 6. 新增绘图节点时的推荐原则
+## 7. 新增绘图节点时的推荐原则
 
 ### 原则 1：不要在绘图函数里重复实现算法
 
@@ -160,7 +206,13 @@ figure_builders = (
 - 避免浪费算力
 - 避免“图里画的结果”和“接收机真实使用的结果”不一致
 
-### 原则 2：如果图需要新数据，优先把数据挂到 `SimulationResult`
+### 原则 2：如果是算法中间变量，优先挂到 `PlotArtifact`
+
+算法开发阶段新增变量时，优先把变量放进 `ChannelEstimateResult.plot_artifacts` 或 `RxPayload.plot_artifacts`。
+
+这样通常不需要改绘图主流程。
+
+### 原则 3：如果是稳定公共数据，再扩展 `SimulationResult`
 
 如果你要画一个新的中间节点，例如：
 
@@ -176,7 +228,7 @@ figure_builders = (
 
 不要在绘图函数里重新跑一遍主链路。
 
-### 原则 3：一类图建议对应一个稳定的数据语义
+### 原则 4：一类图建议对应一个稳定的数据语义
 
 例如：
 
@@ -186,7 +238,7 @@ figure_builders = (
 
 如果横轴不是直观物理量，建议在标题或 `xlabel` 中明确写出来。
 
-## 7. 如果我想画“更前面的接收机中间节点”，该改哪里
+## 8. 如果我想画“更前面的接收机中间节点”，该改哪里
 
 当前接收机主流程在：
 
@@ -213,9 +265,13 @@ figure_builders = (
 2. 扩展 `RxPayload`
 3. 在 `visualization.py` 里画出来
 
-## 8. 最小修改模板
+## 9. 最小修改模板
 
-如果你只是想增加一张图，最小修改通常是：
+如果你只是想增加一张算法中间变量图，最小修改通常是：
+
+1. 在算法返回结果里增加 `PlotArtifact`
+
+如果你要增加一张稳定公共图，最小修改通常是：
 
 1. 修改 `src/nr_phy_simu/common/types.py`
    如果现有 `result` 里没有你要的数据，就加字段
@@ -226,7 +282,7 @@ figure_builders = (
 4. 修改 `save_simulation_plots(...)`
    在 `figure_builders` 中注册这个 builder
 
-## 9. 当前最关键的文件
+## 10. 当前最关键的文件
 
 如果后续你要自己扩图，最常用的是这几个文件：
 
@@ -241,7 +297,7 @@ figure_builders = (
 - `src/nr_phy_simu/config.py`
   全局绘图开关和其他绘图相关配置
 
-## 10. 一句话建议
+## 11. 一句话建议
 
 如果你后续要加新图，最稳的方式是：
 

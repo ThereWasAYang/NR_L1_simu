@@ -12,6 +12,7 @@ from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
+from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
 from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.visualization import save_simulation_plots
@@ -26,8 +27,9 @@ def _format_evm_snr_db(evm_snr_linear: float | None) -> str | None:
 def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     config_path = ROOT / config_relpath
     config = load_simulation_config(config_path)
+    component_factory = DefaultSimulationComponentFactory()
     if config.simulation.num_ttis > 1:
-        batch_result = MultiTtiSimulationRunner(config).run()
+        batch_result = MultiTtiSimulationRunner(config, component_factory=component_factory).run()
         result = batch_result.last_result
         if result is None:
             raise RuntimeError("Multi-TTI simulation did not produce any TTI result.")
@@ -43,9 +45,13 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         batch_result = None
         report_path = None
         if config.waveform_input.enabled:
-            simulation = WaveformReplaySimulation(config)
+            simulation = WaveformReplaySimulation(config, component_factory=component_factory)
         else:
-            simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
+            simulation = (
+                PuschSimulation(config, component_factory=component_factory)
+                if config.link.channel_type.upper() == "PUSCH"
+                else PdschSimulation(config, component_factory=component_factory)
+            )
         result = simulation.run()
         effective_config = config
     prefix = config_path.stem

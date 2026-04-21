@@ -64,8 +64,8 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_symbol_indices, dmrs_estimates = self._estimate_dmrs_symbols(rx_grid, dmrs_symbols, dmrs_mask)
         return self._interpolate_time(dmrs_symbol_indices, dmrs_estimates, rx_grid.shape[1])
 
-    @staticmethod
     def _estimate_dmrs_symbols(
+        self,
         rx_grid: np.ndarray,
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
@@ -89,19 +89,18 @@ class LeastSquaresEstimator(ChannelEstimator):
             pilot_subcarriers = np.flatnonzero(dmrs_mask[:, symbol_idx])
             symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_subcarriers.size]
             dmrs_cursor += pilot_subcarriers.size
-            pilot_values = LeastSquaresEstimator._ls_estimate(
+            pilot_values = self._ls_estimate(
                 rx_grid[pilot_subcarriers, symbol_idx],
                 symbol_dmrs,
             )
-            dmrs_estimates[dmrs_idx] = LeastSquaresEstimator._interpolate_frequency(
+            dmrs_estimates[dmrs_idx] = self._interpolate_frequency(
                 pilot_subcarriers,
                 pilot_values,
                 rx_grid.shape[0],
             )
         return dmrs_symbol_indices, dmrs_estimates
 
-    @staticmethod
-    def _ls_estimate(rx_pilots: np.ndarray, reference_pilots: np.ndarray) -> np.ndarray:
+    def _ls_estimate(self, rx_pilots: np.ndarray, reference_pilots: np.ndarray) -> np.ndarray:
         """Compute least-squares channel estimates on pilot RE locations.
 
         Args:
@@ -113,8 +112,8 @@ class LeastSquaresEstimator(ChannelEstimator):
         """
         return rx_pilots / reference_pilots
 
-    @staticmethod
     def _interpolate_frequency(
+        self,
         pilot_subcarriers: np.ndarray,
         pilot_values: np.ndarray,
         num_subcarriers: int,
@@ -134,8 +133,8 @@ class LeastSquaresEstimator(ChannelEstimator):
         imag = np.interp(full_subcarriers, pilot_subcarriers, pilot_values.imag)
         return real + 1j * imag
 
-    @staticmethod
     def _interpolate_time(
+        self,
         dmrs_symbol_indices: np.ndarray,
         dmrs_estimates: np.ndarray,
         num_symbols: int,
@@ -163,8 +162,8 @@ class LeastSquaresEstimator(ChannelEstimator):
             channel[sc_idx, :] = real_interp + 1j * imag_interp
         return channel
 
-    @staticmethod
     def _extract_pilot_estimates(
+        self,
         channel_estimate: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:

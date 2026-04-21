@@ -11,6 +11,17 @@ BitArray = np.ndarray
 
 
 @dataclass
+class PlotArtifact:
+    name: str
+    values: Any
+    title: str | None = None
+    plot_type: str = "magnitude"
+    x: Any = None
+    xlabel: str = "Index"
+    ylabel: str | None = None
+
+
+@dataclass
 class TxPayload:
     transport_block: BitArray
     coded_bits: BitArray
@@ -27,6 +38,7 @@ class ChannelEstimateResult:
     channel_estimate: ComplexArray
     pilot_estimates: ComplexArray
     pilot_symbol_indices: np.ndarray
+    plot_artifacts: tuple[PlotArtifact, ...] = ()
 
 
 @dataclass
@@ -39,6 +51,7 @@ class RxPayload:
     decoded_bits: BitArray
     crc_ok: bool | None
     dmrs_symbols: ComplexArray
+    plot_artifacts: tuple[PlotArtifact, ...] = ()
 
 
 @dataclass

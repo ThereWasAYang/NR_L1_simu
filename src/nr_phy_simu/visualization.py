@@ -85,6 +85,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from nr_phy_simu.common.types import SimulationResult
+from nr_phy_simu.common.types import PlotArtifact
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -105,6 +106,7 @@ def save_simulation_plots(
         _build_pilot_estimate_figures,
         _build_rx_time_domain_figures,
         _build_rx_frequency_domain_figures,
+        _build_plot_artifact_figures,
     )
     figures: dict[str, object] = {}
     for builder in figure_builders:
@@ -277,6 +279,72 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
     axes[-1].set_xlabel("Flattened Subcarrier Index Across Symbols")
     fig.tight_layout()
     return {"rx_freq": fig}
+
+
+def _build_plot_artifact_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
+    del config
+    figures: dict[str, object] = {}
+    for artifact in result.rx.plot_artifacts:
+        figures[f"artifact_{artifact.name}"] = _build_artifact_figure(artifact)
+    return figures
+
+
+def _build_artifact_figure(artifact: PlotArtifact) -> object:
+    values = np.asarray(artifact.values)
+    x_values = None if artifact.x is None else np.asarray(artifact.x)
+    plot_type = artifact.plot_type.lower()
+    title = artifact.title or artifact.name
+
+    if plot_type == "image" or values.ndim == 2 and plot_type == "auto":
+        fig, ax = plt.subplots(figsize=(8, 5))
+        image = ax.imshow(np.abs(values), aspect="auto", origin="lower")
+        fig.colorbar(image, ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel(artifact.xlabel)
+        ax.set_ylabel(artifact.ylabel or "Row Index")
+        fig.tight_layout()
+        return fig
+
+    series = values.reshape(-1) if values.ndim == 1 else values.reshape(values.shape[0], -1)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    if series.ndim == 1:
+        _plot_artifact_series(ax, series, x_values, plot_type, label=None)
+    else:
+        for row_idx, row in enumerate(series):
+            _plot_artifact_series(ax, row, x_values, plot_type, label=f"series {row_idx}")
+        ax.legend(fontsize=8)
+    ax.set_title(title)
+    ax.set_xlabel(artifact.xlabel)
+    ax.set_ylabel(artifact.ylabel or _artifact_default_ylabel(plot_type))
+    ax.grid(True, linestyle="--", alpha=0.35)
+    fig.tight_layout()
+    return fig
+
+
+def _plot_artifact_series(ax, values: np.ndarray, x_values: np.ndarray | None, plot_type: str, label: str | None) -> None:
+    y_values = _artifact_y_values(values, plot_type)
+    x = np.arange(y_values.size) if x_values is None else x_values[: y_values.size]
+    ax.plot(x, y_values, linewidth=1.0, label=label)
+
+
+def _artifact_y_values(values: np.ndarray, plot_type: str) -> np.ndarray:
+    if plot_type in {"phase", "angle"}:
+        return np.angle(values)
+    if plot_type in {"real", "i"}:
+        return values.real
+    if plot_type in {"imag", "q"}:
+        return values.imag
+    return np.abs(values)
+
+
+def _artifact_default_ylabel(plot_type: str) -> str:
+    if plot_type in {"phase", "angle"}:
+        return "Phase (rad)"
+    if plot_type in {"real", "i"}:
+        return "Real"
+    if plot_type in {"imag", "q"}:
+        return "Imag"
+    return "Magnitude"
 
 
 def _show_plots(paths: list[Path], block: bool) -> None:

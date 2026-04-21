@@ -23,6 +23,7 @@ from py3gpp import (
 
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
+from nr_phy_simu.common.types import PlotArtifact
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
     encode_ldpc_codeblocks,
@@ -244,6 +245,21 @@ class VisualizationSmokeTest(unittest.TestCase):
         self.assertTrue(paths["pilot_estimates"].exists())
         self.assertTrue(paths["rx_time"].exists())
         self.assertTrue(paths["rx_freq"].exists())
+
+    def test_save_simulation_plots_includes_generic_artifacts(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        result = PuschSimulation(config).run()
+        result.rx.plot_artifacts = (
+            PlotArtifact(
+                name="estimator_debug_metric",
+                values=np.array([1.0, 0.5, 0.25]),
+                title="Estimator Debug Metric",
+                plot_type="magnitude",
+            ),
+        )
+        paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "artifact")
+        self.assertTrue(paths["artifact_estimator_debug_metric"].exists())
 
 
 class DmrsSequenceTest(unittest.TestCase):

@@ -121,6 +121,7 @@ class Receiver:
             decoded_bits=decoded_bits,
             crc_ok=crc_ok,
             dmrs_symbols=dmrs_symbols,
+            plot_artifacts=channel_estimation.plot_artifacts,
         )
 
     @staticmethod
