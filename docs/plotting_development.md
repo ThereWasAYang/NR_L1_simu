@@ -51,40 +51,27 @@ plotting:
 
 - `save_simulation_plots(...)`
 
-它当前会通过统一的 `figure_builders` 注册表调用这些内部函数：
+它当前会先把所有图统一整理成 `PlotArtifact`，再交给同一个 artifact 渲染器：
 
-- `_build_constellation_figures(result, config)`
-  画均衡后的星座图
-- `_build_pilot_estimate_figures(result, config)`
-  画导频位置上的信道估计幅度/相位
-- `_build_rx_time_domain_figures(result, config)`
-  画接收机入口时域幅值图
-- `_build_rx_frequency_domain_figures(result, config)`
-  画接收机时域处理后的频域幅值图
-- `_build_plot_artifact_figures(result, config)`
-  自动绘制算法模块挂载的通用中间变量图
+- `_collect_plot_artifacts(result, config)`
+  收集标准图和算法模块挂载的中间变量图
+- `_build_artifact_figure(artifact)`
+  根据 `artifact.plot_type` 选择对应渲染逻辑并生成 figure
 
 统一入口现在的组织方式大致如下：
 
 ```python
-figure_builders = (
-    _build_constellation_figures,
-    _build_pilot_estimate_figures,
-    _build_rx_time_domain_figures,
-    _build_rx_frequency_domain_figures,
-    _build_plot_artifact_figures,
-)
-
-figures = {}
-for builder in figure_builders:
-    figures.update(builder(result, config))
+artifacts = _collect_plot_artifacts(result, config)
+for artifact in artifacts:
+    figure = _build_artifact_figure(artifact)
+    save(figure, artifact.name)
 ```
 
 这样所有绘图节点的接入方式都保持一致：
 
-- 每个 builder 都接收 `result, config`
-- 每个 builder 都返回 `dict[str, figure]`
-- `save_simulation_plots(...)` 不再区分“单张图”和“多张图”的特殊写法
+- 标准图也是 `PlotArtifact`
+- 新算法中间变量图也是 `PlotArtifact`
+- `save_simulation_plots(...)` 不再维护两套绘图注册机制
 
 ## 4. 图里用到的数据从哪里来
 
@@ -158,30 +145,34 @@ outputs/<prefix>_artifact_my_estimator_metric.png
 
 ## 6. 如果要新增一个固定绘图节点，应该改哪里
 
-推荐做法是只改两个地方：
+推荐做法仍然先定义一个稳定的 `PlotArtifact`，再在渲染器里增加专用 `plot_type`。
 
-1. 在 `src/nr_phy_simu/visualization.py` 新增一个 `_build_xxx_figures(...)`
-2. 在 `save_simulation_plots(...)` 的 `figure_builders` 里注册它
+通常只需要改 `src/nr_phy_simu/visualization.py`：
 
-例如：
+1. 在 `_collect_plot_artifacts(...)` 中收集这个固定图需要的数据
+2. 在 `_build_artifact_figure(...)` 中增加一个 `plot_type` 分支
+3. 实现对应的 `_build_xxx_figure(artifact)` 函数
 
-```python
-def _build_my_new_figures(
-    result: SimulationResult,
-    config: SimulationConfig,
-) -> dict[str, object]:
-    fig, ax = plt.subplots()
-    ax.plot(...)
-    return {"my_new_plot": fig}
-```
-
-然后在 `save_simulation_plots(...)` 中加入：
+例如概念上是：
 
 ```python
-figure_builders = (
-    ...,
-    _build_my_new_figures,
+artifacts.append(
+    PlotArtifact(
+        name="my_new_plot",
+        values=my_values,
+        plot_type="my_new_plot",
+    )
 )
+
+def _build_artifact_figure(artifact: PlotArtifact) -> object:
+    if artifact.plot_type == "my_new_plot":
+        return _build_my_new_figure(artifact)
+    ...
+
+def _build_my_new_figure(artifact: PlotArtifact) -> object:
+    fig, ax = plt.subplots()
+    ax.plot(artifact.values)
+    return fig
 ```
 
 这样系统会自动：

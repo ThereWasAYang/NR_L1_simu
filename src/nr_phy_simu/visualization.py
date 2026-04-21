@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 from pathlib import Path
 import platform
@@ -101,22 +102,13 @@ def save_simulation_plots(
     output_path.mkdir(parents=True, exist_ok=True)
 
     plots: dict[str, Path] = {}
-    figure_builders = (
-        _build_constellation_figures,
-        _build_pilot_estimate_figures,
-        _build_rx_time_domain_figures,
-        _build_rx_frequency_domain_figures,
-        _build_plot_artifact_figures,
-    )
-    figures: dict[str, object] = {}
-    for builder in figure_builders:
-        figures.update(builder(result, config))
-
-    for name, figure in figures.items():
-        path = output_path / f"{prefix}_{name}.png"
+    artifacts = _collect_plot_artifacts(result, config)
+    for artifact in artifacts:
+        figure = _build_artifact_figure(artifact)
+        path = output_path / f"{prefix}_{artifact.name}.png"
         figure.savefig(path, dpi=160)
         plt.close(figure)
-        plots[name] = path
+        plots[artifact.name] = path
 
     if show:
         _show_plots(list(plots.values()), block=block)
@@ -124,34 +116,81 @@ def save_simulation_plots(
     return plots
 
 
-def _build_constellation_figures(
+def _collect_plot_artifacts(
     result: SimulationResult,
     config: SimulationConfig,
-) -> dict[str, object]:
-    del config
-    symbols = result.rx.equalized_symbols
+) -> tuple[PlotArtifact, ...]:
+    artifacts: list[PlotArtifact] = []
+    if result.rx.equalized_symbols.size:
+        artifacts.append(
+            PlotArtifact(
+                name="constellation",
+                values=result.rx.equalized_symbols,
+                plot_type="constellation",
+                metadata={"snr_db": result.snr_db},
+            )
+        )
+    if result.rx.channel_estimation.channel_estimate.size:
+        artifacts.append(
+            PlotArtifact(
+                name="pilot_estimates",
+                values={
+                    "channel_estimation": result.rx.channel_estimation,
+                    "dmrs_mask": result.tx.dmrs_mask,
+                },
+                plot_type="pilot_estimates",
+            )
+        )
+    if result.rx.rx_waveform.size:
+        artifacts.append(
+            PlotArtifact(
+                name="rx_time",
+                values=result.rx.rx_waveform,
+                plot_type="rx_time",
+                metadata={
+                    "cp_lengths": config.carrier.cyclic_prefix_lengths,
+                    "fft_size": config.carrier.fft_size_effective,
+                },
+            )
+        )
+    if result.rx.rx_grid.size:
+        artifacts.append(
+            PlotArtifact(
+                name="rx_freq",
+                values=result.rx.rx_grid,
+                plot_type="rx_freq",
+                metadata={
+                    "n_subcarriers": config.carrier.n_subcarriers,
+                    "symbols_per_slot": config.carrier.symbols_per_slot,
+                },
+            )
+        )
+    artifacts.extend(replace(artifact, name=f"artifact_{artifact.name}") for artifact in result.rx.plot_artifacts)
+    return tuple(artifacts)
+
+
+def _build_constellation_figure(artifact: PlotArtifact) -> object:
+    symbols = np.asarray(artifact.values)
+    snr_db = float((artifact.metadata or {}).get("snr_db", 0.0))
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
-    ax.set_title(f"Equalized Constellation (SNR={result.snr_db:.2f} dB)")
+    ax.set_title(f"Equalized Constellation (SNR={snr_db:.2f} dB)")
     ax.set_xlabel("I (Real)")
     ax.set_ylabel("Q (Imag)")
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.axis("equal")
     fig.tight_layout()
-    return {"constellation": fig}
+    return fig
 
 
-def _build_pilot_estimate_figures(
-    result: SimulationResult,
-    config: SimulationConfig,
-) -> dict[str, object]:
-    del config
-    channel_estimation = result.rx.channel_estimation
+def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
+    values = artifact.values
+    channel_estimation = values["channel_estimation"]
     channel_estimate = channel_estimation.channel_estimate
     if channel_estimate.ndim == 2:
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
-    dmrs_mask = result.tx.dmrs_mask
+    dmrs_mask = values["dmrs_mask"]
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
     max_cols = 4
     ant_cols = min(num_ant, max_cols)
@@ -215,17 +254,16 @@ def _build_pilot_estimate_figures(
 
     fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
-    return {"pilot_estimates": fig}
+    return fig
 
 
-def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    waveform = result.rx.rx_waveform
-    if waveform.size == 0:
-        return {}
+def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
+    waveform = np.asarray(artifact.values)
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
-    cp_lengths = config.carrier.cyclic_prefix_lengths
-    fft_size = config.carrier.fft_size_effective
+    metadata = artifact.metadata or {}
+    cp_lengths = metadata["cp_lengths"]
+    fft_size = int(metadata["fft_size"])
     boundaries = [0]
     labels: list[tuple[float, int]] = []
     offset = 0
@@ -252,14 +290,16 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
         ax.grid(True, linestyle="--", alpha=0.35)
     axes[-1].set_xlabel("Sample Index")
     fig.tight_layout()
-    return {"rx_time": fig}
+    return fig
 
 
-def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    rx_grid = result.rx.rx_grid
+def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
+    rx_grid = np.asarray(artifact.values)
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
-    n_sc = config.carrier.n_subcarriers
+    metadata = artifact.metadata or {}
+    n_sc = int(metadata["n_subcarriers"])
+    symbols_per_slot = int(metadata["symbols_per_slot"])
     num_ant = rx_grid.shape[0]
     fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
     axes = np.atleast_1d(axes)
@@ -267,10 +307,10 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
         concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
         x = np.arange(concatenated.size)
         ax.plot(x, concatenated, linewidth=0.9)
-        for symbol_idx in range(config.carrier.symbols_per_slot + 1):
+        for symbol_idx in range(symbols_per_slot + 1):
             ax.axvline(symbol_idx * n_sc, color="tab:red", linestyle="--", linewidth=0.8, alpha=0.6)
         ymax = max(float(np.max(concatenated)), 1e-6)
-        for symbol_idx in range(config.carrier.symbols_per_slot):
+        for symbol_idx in range(symbols_per_slot):
             center = symbol_idx * n_sc + n_sc / 2
             ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
         ax.set_title(f"Received Frequency-Domain Magnitude RX{ant_idx} (Full Cell BW)")
@@ -278,18 +318,19 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
         ax.grid(True, linestyle="--", alpha=0.35)
     axes[-1].set_xlabel("Flattened Subcarrier Index Across Symbols")
     fig.tight_layout()
-    return {"rx_freq": fig}
-
-
-def _build_plot_artifact_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    del config
-    figures: dict[str, object] = {}
-    for artifact in result.rx.plot_artifacts:
-        figures[f"artifact_{artifact.name}"] = _build_artifact_figure(artifact)
-    return figures
+    return fig
 
 
 def _build_artifact_figure(artifact: PlotArtifact) -> object:
+    if artifact.plot_type == "constellation":
+        return _build_constellation_figure(artifact)
+    if artifact.plot_type == "pilot_estimates":
+        return _build_pilot_estimate_figure(artifact)
+    if artifact.plot_type == "rx_time":
+        return _build_rx_time_domain_figure(artifact)
+    if artifact.plot_type == "rx_freq":
+        return _build_rx_frequency_domain_figure(artifact)
+
     values = np.asarray(artifact.values)
     x_values = None if artifact.x is None else np.asarray(artifact.x)
     plot_type = artifact.plot_type.lower()

@@ -19,6 +19,7 @@ class PlotArtifact:
     x: Any = None
     xlabel: str = "Index"
     ylabel: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
