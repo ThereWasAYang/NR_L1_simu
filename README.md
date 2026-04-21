@@ -135,6 +135,25 @@ outputs/<prefix>_artifact_my_estimator_metric.png
 
 当前支持的通用绘图类型包括 `magnitude`、`phase`、`real`、`imag` 和 `image`。更复杂、长期稳定的公共绘图节点仍建议在 [visualization.py](src/nr_phy_simu/visualization.py) 中新增专用 `plot_type` 渲染分支。
 
+对于不适合放进 `config` 或 `result` 的运行期中间变量，可以使用全局生效的 `SimulationRuntimeContext`：
+
+```python
+from nr_phy_simu.common.runtime_context import get_runtime_context
+from nr_phy_simu.common.types import PlotArtifact
+
+context = get_runtime_context()
+context.set("channel_estimation", "my_metric", my_metric)
+context.add_plot_artifact(
+    PlotArtifact(
+        name="my_metric",
+        values=my_metric,
+        plot_type="magnitude",
+    )
+)
+```
+
+`context.set(...)` 适合保存其他模块可能读取的临时变量；`context.add_plot_artifact(...)` 适合保存绘图变量，输出文件名形如 `outputs/<prefix>_context_my_metric.png`。
+
 ## 参数文件
 
 当前支持：

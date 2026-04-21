@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext
 from nr_phy_simu.common.types import MultiTtiSimulationResult, SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory
@@ -15,9 +16,11 @@ class MultiTtiSimulationRunner:
         self,
         config: SimulationConfig,
         component_factory: SimulationComponentFactory | None = None,
+        runtime_context: SimulationRuntimeContext | None = None,
     ) -> None:
         self.config = config
         self.component_factory = component_factory
+        self.runtime_context = runtime_context or SimulationRuntimeContext()
 
     def run(self) -> MultiTtiSimulationResult:
         num_ttis = int(self.config.simulation.num_ttis)
@@ -58,7 +61,19 @@ class MultiTtiSimulationRunner:
 
     def _build_simulation(self, config: SimulationConfig):
         if config.waveform_input.enabled:
-            return WaveformReplaySimulation(config, component_factory=self.component_factory)
+            return WaveformReplaySimulation(
+                config,
+                component_factory=self.component_factory,
+                runtime_context=self.runtime_context,
+            )
         if config.link.channel_type.upper() == "PUSCH":
-            return PuschSimulation(config, component_factory=self.component_factory)
-        return PdschSimulation(config, component_factory=self.component_factory)
+            return PuschSimulation(
+                config,
+                component_factory=self.component_factory,
+                runtime_context=self.runtime_context,
+            )
+        return PdschSimulation(
+            config,
+            component_factory=self.component_factory,
+            runtime_context=self.runtime_context,
+        )

@@ -143,7 +143,39 @@ outputs/<prefix>_artifact_my_estimator_metric.png
 
 这种方式适合算法开发阶段快速观察中间量，只需要改产生该变量的算法模块，不需要再额外改 `rx/chain.py` 和 `visualization.py`。
 
-## 6. 如果要新增一个固定绘图节点，应该改哪里
+## 6. 运行期上下文：保存不属于 config/result 的变量
+
+有些中间变量既不适合写进配置，也不适合成为最终结果的一部分，但又可能被绘图或后续模块临时使用。
+
+这类变量可以放进 `SimulationRuntimeContext`：
+
+```python
+from nr_phy_simu.common.runtime_context import get_runtime_context
+from nr_phy_simu.common.types import PlotArtifact
+
+context = get_runtime_context()
+context.set("channel_estimation", "my_metric", my_metric)
+context.add_plot_artifact(
+    PlotArtifact(
+        name="my_metric",
+        values=my_metric,
+        title="My Metric",
+        plot_type="magnitude",
+    )
+)
+```
+
+说明：
+
+- `context.set(namespace, key, value)` 用于保存普通运行期变量
+- `context.get(namespace, key)` 用于在其他模块读取变量
+- `context.add_plot_artifact(...)` 用于把变量注册为绘图对象
+- 每次单 TTI 仿真开始时，当前 context 会被清空
+- 多 TTI 仿真会复用同一个 context，因此仿真结束后保留的是最后一个 TTI 的运行期上下文
+
+这种方式适合算法开发和调试阶段使用。若某个变量已经成为稳定的对外结果，仍建议把它提升到 `RxPayload`、`ChannelEstimateResult` 或 `SimulationResult`。
+
+## 7. 如果要新增一个固定绘图节点，应该改哪里
 
 推荐做法仍然先定义一个稳定的 `PlotArtifact`，再在渲染器里增加专用 `plot_type`。
 
@@ -181,7 +213,7 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 - 在前台显示
 - 在 `run_from_config.py` 里打印对应路径
 
-## 7. 新增绘图节点时的推荐原则
+## 8. 新增绘图节点时的推荐原则
 
 ### 原则 1：不要在绘图函数里重复实现算法
 
@@ -229,7 +261,7 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 
 如果横轴不是直观物理量，建议在标题或 `xlabel` 中明确写出来。
 
-## 8. 如果我想画“更前面的接收机中间节点”，该改哪里
+## 9. 如果我想画“更前面的接收机中间节点”，该改哪里
 
 当前接收机主流程在：
 
@@ -256,7 +288,7 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 2. 扩展 `RxPayload`
 3. 在 `visualization.py` 里画出来
 
-## 9. 最小修改模板
+## 10. 最小修改模板
 
 如果你只是想增加一张算法中间变量图，最小修改通常是：
 
@@ -273,7 +305,7 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 4. 修改 `save_simulation_plots(...)`
    在 `figure_builders` 中注册这个 builder
 
-## 10. 当前最关键的文件
+## 11. 当前最关键的文件
 
 如果后续你要自己扩图，最常用的是这几个文件：
 
@@ -288,7 +320,7 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 - `src/nr_phy_simu/config.py`
   全局绘图开关和其他绘图相关配置
 
-## 11. 一句话建议
+## 12. 一句话建议
 
 如果你后续要加新图，最稳的方式是：
 

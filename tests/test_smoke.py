@@ -23,6 +23,7 @@ from py3gpp import (
 
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
 from nr_phy_simu.common.types import PlotArtifact
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
@@ -260,6 +261,24 @@ class VisualizationSmokeTest(unittest.TestCase):
         )
         paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "artifact")
         self.assertTrue(paths["artifact_estimator_debug_metric"].exists())
+
+    def test_save_simulation_plots_includes_runtime_context_artifacts(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        runtime_context = SimulationRuntimeContext()
+        result = PuschSimulation(config, runtime_context=runtime_context).run()
+        get_runtime_context().set("channel_estimation", "debug_scalar", 1.0)
+        get_runtime_context().add_plot_artifact(
+            PlotArtifact(
+                name="runtime_debug_metric",
+                values=np.array([0.2, 0.4, 0.6]),
+                title="Runtime Debug Metric",
+                plot_type="magnitude",
+            )
+        )
+        paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "runtime")
+        self.assertEqual(get_runtime_context().get("channel_estimation", "debug_scalar"), 1.0)
+        self.assertTrue(paths["context_runtime_debug_metric"].exists())
 
 
 class DmrsSequenceTest(unittest.TestCase):

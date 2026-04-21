@@ -85,6 +85,7 @@ _configure_matplotlib_fonts()
 import matplotlib.pyplot as plt
 import numpy as np
 
+from nr_phy_simu.common.runtime_context import get_runtime_context
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.common.types import PlotArtifact
 from nr_phy_simu.config import SimulationConfig
@@ -166,6 +167,10 @@ def _collect_plot_artifacts(
             )
         )
     artifacts.extend(replace(artifact, name=f"artifact_{artifact.name}") for artifact in result.rx.plot_artifacts)
+    artifacts.extend(
+        replace(artifact, name=f"context_{artifact.name}")
+        for artifact in get_runtime_context().plot_artifacts
+    )
     return tuple(artifacts)
 
 

@@ -5,6 +5,7 @@ from dataclasses import replace
 import numpy as np
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
@@ -26,8 +27,10 @@ class SharedChannelSimulation:
         receiver: Receiver | None = None,
         channel=None,
         component_factory: SimulationComponentFactory | None = None,
+        runtime_context: SimulationRuntimeContext | None = None,
     ) -> None:
         self.config = config
+        self.runtime_context = runtime_context or SimulationRuntimeContext()
         self.component_factory = component_factory or DefaultSimulationComponentFactory()
         self.components = self.component_factory.create_components(config)
         self.dmrs_generator = self.components.shared.dmrs_generator
@@ -46,6 +49,8 @@ class SharedChannelSimulation:
         Returns:
             Structured simulation result containing TX/RX buffers and KPIs.
         """
+        self.runtime_context.clear()
+        set_runtime_context(self.runtime_context)
         apply_mcs_to_link(self.config)
         data_re = self.mapper.count_data_re(self.config)
         self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()
