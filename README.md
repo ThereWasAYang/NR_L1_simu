@@ -112,6 +112,29 @@ python examples\run_from_config.py configs\pusch_awgn.yaml
 
 - [docs/plotting_development.md](docs/plotting_development.md)
 
+如果你在开发新算法时只是想把某个中间变量快速画出来，推荐使用通用 `PlotArtifact` 机制，而不是直接修改 `visualization.py`。例如在信道估计结果中挂载：
+
+```python
+from nr_phy_simu.common.types import PlotArtifact
+
+plot_artifacts = (
+    PlotArtifact(
+        name="my_estimator_metric",
+        values=my_metric,
+        title="My Estimator Metric",
+        plot_type="magnitude",
+    ),
+)
+```
+
+只要该对象最终进入 `ChannelEstimateResult.plot_artifacts` 或 `RxPayload.plot_artifacts`，系统就会自动保存为：
+
+```text
+outputs/<prefix>_artifact_my_estimator_metric.png
+```
+
+当前支持的通用绘图类型包括 `magnitude`、`phase`、`real`、`imag` 和 `image`。更复杂、长期稳定的公共绘图节点仍建议在 [visualization.py](src/nr_phy_simu/visualization.py) 中新增专用 builder。
+
 ## 参数文件
 
 当前支持：
