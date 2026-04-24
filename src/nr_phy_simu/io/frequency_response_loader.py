@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+import torch
+
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE
 
 _TEXT_FILE_READ_ENCODING = "utf-8-sig"
 
@@ -12,7 +14,7 @@ def load_frequency_response(
     *,
     values: Any = None,
     path: str | Path | None = None,
-) -> np.ndarray:
+) -> torch.Tensor:
     """Load complex frequency-response coefficients from config values or a text file.
 
     Args:
@@ -35,13 +37,13 @@ def load_frequency_response(
             if line.strip()
         ]
     else:
-        if not isinstance(values, (list, tuple, np.ndarray)):
+        if not isinstance(values, (list, tuple, torch.Tensor)):
             raise ValueError("channel.params.frequency_response must be a sequence of complex coefficients.")
         entries = [_parse_complex_value(item) for item in values]
 
     if not entries:
         raise ValueError("Frequency-response input is empty.")
-    return np.asarray(entries, dtype=np.complex128).reshape(-1)
+    return torch.as_tensor(entries, dtype=COMPLEX_DTYPE).reshape(-1)
 
 
 def _parse_complex_value(value: Any) -> complex:
@@ -53,9 +55,19 @@ def _parse_complex_value(value: Any) -> complex:
     Returns:
         Parsed complex coefficient.
     """
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            scalar = value.detach().cpu().reshape(-1)[0]
+            if torch.is_complex(value):
+                return complex(scalar.item())
+            return complex(float(scalar.item()), 0.0)
+        if value.numel() == 2:
+            flat = value.detach().cpu().reshape(-1)
+            return complex(float(flat[0].item()), float(flat[1].item()))
+        raise ValueError(f"Unsupported tensor coefficient shape: {tuple(value.shape)!r}")
     if isinstance(value, complex):
         return value
-    if isinstance(value, (int, float, np.integer, np.floating)):
+    if isinstance(value, (int, float)):
         return complex(float(value), 0.0)
     if isinstance(value, (list, tuple)) and len(value) == 2:
         return complex(float(value[0]), float(value[1]))

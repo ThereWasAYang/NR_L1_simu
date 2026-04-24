@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-import numpy as np
 import torch
 
 from nr_phy_simu.channels.awgn import AwgnChannel
@@ -29,9 +28,9 @@ class DefaultChannelFactory(ChannelFactory):
         if model == "AWGN":
             return AwgnChannel(rng=torch.Generator().manual_seed(config.random_seed))
         if model == "TDL":
-            return TdlChannel(rng=np.random.default_rng(config.random_seed))
+            return TdlChannel(rng=torch.Generator().manual_seed(config.random_seed))
         if model == "CDL":
-            return CdlChannel(rng=np.random.default_rng(config.random_seed))
+            return CdlChannel(rng=torch.Generator().manual_seed(config.random_seed))
         if model == "EXTERNAL_FREQRESP_TD":
             return ExternalFrequencyResponseTimeDomainChannel()
         if model == "EXTERNAL_FREQRESP_FD":

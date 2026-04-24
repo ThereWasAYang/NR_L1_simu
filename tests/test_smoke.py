@@ -632,7 +632,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
                 waveform = np.ones(1024, dtype=np.complex128)
                 rx_waveform, info = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
                 self.assertGreater(np.asarray(info["path_delays_s"]).size, 0, msg=f"{model}/{profile}")
-                self.assertGreater(np.mean(np.abs(rx_waveform)), 0.0, msg=f"{model}/{profile}")
+                self.assertGreater(np.mean(np.abs(_as_numpy(rx_waveform))), 0.0, msg=f"{model}/{profile}")
 
 
 class WaveformReplaySmokeTest(unittest.TestCase):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC
 
 import torch
-from scipy.signal import fftconvolve
+import torch.nn.functional as F
 
 from nr_phy_simu.common.interfaces import ChannelModel
 from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, REAL_DTYPE, as_complex_tensor, complex_randn
@@ -92,9 +92,11 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         impulse_response = torch.fft.ifft(torch.fft.ifftshift(fft_response))
         tap_length = int(config.channel.params.get("time_domain_tap_length", impulse_response.numel()))
         taps = impulse_response[:tap_length]
-        filtered = as_complex_tensor(fftconvolve(waveform.detach().cpu().numpy(), taps.detach().cpu().numpy(), mode="full"))[
-            : waveform.numel()
-        ].to(device=waveform.device)
+        filtered = F.conv1d(
+            waveform.reshape(1, 1, -1),
+            torch.flip(taps, dims=(0,)).reshape(1, 1, -1),
+            padding=taps.numel() - 1,
+        ).reshape(-1)[: waveform.numel()]
         rx_waveform, noise_variance, snr_db = self.add_awgn(filtered, config)
         return rx_waveform, {
             "noise_variance": noise_variance,

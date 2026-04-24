@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import numpy as np
+import math
+
+import torch
 
 from nr_phy_simu.channels.fading_base import FadingChannelBase
 from nr_phy_simu.channels.profile_tables import TDL_LOS_K_DB, TDL_PROFILES
+from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE, REAL_DTYPE
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -15,14 +18,14 @@ class TdlChannel(FadingChannelBase):
         num_samples: int,
         sample_rate_hz: float,
         config: SimulationConfig,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         profile_name = str(config.channel.params.get("profile", "TDL-A")).upper()
         if profile_name not in TDL_PROFILES:
             raise ValueError(f"Unsupported TDL profile '{profile_name}'.")
 
         taps = TDL_PROFILES[profile_name]
-        normalized_delays = np.array([tap.normalized_delay for tap in taps], dtype=np.float64)
-        default_power_db = np.array([tap.power_db for tap in taps], dtype=np.float64)
+        normalized_delays = torch.as_tensor([tap.normalized_delay for tap in taps], dtype=REAL_DTYPE)
+        default_power_db = torch.as_tensor([tap.power_db for tap in taps], dtype=REAL_DTYPE)
         delays_s, power_db = self._resolve_path_parameters(config, normalized_delays, default_power_db)
         path_powers = self._normalize_powers_db(power_db)
 
@@ -34,15 +37,15 @@ class TdlChannel(FadingChannelBase):
         tx_spacing = float(config.channel.params.get("tx_antenna_spacing_lambda", 0.5))
         rx_spacing = float(config.channel.params.get("rx_antenna_spacing_lambda", 0.5))
 
-        coeff = np.zeros((num_rx_ant, num_tx_ant, delays_s.size, num_samples), dtype=np.complex128)
+        coeff = torch.zeros((num_rx_ant, num_tx_ant, delays_s.numel(), num_samples), dtype=COMPLEX_DTYPE)
         tap_fading = list(config.channel.params.get("path_fading", [tap.fading for tap in taps]))
-        if len(tap_fading) != delays_s.size:
+        if len(tap_fading) != delays_s.numel():
             if len(tap_fading) == len(taps):
-                tap_fading = tap_fading[: delays_s.size]
+                tap_fading = tap_fading[: delays_s.numel()]
             else:
                 raise ValueError("TDL 'path_fading' length must match the number of channel paths.")
 
-        for path_idx in range(delays_s.size):
+        for path_idx in range(delays_s.numel()):
             fading = str(tap_fading[path_idx]).upper()
             if fading == "LOS":
                 process = self._rician_process(
@@ -56,13 +59,15 @@ class TdlChannel(FadingChannelBase):
             else:
                 process = self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
 
-            tx_spatial_freq = self.rng.uniform(-1.0, 1.0)
-            rx_spatial_freq = self.rng.uniform(-1.0, 1.0)
+            tx_spatial_freq = float((2 * torch.rand(1, generator=self.rng, dtype=REAL_DTYPE) - 1.0).item())
+            rx_spatial_freq = float((2 * torch.rand(1, generator=self.rng, dtype=REAL_DTYPE) - 1.0).item())
             tx_response = self._array_response(num_tx_ant, tx_spatial_freq, tx_spacing)
             rx_response = self._array_response(num_rx_ant, rx_spatial_freq, rx_spacing)
-            spatial = np.outer(rx_response, np.conj(tx_response))
+            spatial = torch.outer(rx_response, torch.conj(tx_response))
             coeff[:, :, path_idx, :] = (
-                np.sqrt(path_powers[path_idx]) * spatial[:, :, np.newaxis] * process[np.newaxis, np.newaxis, :]
+                math.sqrt(float(path_powers[path_idx].item()))
+                * spatial[:, :, None]
+                * process[None, None, :]
             )
 
         return delays_s, coeff
