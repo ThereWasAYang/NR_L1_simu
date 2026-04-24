@@ -322,6 +322,7 @@ context.add_plot_artifact(
   - 普通 transform-precoded DMRS 走 38.211 clause `5.2.2` low-PAPR sequence type 1
   - `pi/2-BPSK + dmrs-UplinkTransformPrecoding-r16` 场景走 clause `5.2.3` low-PAPR sequence type 2
   - `M_ZC < 30` 时使用协议短序列表，较长长度时按协议公式生成并做归一化 DFT
+- DMRS 符号位置解析已经抽到 [src/nr_phy_simu/common/sequences/dmrs_tables.py](src/nr_phy_simu/common/sequences/dmrs_tables.py)，当前默认位置推导走显式表驱动入口，更方便后续继续补 R18 表项或做协议对表
 
 数据扰码实现在 [src/nr_phy_simu/common/sequences/scrambling.py](src/nr_phy_simu/common/sequences/scrambling.py)：
 
@@ -347,6 +348,12 @@ context.add_plot_artifact(
 - 基于阵列响应的基础 `num_tx_ant / num_rx_ant` MIMO 传播
 
 当前这版 `TDL/CDL` 已支持基础多发多收，但仍未补齐完整的 38.901 阵列、极化/XPR 与空间一致性模型。如果后续要进一步做协议级对齐，建议继续把当前 `ChannelModel` 接口往显式阵列参数与空间一致性状态扩展。
+
+典型配置文件可参考：
+
+- [configs/pusch_tdl_c.yaml](configs/pusch_tdl_c.yaml)
+- [configs/pusch_tdl_c_explicit_paths.yaml](configs/pusch_tdl_c_explicit_paths.yaml)
+- [configs/pusch_cdl.yaml](configs/pusch_cdl.yaml)
 
 ## 接收数据维度
 
@@ -375,6 +382,7 @@ context.add_plot_artifact(
 - NR `LDPC`
 - NR `rate matching / rate recovery`
 - `MCS -> modulation/code rate/TBS` 自动解析
+- `LDPC` 译码最大迭代次数、normalized min-sum 缩放因子与 `py3gpp` fallback 已开放为配置项，见 `decoder.*`
 
 当前已实现的 `MCS table` 包括：
 
@@ -385,12 +393,52 @@ context.add_plot_artifact(
 - `tp64qam`（transform-precoded PUSCH）
 - `tp64lowse`（transform-precoded PUSCH）
 
-## 后续建议
+## HARQ、层与传输块管理
 
-如果你接下来要把它做成“协议精确仿真平台”，建议按这个顺序推进：
+当前版本新增了显式的传输计划与 HARQ 管理：
 
-1. 补齐 NR LDPC 编解码
-2. 将 DMRS 序列和位置配置严格映射到 R18 参数表
-3. 接入 38.901 的 TDL/CDL 参数集
-4. 增加 HARQ、MCS、层映射、码字与传输块管理
-5. 增加单元测试与链路级 BER/BLER 曲线脚本
+- [src/nr_phy_simu/common/transmission.py](src/nr_phy_simu/common/transmission.py)
+  统一解析 `MCS`、`TBS`、码字容量与传输块计划
+- [src/nr_phy_simu/common/harq.py](src/nr_phy_simu/common/harq.py)
+  提供多 TTI 下的 HARQ 进程、RV 轮换与重传状态管理
+- [src/nr_phy_simu/common/layer_mapping.py](src/nr_phy_simu/common/layer_mapping.py)
+  将层映射显式抽象成独立步骤，便于后续扩到更完整的多层实现
+
+典型 HARQ 配置可参考：
+
+- [configs/pusch_awgn_harq.yaml](configs/pusch_awgn_harq.yaml)
+
+## 曲线脚本
+
+当前版本已新增链路级 BER/BLER sweep 脚本：
+
+- [examples/run_link_curve.py](examples/run_link_curve.py)
+
+一个典型调用方式如下：
+
+```bash
+python examples/run_link_curve.py configs/pusch_curve_awgn.yaml --snr-points -5,0,5,10,15
+```
+
+输出内容包括：
+
+- `outputs/<prefix>.csv`
+- `outputs/<prefix>.png`
+
+其中 CSV 记录每个 `SNR` 点的 `BLER / BER / average EVM / average EVM_SNR`，PNG 则绘制链路级 BER/BLER 曲线。
+
+## 当前状态
+
+README 之前列出的 5 条“后续建议”，当前已经收敛为以下已实现能力：
+
+1. 本地可控的 NR `UL-SCH LDPC` 编解码主路径，且译码参数可配置
+2. DMRS 生成与默认位置推导已拆成独立模块，便于继续按 R18 表项扩展
+3. 38.901 `TDL-A/B/C/D/E` 与 `CDL-A/B/C/D/E` 参数集已接入并纳入测试
+4. HARQ、MCS、层映射、码字与传输块管理已有显式数据结构与运行流程
+5. 单元测试、baseline 回归、以及链路级 BER/BLER 曲线脚本已经补齐
+
+如果后续还要继续往“协议精确平台”推进，剩余更适合继续深挖的方向主要是：
+
+- `PDSCH` 双码字与更完整的多层/预编码链路
+- `TDL/CDL` 的极化、XPR 与空间一致性
+- 更完整的 R18 表驱动资源配置（包括尚未实现的 `PTRS/CSI-RS`）

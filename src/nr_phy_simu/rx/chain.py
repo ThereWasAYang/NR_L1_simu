@@ -12,6 +12,7 @@ from nr_phy_simu.common.interfaces import (
     MimoEqualizer,
     TimeDomainProcessor,
 )
+from nr_phy_simu.common.layer_mapping import LayerMapper
 from nr_phy_simu.common.types import RxPayload
 from nr_phy_simu.config import SimulationConfig
 
@@ -27,6 +28,7 @@ class Receiver:
         decoder: ChannelDecoder,
         dmrs_generator: DmrsSequenceGenerator,
         scrambler: BitScrambler,
+        layer_mapper: LayerMapper | None = None,
     ) -> None:
         self.time_processor = time_processor
         self.extractor = extractor
@@ -36,6 +38,7 @@ class Receiver:
         self.decoder = decoder
         self.dmrs_generator = dmrs_generator
         self.scrambler = scrambler
+        self.layer_mapper = layer_mapper or LayerMapper()
 
     def receive(
         self,
@@ -108,6 +111,7 @@ class Receiver:
         )
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
             equalized_symbols = self._despread_equalized(equalized_symbols, data_mask, config)
+        layer_mapping = self.layer_mapper.unmap_symbols(equalized_symbols, config.link.num_layers)
         llrs = self.demodulator.demap_symbols(equalized_symbols, noise_variance, config)
         descrambled_llrs = self.scrambler.descramble_llrs(llrs, config)
         decoded_bits = self.decoder.decode(descrambled_llrs, config)
@@ -117,6 +121,7 @@ class Receiver:
             rx_grid=rx_grid,
             channel_estimation=channel_estimation,
             equalized_symbols=equalized_symbols,
+            layer_symbols=layer_mapping.layer_symbols,
             llrs=descrambled_llrs,
             decoded_bits=decoded_bits,
             crc_ok=crc_ok,

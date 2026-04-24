@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 from nr_phy_simu.common.interfaces import DmrsSequenceGenerator
+from nr_phy_simu.common.sequences.dmrs_tables import resolve_dmrs_symbol_indices
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -362,52 +363,14 @@ class DmrsGenerator(DmrsSequenceGenerator):
     def _dmrs_symbol_indices(self, config: SimulationConfig) -> tuple[int, ...]:
         if config.dmrs.symbol_positions:
             return tuple(config.dmrs.symbol_positions)
-
-        start = config.link.start_symbol
-        length = config.link.num_symbols
-        mapping_type = config.dmrs.mapping_type.upper()
-        add_pos = config.dmrs.additional_positions
-        max_len = config.dmrs.max_length
-
-        if mapping_type == "A":
-            first = config.dmrs.type_a_position
-            positions = [first]
-            span = start + length
-            if span in (8, 9):
-                positions += [7]
-            elif span in (10, 11):
-                if add_pos == 1:
-                    positions += [9]
-                elif add_pos >= 2:
-                    positions += [6, 9]
-            elif span == 12:
-                if add_pos == 1:
-                    positions += [11]
-                elif add_pos == 2:
-                    positions += [7, 11]
-                elif add_pos >= 3:
-                    positions += [5, 8, 11]
-            elif span >= 13:
-                if add_pos == 1:
-                    positions += [11]
-                elif add_pos == 2:
-                    positions += [7, 11]
-                elif add_pos >= 3:
-                    positions += [5, 8, 11]
-            if max_len == 2:
-                positions = [value for pos in positions for value in (pos, pos + 1)]
-            return tuple(sorted({pos for pos in positions if start <= pos < start + length}))
-
-        positions = [start]
-        if length >= 8 and add_pos >= 1:
-            positions.append(start + length - 4)
-        if length >= 10 and add_pos >= 2:
-            positions.append(start + length // 2)
-        if length >= 12 and add_pos >= 3:
-            positions.append(start + 3)
-        if max_len == 2:
-            positions = [value for pos in positions for value in (pos, pos + 1)]
-        return tuple(sorted({pos for pos in positions if start <= pos < start + length}))
+        return resolve_dmrs_symbol_indices(
+            start_symbol=int(config.link.start_symbol),
+            num_symbols=int(config.link.num_symbols),
+            mapping_type=str(config.dmrs.mapping_type),
+            additional_positions=int(config.dmrs.additional_positions),
+            max_length=int(config.dmrs.max_length),
+            type_a_position=int(config.dmrs.type_a_position),
+        )
 
     def _effective_scrambling_id(self, config: SimulationConfig) -> int:
         if config.dmrs.nid_nscid is not None:

@@ -78,6 +78,12 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"Modulation: {effective_config.link.modulation}")
     print(f"Code rate: {effective_config.link.code_rate:.6f}")
     print(f"TBS: {effective_config.link.transport_block_size}")
+    print(f"Layers/codewords: {effective_config.link.num_layers}/{effective_config.link.num_codewords}")
+    if effective_config.harq.enabled:
+        print(
+            f"HARQ: enabled, processes={effective_config.harq.num_processes}, "
+            f"max_retx={effective_config.harq.max_retransmissions}, rv_sequence={effective_config.harq.rv_sequence}"
+        )
     if effective_config.simulation.bypass_channel_coding:
         print("Channel coding: bypassed (random coded-bit sequence, no decoding, no CRC)")
     print(f"SNR: {result.snr_db:.2f} dB")
@@ -113,6 +119,11 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"FFT size: {effective_config.carrier.fft_size_effective}")
     if result.crc_ok is not None:
         print(f"CRC OK: {result.crc_ok}")
+    if result.harq_process_id is not None:
+        print(
+            f"HARQ result: process={result.harq_process_id}, rv={result.harq_rv}, "
+            f"retransmission={result.harq_retransmission}"
+        )
     if np.isfinite(result.bit_error_rate):
         print(f"BER: {result.bit_error_rate:.6f}")
         print(f"Bit errors: {result.bit_errors}")

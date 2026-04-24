@@ -172,6 +172,8 @@ def decode_ulsch_ldpc(
     llrs: np.ndarray,
     info: UlschLdpcInfo,
     max_num_iter: int,
+    min_sum_scaling: float = 0.75,
+    enable_py3gpp_fallback: bool = True,
 ) -> np.ndarray:
     decoded = np.zeros((info.cb_input_bits, llrs.shape[1]), dtype=np.uint8)
     for code_block_index in range(llrs.shape[1]):
@@ -179,6 +181,8 @@ def decode_ulsch_ldpc(
             llrs[:, code_block_index],
             info,
             max_num_iter=max_num_iter,
+            min_sum_scaling=min_sum_scaling,
+            enable_py3gpp_fallback=enable_py3gpp_fallback,
         )
     return decoded
 
@@ -282,6 +286,8 @@ def _decode_single_code_block(
     llrs: np.ndarray,
     info: UlschLdpcInfo,
     max_num_iter: int,
+    min_sum_scaling: float,
+    enable_py3gpp_fallback: bool,
 ) -> np.ndarray:
     structure = _ldpc_decoder_structure(info.base_graph, info.cb_input_bits, info.zc)
     punctured_prefix = np.zeros(2 * info.zc, dtype=np.float64)
@@ -292,7 +298,7 @@ def _decode_single_code_block(
         channel_llr,
         structure,
         max_num_iter=max_num_iter,
-        scaling=0.75,
+        scaling=min_sum_scaling,
     )
     if posterior is not None:
         return (posterior[: info.cb_input_bits] < 0).astype(np.uint8)
@@ -300,6 +306,9 @@ def _decode_single_code_block(
     direct = _direct_decode_from_hard_decisions(llrs.reshape(-1, 1), info)
     if direct is not None:
         return direct[:, 0]
+
+    if not enable_py3gpp_fallback:
+        return (channel_llr[: info.cb_input_bits] < 0).astype(np.uint8)
 
     decoded, _ = nrLDPCDecode(llrs.reshape(-1, 1), info.base_graph, maxNumIter=max_num_iter)
     return decoded[:, 0].astype(np.uint8)

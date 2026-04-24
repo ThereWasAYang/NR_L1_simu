@@ -32,6 +32,7 @@ class TxPayload:
     dmrs_symbols: ComplexArray
     dmrs_mask: np.ndarray
     data_mask: np.ndarray
+    layer_symbols: tuple[ComplexArray, ...] = ()
 
 
 @dataclass
@@ -52,6 +53,7 @@ class RxPayload:
     decoded_bits: BitArray
     crc_ok: bool | None
     dmrs_symbols: ComplexArray
+    layer_symbols: tuple[ComplexArray, ...] = ()
     plot_artifacts: tuple[PlotArtifact, ...] = ()
 
 
@@ -62,9 +64,13 @@ class SimulationResult:
     bit_errors: int
     bit_error_rate: float
     snr_db: float
+    transport_plan: Any | None = None
     crc_ok: bool | None = None
     evm_percent: float | None = None
     evm_snr_linear: float | None = None
+    harq_process_id: int | None = None
+    harq_rv: int | None = None
+    harq_retransmission: bool | None = None
     interference_reports: tuple[Any, ...] = ()
 
 

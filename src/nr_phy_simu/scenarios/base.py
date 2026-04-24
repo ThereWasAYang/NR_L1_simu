@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import numpy as np
 
-from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
+from nr_phy_simu.common.transmission import TransportBlockPlan, build_transport_block_plan
 from nr_phy_simu.common.types import SimulationResult
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.rx.chain import Receiver
@@ -40,7 +40,12 @@ class SharedChannelSimulation:
         self.channel = channel or self.component_factory.create_channel_factory().create(config)
         self.interference_mixer = InterferenceMixer(self.component_factory)
 
-    def run(self) -> SimulationResult:
+    def run(
+        self,
+        transport_block_override: np.ndarray | None = None,
+        harq_process_id: int | None = None,
+        harq_retransmission: bool | None = None,
+    ) -> SimulationResult:
         """Run one end-to-end shared-channel simulation for a single TTI.
 
         Args:
@@ -51,18 +56,19 @@ class SharedChannelSimulation:
         """
         self.runtime_context.clear()
         set_runtime_context(self.runtime_context)
-        apply_mcs_to_link(self.config)
+        if harq_process_id is not None:
+            self.runtime_context.set("harq", "process_id", harq_process_id)
+            self.runtime_context.set("harq", "is_retransmission", bool(harq_retransmission))
         data_re = self.mapper.count_data_re(self.config)
-        self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()
-        if not self.config.link.transport_block_size:
-            self.config.link.transport_block_size = resolve_transport_block_size(self.config, data_re)
+        transport_plan = build_transport_block_plan(self.config, data_re)
+        self.runtime_context.set("transmission", "transport_plan", transport_plan)
+        self.runtime_context.set("harq", "rv", int(transport_plan.codewords[0].rv))
 
         rng = np.random.default_rng(self.config.random_seed)
-        transport_block = rng.integers(
-            0,
-            2,
-            size=int(self.config.link.transport_block_size),
-            dtype=np.int8,
+        transport_block = (
+            np.asarray(transport_block_override, dtype=np.int8).reshape(-1)
+            if transport_block_override is not None
+            else rng.integers(0, 2, size=int(transport_plan.size_bits), dtype=np.int8)
         )
         if self._uses_frequency_domain_channel():
             if self.config.interference.enabled:
@@ -98,8 +104,11 @@ class SharedChannelSimulation:
                 tx_payload=tx_payload,
                 rx_payload=rx_payload,
                 transport_block=transport_block,
+                transport_plan=transport_plan,
                 channel_info=channel_info,
                 interference_reports=interference_reports,
+                harq_process_id=harq_process_id,
+                harq_retransmission=harq_retransmission,
             )
 
         tx_payload = replace(tx_payload, waveform=np.asarray([], dtype=np.complex128))
@@ -107,8 +116,11 @@ class SharedChannelSimulation:
             tx_payload=tx_payload,
             rx_payload=rx_payload,
             transport_block=transport_block,
+            transport_plan=transport_plan,
             channel_info=channel_info,
             interference_reports=(),
+            harq_process_id=harq_process_id,
+            harq_retransmission=harq_retransmission,
         )
 
     def _build_result(
@@ -116,8 +128,11 @@ class SharedChannelSimulation:
         tx_payload,
         rx_payload,
         transport_block: np.ndarray,
+        transport_plan: TransportBlockPlan,
         channel_info: dict,
         interference_reports: tuple,
+        harq_process_id: int | None,
+        harq_retransmission: bool | None,
     ) -> SimulationResult:
         """Build the final simulation result object from chain outputs."""
         if self.config.simulation.bypass_channel_coding:
@@ -135,28 +150,19 @@ class SharedChannelSimulation:
             bit_errors=bit_errors,
             bit_error_rate=ber,
             snr_db=float(channel_info.get("snr_db", self.config.snr_db)),
+            transport_plan=transport_plan,
             crc_ok=rx_payload.crc_ok,
             evm_percent=evm_percent,
             evm_snr_linear=evm_snr_linear,
+            harq_process_id=harq_process_id,
+            harq_rv=int(transport_plan.codewords[0].rv),
+            harq_retransmission=harq_retransmission,
             interference_reports=interference_reports,
         )
 
     def _uses_frequency_domain_channel(self) -> bool:
         """Return whether the configured channel bypasses time-domain processing."""
         return self.config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
-
-    def _bits_per_symbol(self) -> int:
-        """Resolve bits per modulation symbol from the configured modulation name.
-
-        Args:
-            None.
-
-        Returns:
-            Number of coded bits carried by one modulation symbol.
-        """
-        modulation = self.config.link.modulation.upper()
-        mapping = {"PI/2-BPSK": 1, "BPSK": 1, "QPSK": 2, "16QAM": 4, "64QAM": 6, "256QAM": 8}
-        return mapping[modulation]
 
     @staticmethod
     def _compute_evm_metrics(
