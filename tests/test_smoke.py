@@ -23,6 +23,11 @@ from py3gpp import (
 
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
+from nr_phy_simu.common.harq import HarqManager
+from nr_phy_simu.common.layer_mapping import LayerMapper
+from nr_phy_simu.common.types import PlotArtifact
+from nr_phy_simu.common.transmission import build_transport_block_plan
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
     encode_ldpc_codeblocks,
@@ -44,6 +49,7 @@ from nr_phy_simu.channels.tdl import TdlChannel
 from nr_phy_simu.channels.cdl import CdlChannel
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
+from nr_phy_simu.scenarios.sweep import run_snr_sweep, write_snr_sweep_csv
 from nr_phy_simu.scenarios.component_factory import build_transmitter
 
 
@@ -257,6 +263,39 @@ class VisualizationSmokeTest(unittest.TestCase):
         self.assertTrue(paths["rx_time"].exists())
         self.assertTrue(paths["rx_freq"].exists())
 
+    def test_save_simulation_plots_includes_generic_artifacts(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        result = PuschSimulation(config).run()
+        result.rx.plot_artifacts = (
+            PlotArtifact(
+                name="estimator_debug_metric",
+                values=np.array([1.0, 0.5, 0.25]),
+                title="Estimator Debug Metric",
+                plot_type="magnitude",
+            ),
+        )
+        paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "artifact")
+        self.assertTrue(paths["artifact_estimator_debug_metric"].exists())
+
+    def test_save_simulation_plots_includes_runtime_context_artifacts(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.plotting.enabled = False
+        runtime_context = SimulationRuntimeContext()
+        result = PuschSimulation(config, runtime_context=runtime_context).run()
+        get_runtime_context().set("channel_estimation", "debug_scalar", 1.0)
+        get_runtime_context().add_plot_artifact(
+            PlotArtifact(
+                name="runtime_debug_metric",
+                values=np.array([0.2, 0.4, 0.6]),
+                title="Runtime Debug Metric",
+                plot_type="magnitude",
+            )
+        )
+        paths = save_simulation_plots(result, config, ROOT / "outputs" / "tests", "runtime")
+        self.assertEqual(get_runtime_context().get("channel_estimation", "debug_scalar"), 1.0)
+        self.assertTrue(paths["context_runtime_debug_metric"].exists())
+
 
 class DmrsSequenceTest(unittest.TestCase):
     def test_transform_precoded_pusch_dmrs_short_lengths(self):
@@ -335,6 +374,8 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
         self.assertEqual(len(yaml_interference_cfg.interference.sources), 2)
         self.assertEqual(yaml_interference_cfg.interference.sources[0].channel_model, "AWGN")
+        self.assertFalse(yaml_cfg.harq.enabled)
+        self.assertEqual(yaml_cfg.decoder.ldpc_max_iterations, 25)
         self.assertEqual(
             Path(yaml_replay_cfg.waveform_input.waveform_path),
             (ROOT / "inputs" / "pusch_capture.txt").resolve(),
@@ -367,6 +408,78 @@ class ConfigLoaderTest(unittest.TestCase):
                 Path(cfg.channel.params["frequency_response_path"]),
                 response_path.resolve(),
             )
+
+    def test_load_yaml_with_utf8_bom_and_chinese_comments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            config_path = tmpdir_path / "bom_config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "# 中文注释：这是一个 Windows 兼容性回归测试",
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 52",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "channel:",
+                        "  model: AWGN",
+                        "  params:",
+                        "    snr_db: 30.0",
+                    ]
+                ),
+                encoding="utf-8-sig",
+            )
+            cfg = load_simulation_config(config_path)
+            self.assertEqual(cfg.link.channel_type, "PUSCH")
+            self.assertEqual(cfg.channel.model, "AWGN")
+
+
+class TransmissionPlanningTest(unittest.TestCase):
+    def test_transport_block_plan_builds_codeword_metadata(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        mapper = FrequencyDomainResourceMapper(dmrs_generator=DmrsGenerator())
+        data_re_count = mapper.count_data_re(config)
+        plan = build_transport_block_plan(config, data_re_count)
+        self.assertEqual(plan.num_codewords, 1)
+        self.assertEqual(plan.codewords[0].rv, config.link.mcs.rv)
+        self.assertEqual(plan.codewords[0].coded_bit_capacity, config.link.coded_bit_capacity)
+        self.assertEqual(plan.size_bits, config.link.transport_block_size)
+
+
+class LayerMappingTest(unittest.TestCase):
+    def test_layer_mapper_exposes_per_layer_views(self):
+        mapper = LayerMapper()
+        symbols = np.arange(12, dtype=np.float64).astype(np.complex128)
+        result = mapper.map_symbols(symbols, num_layers=3)
+        self.assertEqual(len(result.layer_symbols), 3)
+        self.assertTrue(np.array_equal(result.layer_symbols[0], symbols[0::3]))
+        self.assertTrue(np.array_equal(result.layer_symbols[1], symbols[1::3]))
+        self.assertTrue(np.array_equal(result.layer_symbols[2], symbols[2::3]))
+
+
+class HarqManagerTest(unittest.TestCase):
+    def test_harq_rv_progression_and_reset(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.harq.enabled = True
+        manager = HarqManager(config.harq)
+        rng = np.random.default_rng(7)
+
+        first = manager.schedule(tti_index=0, tbs_bits=128, rng=rng)
+        self.assertEqual(first.rv, 0)
+        self.assertFalse(first.is_retransmission)
+
+        manager.update(first.process_id, False)
+        second = manager.schedule(tti_index=0 + config.harq.num_processes, tbs_bits=128, rng=rng)
+        self.assertTrue(second.is_retransmission)
+        self.assertEqual(second.rv, config.harq.rv_sequence[1])
+        self.assertTrue(np.array_equal(first.transport_block, second.transport_block))
+
+        manager.update(second.process_id, True)
+        third = manager.schedule(tti_index=0 + 2 * config.harq.num_processes, tbs_bits=128, rng=rng)
+        self.assertFalse(third.is_retransmission)
+        self.assertEqual(third.rv, 0)
+        self.assertFalse(np.array_equal(second.transport_block, third.transport_block))
 
 
 class McsTableTest(unittest.TestCase):
@@ -506,6 +619,21 @@ class FadingChannelSmokeTest(unittest.TestCase):
         self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
         self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
 
+    def test_all_tdl_and_cdl_profiles_can_be_instantiated(self):
+        for model, profiles in (
+            ("TDL", ("TDL-A", "TDL-B", "TDL-C", "TDL-D", "TDL-E")),
+            ("CDL", ("CDL-A", "CDL-B", "CDL-C", "CDL-D", "CDL-E")),
+        ):
+            for profile in profiles:
+                cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+                cfg.plotting.enabled = False
+                cfg.channel.model = model
+                cfg.channel.params = {"profile": profile, "delay_spread_ns": 300.0, "add_noise": False}
+                waveform = np.ones(1024, dtype=np.complex128)
+                rx_waveform, info = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+                self.assertGreater(np.asarray(info["path_delays_s"]).size, 0, msg=f"{model}/{profile}")
+                self.assertGreater(np.mean(np.abs(rx_waveform)), 0.0, msg=f"{model}/{profile}")
+
 
 class WaveformReplaySmokeTest(unittest.TestCase):
     def test_replay_repository_example_config(self):
@@ -514,6 +642,19 @@ class WaveformReplaySmokeTest(unittest.TestCase):
         self.assertTrue(np.isnan(result.bit_error_rate))
         self.assertGreater(_numel(result.rx.decoded_bits), 0)
         self.assertIs(result.crc_ok, True)
+
+
+class SweepSmokeTest(unittest.TestCase):
+    def test_run_snr_sweep_and_write_csv(self):
+        cfg = load_simulation_config(ROOT / "configs" / "baseline" / "pusch_cp_ofdm_qam256_mcs0_awgn_snr0.yaml")
+        cfg.plotting.enabled = False
+        points = run_snr_sweep(cfg, [0.0, 5.0])
+        self.assertEqual(len(points), 2)
+        self.assertEqual(points[0].snr_db, 0.0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = write_snr_sweep_csv(Path(tmpdir) / "curve.csv", points)
+            lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
+            self.assertEqual(len(lines), 3)
 
     def test_replay_waveform_file_into_receiver(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")

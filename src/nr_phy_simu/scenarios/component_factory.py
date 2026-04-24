@@ -17,6 +17,7 @@ from nr_phy_simu.common.interfaces import (
     ResourceMapper,
     TimeDomainProcessor,
 )
+from nr_phy_simu.common.layer_mapping import LayerMapper
 from nr_phy_simu.common.ofdm import OfdmProcessor
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.sequences.scrambling import NrDataScrambler
@@ -115,6 +116,7 @@ def build_transmitter(components: SimulationComponents) -> Transmitter:
         time_processor=components.transmitter.time_processor,
         dmrs_generator=components.shared.dmrs_generator,
         scrambler=components.transmitter.scrambler,
+        layer_mapper=LayerMapper(),
     )
 
 
@@ -128,4 +130,5 @@ def build_receiver(components: SimulationComponents) -> Receiver:
         decoder=components.receiver.decoder,
         dmrs_generator=components.shared.dmrs_generator,
         scrambler=components.receiver.scrambler,
+        layer_mapper=LayerMapper(),
     )

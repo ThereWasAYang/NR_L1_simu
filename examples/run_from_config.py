@@ -8,10 +8,12 @@ if str(SRC) not in sys.path:
 
 import numpy as np
 
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
+from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
 from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.visualization import save_simulation_plots
@@ -26,8 +28,14 @@ def _format_evm_snr_db(evm_snr_linear: float | None) -> str | None:
 def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     config_path = ROOT / config_relpath
     config = load_simulation_config(config_path)
+    component_factory = DefaultSimulationComponentFactory()
+    runtime_context = SimulationRuntimeContext()
     if config.simulation.num_ttis > 1:
-        batch_result = MultiTtiSimulationRunner(config).run()
+        batch_result = MultiTtiSimulationRunner(
+            config,
+            component_factory=component_factory,
+            runtime_context=runtime_context,
+        ).run()
         result = batch_result.last_result
         if result is None:
             raise RuntimeError("Multi-TTI simulation did not produce any TTI result.")
@@ -43,9 +51,17 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
         batch_result = None
         report_path = None
         if config.waveform_input.enabled:
-            simulation = WaveformReplaySimulation(config)
+            simulation = WaveformReplaySimulation(
+                config,
+                component_factory=component_factory,
+                runtime_context=runtime_context,
+            )
         else:
-            simulation = PuschSimulation(config) if config.link.channel_type.upper() == "PUSCH" else PdschSimulation(config)
+            simulation = (
+                PuschSimulation(config, component_factory=component_factory, runtime_context=runtime_context)
+                if config.link.channel_type.upper() == "PUSCH"
+                else PdschSimulation(config, component_factory=component_factory, runtime_context=runtime_context)
+            )
         result = simulation.run()
         effective_config = config
     prefix = config_path.stem
@@ -62,6 +78,12 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"Modulation: {effective_config.link.modulation}")
     print(f"Code rate: {effective_config.link.code_rate:.6f}")
     print(f"TBS: {effective_config.link.transport_block_size}")
+    print(f"Layers/codewords: {effective_config.link.num_layers}/{effective_config.link.num_codewords}")
+    if effective_config.harq.enabled:
+        print(
+            f"HARQ: enabled, processes={effective_config.harq.num_processes}, "
+            f"max_retx={effective_config.harq.max_retransmissions}, rv_sequence={effective_config.harq.rv_sequence}"
+        )
     if effective_config.simulation.bypass_channel_coding:
         print("Channel coding: bypassed (random coded-bit sequence, no decoding, no CRC)")
     print(f"SNR: {result.snr_db:.2f} dB")
@@ -97,6 +119,11 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
     print(f"FFT size: {effective_config.carrier.fft_size_effective}")
     if result.crc_ok is not None:
         print(f"CRC OK: {result.crc_ok}")
+    if result.harq_process_id is not None:
+        print(
+            f"HARQ result: process={result.harq_process_id}, rv={result.harq_rv}, "
+            f"retransmission={result.harq_retransmission}"
+        )
     if np.isfinite(result.bit_error_rate):
         print(f"BER: {result.bit_error_rate:.6f}")
         print(f"Bit errors: {result.bit_errors}")

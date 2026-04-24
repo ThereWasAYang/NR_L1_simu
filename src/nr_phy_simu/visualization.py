@@ -1,16 +1,36 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 from pathlib import Path
 import platform
 import subprocess
 import sys
+import tempfile
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path("/tmp/mplconfig")))
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "nr_phy_simu_mplconfig"))
 
 import matplotlib
 
 _PREFERRED_BACKEND_ENV = "NR_PHY_SIMU_PLOT_BACKEND"
+_WINDOWS_FONT_CANDIDATES = [
+    "Microsoft YaHei",
+    "Microsoft JhengHei",
+    "SimHei",
+    "SimSun",
+]
+_MACOS_FONT_CANDIDATES = [
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Heiti SC",
+    "Arial Unicode MS",
+]
+_LINUX_FONT_CANDIDATES = [
+    "Noto Sans CJK SC",
+    "WenQuanYi Zen Hei",
+    "Source Han Sans SC",
+]
+_COMMON_FONT_CANDIDATES = ["DejaVu Sans"]
 
 
 def _configure_matplotlib_backend() -> None:
@@ -18,16 +38,27 @@ def _configure_matplotlib_backend() -> None:
     if requested_backend:
         matplotlib.use(requested_backend)
         return
-
     if os.environ.get("MPLBACKEND"):
         return
-
     if platform.system() == "Darwin":
         matplotlib.use("macosx")
         return
-
     if _is_foreground_session() and _has_tkinter():
         matplotlib.use("TkAgg")
+
+
+def _configure_matplotlib_fonts() -> None:
+    preferred_fonts: list[str] = []
+    system = platform.system()
+    if system == "Windows":
+        preferred_fonts.extend(_WINDOWS_FONT_CANDIDATES)
+    elif system == "Darwin":
+        preferred_fonts.extend(_MACOS_FONT_CANDIDATES)
+    else:
+        preferred_fonts.extend(_LINUX_FONT_CANDIDATES)
+    preferred_fonts.extend(_COMMON_FONT_CANDIDATES)
+    matplotlib.rcParams["font.sans-serif"] = preferred_fonts
+    matplotlib.rcParams["axes.unicode_minus"] = False
 
 
 def _is_foreground_session() -> bool:
@@ -43,12 +74,14 @@ def _has_tkinter() -> bool:
 
 
 _configure_matplotlib_backend()
+_configure_matplotlib_fonts()
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+from nr_phy_simu.common.runtime_context import get_runtime_context
 from nr_phy_simu.common.torch_utils import to_numpy
-from nr_phy_simu.common.types import SimulationResult
+from nr_phy_simu.common.types import PlotArtifact, SimulationResult
 from nr_phy_simu.config import SimulationConfig
 
 
@@ -64,21 +97,13 @@ def save_simulation_plots(
     output_path.mkdir(parents=True, exist_ok=True)
 
     plots: dict[str, Path] = {}
-    figure_builders = (
-        _build_constellation_figures,
-        _build_pilot_estimate_figures,
-        _build_rx_time_domain_figures,
-        _build_rx_frequency_domain_figures,
-    )
-    figures: dict[str, object] = {}
-    for builder in figure_builders:
-        figures.update(builder(result, config))
-
-    for name, figure in figures.items():
-        path = output_path / f"{prefix}_{name}.png"
+    artifacts = _collect_plot_artifacts(result, config)
+    for artifact in artifacts:
+        figure = _build_artifact_figure(artifact)
+        path = output_path / f"{prefix}_{artifact.name}.png"
         figure.savefig(path, dpi=160)
         plt.close(figure)
-        plots[name] = path
+        plots[artifact.name] = path
 
     if show:
         _show_plots(list(plots.values()), block=block)
@@ -86,34 +111,82 @@ def save_simulation_plots(
     return plots
 
 
-def _build_constellation_figures(
+def _collect_plot_artifacts(
     result: SimulationResult,
     config: SimulationConfig,
-) -> dict[str, object]:
-    del config
-    symbols = to_numpy(result.rx.equalized_symbols)
+) -> tuple[PlotArtifact, ...]:
+    artifacts: list[PlotArtifact] = []
+    if result.rx.equalized_symbols.numel():
+        artifacts.append(
+            PlotArtifact(
+                name="constellation",
+                values=result.rx.equalized_symbols,
+                plot_type="constellation",
+                metadata={"snr_db": result.snr_db},
+            )
+        )
+    if result.rx.channel_estimation.channel_estimate.numel():
+        artifacts.append(
+            PlotArtifact(
+                name="pilot_estimates",
+                values={
+                    "channel_estimation": result.rx.channel_estimation,
+                    "dmrs_mask": result.tx.dmrs_mask,
+                },
+                plot_type="pilot_estimates",
+            )
+        )
+    if result.rx.rx_waveform.numel():
+        artifacts.append(
+            PlotArtifact(
+                name="rx_time",
+                values=result.rx.rx_waveform,
+                plot_type="rx_time",
+                metadata={
+                    "cp_lengths": config.carrier.cyclic_prefix_lengths,
+                    "fft_size": config.carrier.fft_size_effective,
+                },
+            )
+        )
+    if result.rx.rx_grid.numel():
+        artifacts.append(
+            PlotArtifact(
+                name="rx_freq",
+                values=result.rx.rx_grid,
+                plot_type="rx_freq",
+                metadata={
+                    "n_subcarriers": config.carrier.n_subcarriers,
+                    "symbols_per_slot": config.carrier.symbols_per_slot,
+                },
+            )
+        )
+    artifacts.extend(replace(artifact, name=f"artifact_{artifact.name}") for artifact in result.rx.plot_artifacts)
+    artifacts.extend(replace(artifact, name=f"context_{artifact.name}") for artifact in get_runtime_context().plot_artifacts)
+    return tuple(artifacts)
+
+
+def _build_constellation_figure(artifact: PlotArtifact) -> object:
+    symbols = to_numpy(artifact.values)
+    snr_db = float((artifact.metadata or {}).get("snr_db", 0.0))
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
-    ax.set_title(f"Equalized Constellation (SNR={result.snr_db:.2f} dB)")
+    ax.set_title(f"Equalized Constellation (SNR={snr_db:.2f} dB)")
     ax.set_xlabel("I (Real)")
     ax.set_ylabel("Q (Imag)")
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.axis("equal")
     fig.tight_layout()
-    return {"constellation": fig}
+    return fig
 
 
-def _build_pilot_estimate_figures(
-    result: SimulationResult,
-    config: SimulationConfig,
-) -> dict[str, object]:
-    del config
-    channel_estimation = result.rx.channel_estimation
+def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
+    values = artifact.values
+    channel_estimation = values["channel_estimation"]
     channel_estimate = to_numpy(channel_estimation.channel_estimate)
     if channel_estimate.ndim == 2:
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
-    dmrs_mask = to_numpy(result.tx.dmrs_mask)
+    dmrs_mask = to_numpy(values["dmrs_mask"])
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
     pilot_estimates = to_numpy(channel_estimation.pilot_estimates)
     pilot_symbol_indices = to_numpy(channel_estimation.pilot_symbol_indices)
@@ -141,27 +214,11 @@ def _build_pilot_estimate_figures(
         mag_ax.grid(True, linestyle="--", alpha=0.4)
         phase_ax.set_ylabel("Phase (rad)")
         phase_ax.grid(True, linestyle="--", alpha=0.4)
-
         for symbol_idx in dmrs_symbols:
             pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
             pilot_values = pilot_estimates[ant_idx, pilot_symbol_indices == symbol_idx]
-            mag_ax.plot(
-                pilot_sc,
-                np.abs(pilot_values),
-                marker="o",
-                markersize=3,
-                linewidth=1,
-                label=f"sym {symbol_idx}",
-            )
-            phase_ax.plot(
-                pilot_sc,
-                np.angle(pilot_values),
-                marker="o",
-                markersize=3,
-                linewidth=1,
-                label=f"sym {symbol_idx}",
-            )
-
+            mag_ax.plot(pilot_sc, np.abs(pilot_values), marker="o", markersize=3, linewidth=1, label=f"sym {symbol_idx}")
+            phase_ax.plot(pilot_sc, np.angle(pilot_values), marker="o", markersize=3, linewidth=1, label=f"sym {symbol_idx}")
         if dmrs_symbols.size > 1:
             mag_ax.legend(fontsize=8)
             phase_ax.legend(fontsize=8)
@@ -179,17 +236,16 @@ def _build_pilot_estimate_figures(
 
     fig.supxlabel("DMRS Subcarrier Index")
     fig.tight_layout()
-    return {"pilot_estimates": fig}
+    return fig
 
 
-def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    waveform = to_numpy(result.rx.rx_waveform)
-    if waveform.size == 0:
-        return {}
+def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
+    waveform = to_numpy(artifact.values)
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
-    cp_lengths = config.carrier.cyclic_prefix_lengths
-    fft_size = config.carrier.fft_size_effective
+    metadata = artifact.metadata or {}
+    cp_lengths = metadata["cp_lengths"]
+    fft_size = int(metadata["fft_size"])
     boundaries = [0]
     labels: list[tuple[float, int]] = []
     offset = 0
@@ -216,14 +272,16 @@ def _build_rx_time_domain_figures(result: SimulationResult, config: SimulationCo
         ax.grid(True, linestyle="--", alpha=0.35)
     axes[-1].set_xlabel("Sample Index")
     fig.tight_layout()
-    return {"rx_time": fig}
+    return fig
 
 
-def _build_rx_frequency_domain_figures(result: SimulationResult, config: SimulationConfig) -> dict[str, object]:
-    rx_grid = to_numpy(result.rx.rx_grid)
+def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
+    rx_grid = to_numpy(artifact.values)
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
-    n_sc = config.carrier.n_subcarriers
+    metadata = artifact.metadata or {}
+    n_sc = int(metadata["n_subcarriers"])
+    symbols_per_slot = int(metadata["symbols_per_slot"])
     num_ant = rx_grid.shape[0]
     fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
     axes = np.atleast_1d(axes)
@@ -231,10 +289,10 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
         concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
         x = np.arange(concatenated.size)
         ax.plot(x, concatenated, linewidth=0.9)
-        for symbol_idx in range(config.carrier.symbols_per_slot + 1):
+        for symbol_idx in range(symbols_per_slot + 1):
             ax.axvline(symbol_idx * n_sc, color="tab:red", linestyle="--", linewidth=0.8, alpha=0.6)
         ymax = max(float(np.max(concatenated)), 1e-6)
-        for symbol_idx in range(config.carrier.symbols_per_slot):
+        for symbol_idx in range(symbols_per_slot):
             center = symbol_idx * n_sc + n_sc / 2
             ax.text(center, 0.98 * ymax, f"sym {symbol_idx}", ha="center", va="top", fontsize=8)
         ax.set_title(f"Received Frequency-Domain Magnitude RX{ant_idx} (Full Cell BW)")
@@ -242,7 +300,74 @@ def _build_rx_frequency_domain_figures(result: SimulationResult, config: Simulat
         ax.grid(True, linestyle="--", alpha=0.35)
     axes[-1].set_xlabel("Flattened Subcarrier Index Across Symbols")
     fig.tight_layout()
-    return {"rx_freq": fig}
+    return fig
+
+
+def _build_artifact_figure(artifact: PlotArtifact) -> object:
+    if artifact.plot_type == "constellation":
+        return _build_constellation_figure(artifact)
+    if artifact.plot_type == "pilot_estimates":
+        return _build_pilot_estimate_figure(artifact)
+    if artifact.plot_type == "rx_time":
+        return _build_rx_time_domain_figure(artifact)
+    if artifact.plot_type == "rx_freq":
+        return _build_rx_frequency_domain_figure(artifact)
+
+    values = to_numpy(artifact.values)
+    x_values = None if artifact.x is None else to_numpy(artifact.x)
+    plot_type = artifact.plot_type.lower()
+    title = artifact.title or artifact.name
+
+    if plot_type == "image" or (values.ndim == 2 and plot_type == "auto"):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        image = ax.imshow(np.abs(values), aspect="auto", origin="lower")
+        fig.colorbar(image, ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel(artifact.xlabel)
+        ax.set_ylabel(artifact.ylabel or "Row Index")
+        fig.tight_layout()
+        return fig
+
+    series = values.reshape(-1) if values.ndim == 1 else values.reshape(values.shape[0], -1)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    if series.ndim == 1:
+        _plot_artifact_series(ax, series, x_values, plot_type, label=None)
+    else:
+        for row_idx, row in enumerate(series):
+            _plot_artifact_series(ax, row, x_values, plot_type, label=f"series {row_idx}")
+        ax.legend(fontsize=8)
+    ax.set_title(title)
+    ax.set_xlabel(artifact.xlabel)
+    ax.set_ylabel(artifact.ylabel or _artifact_default_ylabel(plot_type))
+    ax.grid(True, linestyle="--", alpha=0.35)
+    fig.tight_layout()
+    return fig
+
+
+def _plot_artifact_series(ax, values: np.ndarray, x_values: np.ndarray | None, plot_type: str, label: str | None) -> None:
+    y_values = _artifact_y_values(values, plot_type)
+    x = np.arange(y_values.size) if x_values is None else x_values[: y_values.size]
+    ax.plot(x, y_values, linewidth=1.0, label=label)
+
+
+def _artifact_y_values(values: np.ndarray, plot_type: str) -> np.ndarray:
+    if plot_type in {"phase", "angle"}:
+        return np.angle(values)
+    if plot_type in {"real", "i"}:
+        return values.real
+    if plot_type in {"imag", "q"}:
+        return values.imag
+    return np.abs(values)
+
+
+def _artifact_default_ylabel(plot_type: str) -> str:
+    if plot_type in {"phase", "angle"}:
+        return "Phase (rad)"
+    if plot_type in {"real", "i"}:
+        return "Real"
+    if plot_type in {"imag", "q"}:
+        return "Imag"
+    return "Magnitude"
 
 
 def _show_plots(paths: list[Path], block: bool) -> None:
@@ -257,21 +382,26 @@ def _show_plots(paths: list[Path], block: bool) -> None:
         axis.imshow(image)
         axis.axis("off")
         figure.tight_layout()
-
     plt.show(block=block)
 
 
 def _use_system_viewer() -> bool:
-    backend = matplotlib.get_backend().lower()
-    return backend == "agg"
+    return platform.system() in {"Darwin", "Windows"} and _is_foreground_session()
 
 
 def _open_with_system_viewer(paths: list[Path]) -> None:
-    system = platform.system()
+    if platform.system() == "Windows":
+        for path in paths:
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        return
+
+    if platform.system() == "Darwin":
+        subprocess.Popen(
+            ["open", *[str(path) for path in paths]],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
     for path in paths:
-        if system == "Darwin":
-            subprocess.Popen(["open", str(path)])
-        elif system == "Windows":
-            os.startfile(path)  # type: ignore[attr-defined]
-        else:
-            subprocess.Popen(["xdg-open", str(path)])
+        subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

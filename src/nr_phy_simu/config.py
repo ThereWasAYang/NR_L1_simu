@@ -139,6 +139,21 @@ class McsConfig:
 
 
 @dataclass
+class DecoderConfig:
+    ldpc_max_iterations: int = 25
+    ldpc_min_sum_scaling: float = 0.75
+    ldpc_enable_py3gpp_fallback: bool = True
+
+
+@dataclass
+class HarqConfig:
+    enabled: bool = False
+    num_processes: int = 4
+    max_retransmissions: int = 3
+    rv_sequence: tuple[int, ...] = (0, 2, 3, 1)
+
+
+@dataclass
 class ChannelConfig:
     model: str = "AWGN"
     params: dict[str, Any] = field(default_factory=dict)
@@ -200,6 +215,7 @@ class LinkConfig:
     waveform: str = "CP-OFDM"
     modulation: str = "QPSK"
     num_layers: int = 1
+    num_codewords: int = 1
     num_tx_ant: int = 1
     num_rx_ant: int = 1
     code_rate: float = 0.5
@@ -221,6 +237,8 @@ class SimulationConfig:
     carrier: CarrierConfig = field(default_factory=CarrierConfig)
     dmrs: DmrsConfig = field(default_factory=DmrsConfig)
     scrambling: ScramblingConfig = field(default_factory=ScramblingConfig)
+    decoder: DecoderConfig = field(default_factory=DecoderConfig)
+    harq: HarqConfig = field(default_factory=HarqConfig)
     link: LinkConfig = field(default_factory=LinkConfig)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     interference: InterferenceConfig = field(default_factory=InterferenceConfig)
@@ -239,6 +257,8 @@ class SimulationConfig:
         carrier_data = data.get("carrier", {})
         dmrs_data = _normalize_tuple_fields(data.get("dmrs", {}), {"symbol_positions", "port_set"})
         scrambling_data = data.get("scrambling", {})
+        decoder_data = data.get("decoder", {})
+        harq_data = _normalize_tuple_fields(data.get("harq", {}), {"rv_sequence"})
         link_data = dict(data.get("link", {}))
         mcs_data = link_data.pop("mcs", {})
         channel_data = data.get("channel", {})
@@ -248,6 +268,8 @@ class SimulationConfig:
         carrier = CarrierConfig(**carrier_data)
         dmrs = DmrsConfig(**dmrs_data)
         scrambling = ScramblingConfig(**scrambling_data)
+        decoder = DecoderConfig(**decoder_data)
+        harq = HarqConfig(**harq_data)
         mcs = McsConfig(**mcs_data)
         link = LinkConfig(**link_data, mcs=mcs)
         channel = ChannelConfig(**channel_data)
@@ -261,6 +283,8 @@ class SimulationConfig:
             carrier=carrier,
             dmrs=dmrs,
             scrambling=scrambling,
+            decoder=decoder,
+            harq=harq,
             link=link,
             channel=channel,
             interference=interference,
@@ -292,6 +316,24 @@ class SimulationConfig:
             raise ValueError(
                 "Transform-precoded PUSCH (DFT-s-OFDM) requires num_cdm_groups_without_data = 2."
             )
+        if int(self.link.num_layers) <= 0:
+            raise ValueError("link.num_layers must be a positive integer.")
+        if int(self.link.num_codewords) <= 0:
+            raise ValueError("link.num_codewords must be a positive integer.")
+        if self.link.channel_type.upper() == "PUSCH" and int(self.link.num_codewords) != 1:
+            raise ValueError("Current PUSCH implementation supports exactly one codeword.")
+        if self.link.channel_type.upper() == "PDSCH" and int(self.link.num_codewords) not in (1, 2):
+            raise ValueError("Current PDSCH configuration must use one or two codewords.")
+        if self.harq.enabled:
+            if int(self.harq.num_processes) <= 0:
+                raise ValueError("harq.num_processes must be a positive integer.")
+            if int(self.harq.max_retransmissions) < 0:
+                raise ValueError("harq.max_retransmissions must be non-negative.")
+            if not self.harq.rv_sequence:
+                raise ValueError("harq.rv_sequence must contain at least one redundancy version.")
+            invalid_rv = [rv for rv in self.harq.rv_sequence if int(rv) not in (0, 1, 2, 3)]
+            if invalid_rv:
+                raise ValueError(f"harq.rv_sequence contains unsupported RV values: {invalid_rv}")
 
 
 def _normalize_tuple_fields(data: dict[str, Any], tuple_fields: set[str]) -> dict[str, Any]:

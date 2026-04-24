@@ -1,0 +1,45 @@
+# PUSCH 链路曲线（BER/BLER）示例配置
+carrier:
+  cell_bandwidth_rbs: 24
+  subcarrier_spacing_khz: 30
+  cyclic_prefix: NormalCP
+
+link:
+  channel_type: PUSCH
+  waveform: CP-OFDM
+  num_layers: 1
+  num_codewords: 1
+  num_tx_ant: 1
+  num_rx_ant: 1
+  prb_start: 0
+  num_prbs: 16
+  start_symbol: 0
+  num_symbols: 14
+  mcs:
+    table: qam64
+    index: 0
+    rv: 0
+
+dmrs:
+  config_type: 1
+  mapping_type: A
+  type_a_position: 2
+  additional_positions: 0
+  max_length: 1
+  data_mux_enabled: false
+  num_cdm_groups_without_data: 2
+
+scrambling:
+  rnti: 4660
+  n_id: 1
+
+channel:
+  model: AWGN
+  params:
+    snr_db: 0.0
+
+plotting:
+  enabled: false
+
+simulation:
+  num_ttis: 20

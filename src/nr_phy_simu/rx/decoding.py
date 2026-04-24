@@ -36,7 +36,13 @@ class NrLdpcDecoder(ChannelDecoder):
             modulation=config.link.modulation,
             num_layers=config.link.num_layers,
         )
-        decoded_cbs = decode_ulsch_ldpc(recovered, info, max_num_iter=25)
+        decoded_cbs = decode_ulsch_ldpc(
+            recovered,
+            info,
+            max_num_iter=int(config.decoder.ldpc_max_iterations),
+            min_sum_scaling=float(config.decoder.ldpc_min_sum_scaling),
+            enable_py3gpp_fallback=bool(config.decoder.ldpc_enable_py3gpp_fallback),
+        )
         with contextlib.redirect_stdout(io.StringIO()):
             tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
         decoded, crc_error = nrCRCDecode(tb_with_crc.astype("int8"), info.crc)

@@ -12,6 +12,7 @@ from nr_phy_simu.common.interfaces import (
     ResourceMapper,
     TimeDomainProcessor,
 )
+from nr_phy_simu.common.layer_mapping import LayerMapper
 from nr_phy_simu.common.torch_utils import COMPLEX_DTYPE
 from nr_phy_simu.common.types import TxPayload
 from nr_phy_simu.config import SimulationConfig
@@ -26,6 +27,7 @@ class Transmitter:
         time_processor: TimeDomainProcessor,
         dmrs_generator: DmrsSequenceGenerator,
         scrambler: BitScrambler,
+        layer_mapper: LayerMapper | None = None,
     ) -> None:
         self.coder = coder
         self.modulator = modulator
@@ -33,13 +35,15 @@ class Transmitter:
         self.time_processor = time_processor
         self.dmrs_generator = dmrs_generator
         self.scrambler = scrambler
+        self.layer_mapper = layer_mapper or LayerMapper()
 
     def build_slot_payload(self, transport_block: torch.Tensor, config: SimulationConfig) -> TxPayload:
         """Build all transmit-domain buffers up to the frequency-domain slot grid."""
         coded_bits = self.coder.encode(transport_block, config)
         scrambled_bits = self.scrambler.scramble(coded_bits, config)
         tx_symbols = self.modulator.map_bits(scrambled_bits, config)
-        grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(tx_symbols, config)
+        layer_mapping = self.layer_mapper.map_symbols(tx_symbols, config.link.num_layers)
+        grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(layer_mapping.serialized_symbols, config)
         return TxPayload(
             transport_block=transport_block,
             coded_bits=coded_bits,
@@ -49,6 +53,7 @@ class Transmitter:
             dmrs_symbols=dmrs_symbols,
             dmrs_mask=dmrs_mask,
             data_mask=data_mask,
+            layer_symbols=layer_mapping.layer_symbols,
         )
 
     def transmit(self, transport_block: torch.Tensor, config: SimulationConfig) -> TxPayload:

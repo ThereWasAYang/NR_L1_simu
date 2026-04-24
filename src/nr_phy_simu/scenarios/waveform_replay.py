@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
+from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
 from nr_phy_simu.common.types import SimulationResult, TxPayload
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.io.waveform_loader import load_text_waveform
@@ -24,10 +25,12 @@ class WaveformReplaySimulation:
         config: SimulationConfig,
         receiver: Receiver | None = None,
         component_factory: SimulationComponentFactory | None = None,
+        runtime_context: SimulationRuntimeContext | None = None,
     ) -> None:
         if not config.waveform_input.enabled:
             raise ValueError("waveform_input.waveform_path must be configured for waveform replay simulation.")
         self.config = config
+        self.runtime_context = runtime_context or SimulationRuntimeContext()
         self.component_factory = component_factory or DefaultSimulationComponentFactory()
         self.components = self.component_factory.create_components(config)
         self.mapper = self.components.transmitter.mapper
@@ -36,6 +39,8 @@ class WaveformReplaySimulation:
         self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
+        self.runtime_context.clear()
+        set_runtime_context(self.runtime_context)
         apply_mcs_to_link(self.config)
         data_re = self.mapper.count_data_re(self.config)
         self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()

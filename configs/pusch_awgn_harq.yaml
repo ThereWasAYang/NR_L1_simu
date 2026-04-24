@@ -1,0 +1,56 @@
+# PUSCH AWGN + HARQ 示例配置
+carrier:
+  cell_bandwidth_rbs: 24  # 小区带宽（RB）
+  subcarrier_spacing_khz: 30  # 子载波间隔（kHz）
+  cyclic_prefix: NormalCP  # 循环前缀类型：NormalCP / ECP
+
+link:
+  channel_type: PUSCH  # 信道类型
+  waveform: CP-OFDM  # 波形类型
+  num_layers: 1  # 传输层数
+  num_codewords: 1  # 码字数，当前 PUSCH 仅支持 1
+  num_tx_ant: 1  # 发射天线数
+  num_rx_ant: 1  # 接收天线数
+  prb_start: 0  # 用户起始 PRB
+  num_prbs: 16  # 用户带宽（RB）
+  start_symbol: 0  # 起始 OFDM 符号
+  num_symbols: 14  # 占用 OFDM 符号数
+  mcs:
+    table: qam64  # MCS 表类型
+    index: 0  # MCS 阶数
+    rv: 0  # 初始冗余版本
+
+dmrs:
+  config_type: 1  # DMRS 梳分类型
+  mapping_type: A  # 映射类型
+  type_a_position: 2  # type A 首个 DMRS 符号位置
+  additional_positions: 0  # 额外 DMRS 位置数
+  max_length: 1  # DMRS 最大长度
+  data_mux_enabled: false  # 是否数据导频共符号
+  num_cdm_groups_without_data: 2  # 无数据 CDM group 数
+
+scrambling:
+  rnti: 4660  # RNTI
+  n_id: 1  # 数据/DMRS 相关 ID
+
+decoder:
+  ldpc_max_iterations: 25  # LDPC 最大迭代次数
+  ldpc_min_sum_scaling: 0.75  # normalized min-sum 缩放因子
+  ldpc_enable_py3gpp_fallback: true  # 本地译码失败时是否启用 py3gpp 兜底
+
+harq:
+  enabled: true  # 是否启用 HARQ
+  num_processes: 4  # HARQ 进程数
+  max_retransmissions: 3  # 最大重传次数
+  rv_sequence: [0, 2, 3, 1]  # 冗余版本序列
+
+channel:
+  model: AWGN  # 信道模型
+  params:
+    snr_db: 5.0  # 信噪比
+
+plotting:
+  enabled: false  # 多 TTI + HARQ 默认不绘图
+
+simulation:
+  num_ttis: 20  # 仿真 TTI 数

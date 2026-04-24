@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+_TEXT_FILE_READ_ENCODING = "utf-8-sig"
+
 
 def load_frequency_response(
     *,
@@ -27,7 +29,11 @@ def load_frequency_response(
 
     if path is not None:
         resolved = Path(path).expanduser().resolve()
-        entries = [_parse_complex_value(line) for line in resolved.read_text().splitlines() if line.strip()]
+        entries = [
+            _parse_complex_value(line)
+            for line in resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING).splitlines()
+            if line.strip()
+        ]
     else:
         if not isinstance(values, (list, tuple, np.ndarray)):
             raise ValueError("channel.params.frequency_response must be a sequence of complex coefficients.")
