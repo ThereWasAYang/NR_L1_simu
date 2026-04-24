@@ -305,7 +305,7 @@ class DmrsSequenceTest(unittest.TestCase):
             config.link.num_prbs = num_prbs
             symbols = generator.generate_for_symbol(symbol=2, config=config)
             self.assertEqual(_numel(symbols), num_prbs * 6)
-            self.assertTrue(np.allclose(np.abs(symbols), 1.0))
+            self.assertTrue(np.allclose(np.abs(_as_numpy(symbols)), 1.0))
 
     def test_transform_precoded_pusch_rejects_dmrs_config_type2(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")

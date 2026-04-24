@@ -3,13 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-import numpy as np
 import torch
 
 from nr_phy_simu.common.interfaces import DmrsSequenceGenerator
 from nr_phy_simu.common.sequences.dmrs_tables import resolve_dmrs_symbol_indices
 from nr_phy_simu.config import SimulationConfig
-from nr_phy_simu.common.torch_utils import BIT_DTYPE, COMPLEX_DTYPE
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, COMPLEX_DTYPE, REAL_DTYPE
 
 
 SHORT_LOW_PAPR_TYPE1_PHASES: dict[int, dict[int, tuple[int, ...]]] = {
@@ -259,8 +258,8 @@ SHORT_LOW_PAPR_TYPE2_BITS: dict[int, dict[int, tuple[int, ...]]] = {
 def gold_sequence(c_init: int, length: int) -> torch.Tensor:
     nc = 1600
     seq_len = nc + length + 31
-    x1 = np.zeros(seq_len, dtype=np.int8)
-    x2 = np.zeros(seq_len, dtype=np.int8)
+    x1 = torch.zeros(seq_len, dtype=BIT_DTYPE)
+    x2 = torch.zeros(seq_len, dtype=BIT_DTYPE)
     x1[0] = 1
 
     for bit_idx in range(31):
@@ -270,26 +269,29 @@ def gold_sequence(c_init: int, length: int) -> torch.Tensor:
         x1[idx] = (x1[idx - 28] + x1[idx - 31]) & 1
         x2[idx] = (x2[idx - 28] + x2[idx - 29] + x2[idx - 30] + x2[idx - 31]) & 1
 
-    return torch.as_tensor((x1[nc : nc + length] + x2[nc : nc + length]) & 1, dtype=BIT_DTYPE)
+    return ((x1[nc : nc + length] + x2[nc : nc + length]) & 1).to(dtype=BIT_DTYPE)
 
 
-def qpsk_from_prbs(bits: torch.Tensor | np.ndarray) -> torch.Tensor:
-    if not isinstance(bits, torch.Tensor):
-        bits = torch.as_tensor(bits, dtype=BIT_DTYPE)
-    real = 1 - 2 * bits[0::2]
-    imag = 1 - 2 * bits[1::2]
-    return torch.complex(real.to(torch.float64), imag.to(torch.float64)) / math.sqrt(2.0)
-
-
-def pi_over_two_bpsk_from_bits(bits: torch.Tensor | np.ndarray) -> torch.Tensor:
+def qpsk_from_prbs(bits: torch.Tensor) -> torch.Tensor:
     if not isinstance(bits, torch.Tensor):
         bits = torch.as_tensor(bits, dtype=BIT_DTYPE)
     bits = bits.reshape(-1).to(dtype=BIT_DTYPE)
-    real = torch.where(bits == 0, torch.tensor(1.0), torch.tensor(-1.0))
+    real = 1 - 2 * bits[0::2]
+    imag = 1 - 2 * bits[1::2]
+    return torch.complex(real.to(REAL_DTYPE), imag.to(REAL_DTYPE)) / math.sqrt(2.0)
+
+
+def pi_over_two_bpsk_from_bits(bits: torch.Tensor) -> torch.Tensor:
+    if not isinstance(bits, torch.Tensor):
+        bits = torch.as_tensor(bits, dtype=BIT_DTYPE)
+    bits = bits.reshape(-1).to(dtype=BIT_DTYPE)
+    one = torch.tensor(1.0, dtype=REAL_DTYPE, device=bits.device)
+    neg_one = torch.tensor(-1.0, dtype=REAL_DTYPE, device=bits.device)
+    real = torch.where(bits == 0, one, neg_one)
     imag = real.clone()
-    odd = (torch.arange(bits.numel()) % 2) == 1
+    odd = (torch.arange(bits.numel(), device=bits.device) % 2) == 1
     real[odd] *= -1.0
-    return torch.complex(real.to(torch.float64), imag.to(torch.float64)) / math.sqrt(2.0)
+    return torch.complex(real.to(REAL_DTYPE), imag.to(REAL_DTYPE)) / math.sqrt(2.0)
 
 
 def _largest_prime_less_than_or_equal(value: int) -> int:
@@ -307,11 +309,11 @@ def _largest_prime_less_than_or_equal(value: int) -> int:
     return 2
 
 
-def _zadoff_chu_extension(root: int, length: int) -> np.ndarray:
+def _zadoff_chu_extension(root: int, length: int) -> torch.Tensor:
     nzc = _largest_prime_less_than_or_equal(length)
-    n = np.arange(nzc)
-    base = np.exp(-1j * np.pi * root * n * (n + 1) / nzc)
-    return base[np.mod(np.arange(length), nzc)]
+    n = torch.arange(nzc, dtype=REAL_DTYPE)
+    base = torch.exp(-1j * math.pi * root * n * (n + 1) / nzc)
+    return base[torch.arange(length) % nzc]
 
 
 @dataclass(frozen=True)
@@ -453,9 +455,10 @@ class DmrsGenerator(DmrsSequenceGenerator):
 
     def _low_papr_type1(self, u: int, v: int, length: int) -> torch.Tensor:
         if length in SHORT_LOW_PAPR_TYPE1_PHASES:
-            phases = np.array(SHORT_LOW_PAPR_TYPE1_PHASES[length][u], dtype=np.float64)
-            sequence = np.exp(1j * np.pi * phases / 4.0)
-            return torch.as_tensor(sequence / np.sqrt(np.mean(np.abs(sequence) ** 2)), dtype=COMPLEX_DTYPE)
+            phases = torch.tensor(SHORT_LOW_PAPR_TYPE1_PHASES[length][u], dtype=REAL_DTYPE)
+            sequence = torch.exp(1j * math.pi * phases / 4.0)
+            power = torch.mean(torch.abs(sequence) ** 2)
+            return (sequence / torch.sqrt(power)).to(dtype=COMPLEX_DTYPE)
         return self._zc_low_papr_sequence(u=u, v=v, length=length)
 
     def _generate_type2_low_papr_sequence(
@@ -465,11 +468,11 @@ class DmrsGenerator(DmrsSequenceGenerator):
         config: SimulationConfig,
     ) -> torch.Tensor:
         if length == 6:
-            phases = np.array(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=np.float64)
-            return torch.as_tensor(np.exp(1j * np.pi * phases / 4.0), dtype=COMPLEX_DTYPE)
+            phases = torch.tensor(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=REAL_DTYPE)
+            return torch.exp(1j * math.pi * phases / 4.0).to(dtype=COMPLEX_DTYPE)
 
         if length in SHORT_LOW_PAPR_TYPE2_BITS:
-            bits = np.array(SHORT_LOW_PAPR_TYPE2_BITS[length][self._type2_u_index(symbol, config)], dtype=np.int8)
+            bits = torch.tensor(SHORT_LOW_PAPR_TYPE2_BITS[length][self._type2_u_index(symbol, config)], dtype=BIT_DTYPE)
             return pi_over_two_bpsk_from_bits(bits)
 
         bits = gold_sequence(self._pi2_bpsk_dmrs_c_init(symbol, config), length)
@@ -519,8 +522,9 @@ class DmrsGenerator(DmrsSequenceGenerator):
     def _zc_low_papr_sequence(u: int, v: int, length: int) -> torch.Tensor:
         nzc = _largest_prime_less_than_or_equal(length)
         q_bar = nzc * (u + 1) / 31.0
-        q = int(np.floor(q_bar + 0.5)) + v * ((-1) ** int(np.floor(2 * q_bar)))
-        n = np.arange(nzc)
-        base = np.exp(-1j * np.pi * q * n * (n + 1) / nzc)
-        sequence = base[np.mod(np.arange(length), nzc)]
-        return torch.as_tensor(sequence / np.sqrt(np.mean(np.abs(sequence) ** 2)), dtype=COMPLEX_DTYPE)
+        q = int(math.floor(q_bar + 0.5)) + v * ((-1) ** int(math.floor(2 * q_bar)))
+        n = torch.arange(nzc, dtype=REAL_DTYPE)
+        base = torch.exp(-1j * math.pi * q * n * (n + 1) / nzc)
+        sequence = base[torch.arange(length) % nzc]
+        power = torch.mean(torch.abs(sequence) ** 2)
+        return (sequence / torch.sqrt(power)).to(dtype=COMPLEX_DTYPE)
