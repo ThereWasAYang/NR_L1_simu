@@ -175,7 +175,7 @@ def _collect_plot_artifacts(
 
 
 def _build_constellation_figure(artifact: PlotArtifact) -> object:
-    symbols = np.asarray(artifact.values)
+    symbols = _as_plot_array(artifact.values)
     snr_db = float((artifact.metadata or {}).get("snr_db", 0.0))
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
@@ -191,11 +191,11 @@ def _build_constellation_figure(artifact: PlotArtifact) -> object:
 def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
     values = artifact.values
     channel_estimation = values["channel_estimation"]
-    channel_estimate = channel_estimation.channel_estimate
+    channel_estimate = _as_plot_array(channel_estimation.channel_estimate)
     if channel_estimate.ndim == 2:
         channel_estimate = channel_estimate[np.newaxis, ...]
     num_ant = channel_estimate.shape[0]
-    dmrs_mask = values["dmrs_mask"]
+    dmrs_mask = _as_plot_array(values["dmrs_mask"])
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
     max_cols = 4
     ant_cols = min(num_ant, max_cols)
@@ -224,7 +224,9 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
 
         for symbol_idx in dmrs_symbols:
             pilot_sc = np.flatnonzero(dmrs_mask[:, symbol_idx])
-            pilot_values = channel_estimation.pilot_estimates[ant_idx, channel_estimation.pilot_symbol_indices == symbol_idx]
+            pilot_estimates = _as_plot_array(channel_estimation.pilot_estimates)
+            pilot_symbol_indices = _as_plot_array(channel_estimation.pilot_symbol_indices)
+            pilot_values = pilot_estimates[ant_idx, pilot_symbol_indices == symbol_idx]
             mag_ax.plot(
                 pilot_sc,
                 np.abs(pilot_values),
@@ -263,7 +265,7 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
-    waveform = np.asarray(artifact.values)
+    waveform = _as_plot_array(artifact.values)
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
     metadata = artifact.metadata or {}
@@ -299,7 +301,7 @@ def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
-    rx_grid = np.asarray(artifact.values)
+    rx_grid = _as_plot_array(artifact.values)
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
     metadata = artifact.metadata or {}
@@ -336,8 +338,8 @@ def _build_artifact_figure(artifact: PlotArtifact) -> object:
     if artifact.plot_type == "rx_freq":
         return _build_rx_frequency_domain_figure(artifact)
 
-    values = np.asarray(artifact.values)
-    x_values = None if artifact.x is None else np.asarray(artifact.x)
+    values = _as_plot_array(artifact.values)
+    x_values = None if artifact.x is None else _as_plot_array(artifact.x)
     plot_type = artifact.plot_type.lower()
     title = artifact.title or artifact.name
 
@@ -391,6 +393,20 @@ def _artifact_default_ylabel(plot_type: str) -> str:
     if plot_type in {"imag", "q"}:
         return "Imag"
     return "Magnitude"
+
+
+def _as_plot_array(value) -> np.ndarray:
+    """Convert list, numpy array, or torch-like tensor values for matplotlib."""
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        try:
+            return value.numpy()
+        except TypeError:
+            pass
+    return np.asarray(value)
 
 
 def _show_plots(paths: list[Path], block: bool) -> None:
