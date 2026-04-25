@@ -113,6 +113,10 @@ python examples\run_from_config.py configs\pusch_awgn.yaml
 - [docs/plotting_development.md](docs/plotting_development.md)
 - [docs/custom_intermediate_plotting.md](docs/custom_intermediate_plotting.md)
 
+如果你要替换信道估计、均衡、信道模型等模块，并搭建一条新的发射机-信道-接收机链路，开发说明见：
+
+- [docs/custom_link_development.md](docs/custom_link_development.md)
+
 当前所有绘图都会先统一整理成 `PlotArtifact`，再由 [visualization.py](src/nr_phy_simu/visualization.py) 渲染。标准图会由系统自动生成对应 artifact；如果你在开发新算法时只是想把某个中间变量快速画出来，也可以自己挂载 `PlotArtifact`，通常不需要直接修改绘图主流程。例如在信道估计结果中挂载：
 
 ```python
