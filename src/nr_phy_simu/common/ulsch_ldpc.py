@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import math
 
 import numpy as np
 import scipy.sparse as sp
+import torch
 from py3gpp import nrLDPCDecode
 from py3gpp.nrLDPCEncode import _encode, _gen_submat, _lift_basegraph, _load_basegraph
+
+from nr_phy_simu.common.torch_utils import BIT_DTYPE, REAL_DTYPE, as_int_tensor, as_real_tensor, to_numpy
 
 
 @dataclass(frozen=True)
@@ -25,9 +29,9 @@ class UlschLdpcInfo:
 @dataclass(frozen=True)
 class LdpcDecoderStructure:
     parity_check: sp.csr_matrix
-    edge_var_indices: np.ndarray
-    row_edge_groups: tuple[np.ndarray, ...]
-    col_edge_groups: tuple[np.ndarray, ...]
+    edge_var_indices: torch.Tensor
+    row_edge_groups: tuple[torch.Tensor, ...]
+    col_edge_groups: tuple[torch.Tensor, ...]
 
 
 def get_ulsch_ldpc_info(tbs: int, target_code_rate: float) -> UlschLdpcInfo:
@@ -51,9 +55,9 @@ def get_ulsch_ldpc_info(tbs: int, target_code_rate: float) -> UlschLdpcInfo:
     )
 
 
-def encode_ldpc_codeblocks(code_blocks: np.ndarray, base_graph: int) -> np.ndarray:
-    code_blocks = code_blocks.copy()
-    input_bits, num_code_blocks = code_blocks.shape
+def encode_ldpc_codeblocks(code_blocks: torch.Tensor | np.ndarray, base_graph: int) -> torch.Tensor:
+    code_blocks_np = np.asarray(to_numpy(code_blocks), dtype=np.int8).copy()
+    input_bits, num_code_blocks = code_blocks_np.shape
     if base_graph == 1:
         num_systematic_nodes = 22
         num_codeword_nodes = 66
@@ -70,14 +74,14 @@ def encode_ldpc_codeblocks(code_blocks: np.ndarray, base_graph: int) -> np.ndarr
     lifting_kb = _select_lifting_kb(input_bits, base_graph)
     lifting_set_index = _find_lifting_set_index(lifting_kb, input_bits)
 
-    filler_indices = code_blocks[:, 0] == -1
-    code_blocks[filler_indices, :] = 0
+    filler_indices = code_blocks_np[:, 0] == -1
+    code_blocks_np[filler_indices, :] = 0
 
     base_matrix = _load_basegraph(lifting_set_index, base_graph)
     pcm_a, pcm_b_inv, pcm_c1, pcm_c2 = _gen_submat(base_matrix, num_systematic_nodes, zc, base_graph)
     for code_block_index in range(num_code_blocks):
         coded[:, code_block_index] = _encode(
-            code_blocks[:, code_block_index],
+            code_blocks_np[:, code_block_index],
             pcm_a,
             pcm_b_inv,
             pcm_c1,
@@ -86,27 +90,28 @@ def encode_ldpc_codeblocks(code_blocks: np.ndarray, base_graph: int) -> np.ndarr
 
     filler_indices_out = np.append(filler_indices, np.repeat(False, codeword_bits + 2 * zc - input_bits))
     coded[filler_indices_out, :] = -1
-    return coded[2 * zc :, :]
+    return torch.as_tensor(coded[2 * zc :, :], dtype=BIT_DTYPE)
 
 
 def rate_match_ulsch_ldpc(
-    encoded_code_blocks: np.ndarray,
+    encoded_code_blocks: torch.Tensor | np.ndarray,
     out_length: int,
     rv: int,
     modulation: str,
     num_layers: int,
-) -> np.ndarray:
+) -> torch.Tensor:
     assert num_layers == 1, "nLayers > 1 is not yet implemented"
     assert rv in [0, 1, 2, 3], "rv has to be in [0, 1, 2, 3]"
 
+    encoded_code_blocks = as_int_tensor(encoded_code_blocks, dtype=BIT_DTYPE)
     qm = _modulation_order(modulation)
     n = encoded_code_blocks.shape[0]
     c = encoded_code_blocks.shape[1]
-    z_list = np.array(_get_z_list())
-    if n in z_list * 66:
+    z_list = torch.tensor(_get_z_list(), dtype=torch.int64, device=encoded_code_blocks.device)
+    if bool(torch.any(n == z_list * 66)):
         base_graph = 1
         num_codeword_nodes = 66
-    elif n in z_list * 50:
+    elif bool(torch.any(n == z_list * 50)):
         base_graph = 2
         num_codeword_nodes = 50
     else:
@@ -115,31 +120,29 @@ def rate_match_ulsch_ldpc(
     ncb = n
     k0 = _rate_matching_start(base_graph, rv, ncb, n, zc)
 
-    rematched = np.empty(0, dtype=np.int8)
-    for code_block_index in np.arange(c):
-        if code_block_index <= c - np.mod(out_length / (num_layers * qm), c) - 1:
-            e = qm * num_layers * int(np.floor(out_length / (qm * num_layers * c)))
+    rematched: list[torch.Tensor] = []
+    for code_block_index in range(c):
+        if code_block_index <= c - (out_length / (num_layers * qm)) % c - 1:
+            e = qm * num_layers * int(math.floor(out_length / (qm * num_layers * c)))
         else:
-            e = qm * num_layers * int(np.ceil(out_length / (qm * num_layers * c)))
-        rematched = np.append(
-            rematched,
-            _rate_match_single(encoded_code_blocks[:, code_block_index], e, k0, ncb, qm),
-        )
-    return rematched.astype(np.int8)
+            e = qm * num_layers * int(math.ceil(out_length / (qm * num_layers * c)))
+        rematched.append(_rate_match_single(encoded_code_blocks[:, code_block_index], e, k0, ncb, qm))
+    return torch.cat(rematched).to(dtype=BIT_DTYPE)
 
 
 def rate_recover_ulsch_ldpc(
-    llrs: np.ndarray,
+    llrs: torch.Tensor | np.ndarray,
     trblklen: int,
     target_code_rate: float,
     rv: int,
     modulation: str,
     num_layers: int,
     num_code_blocks: int | None = None,
-) -> np.ndarray:
+) -> torch.Tensor:
     assert 0 < target_code_rate < 1, "R has to satisfy 0 < R < 1"
     assert rv in [0, 1, 2, 3], "rv has to be in [0, 1, 2, 3]"
 
+    llrs = as_real_tensor(llrs).reshape(-1)
     qm = _modulation_order(modulation)
     info = get_ulsch_ldpc_info(trblklen, target_code_rate)
     c = info.num_code_blocks if num_code_blocks is None else num_code_blocks
@@ -147,14 +150,14 @@ def rate_recover_ulsch_ldpc(
     ncb = n
     k0 = _rate_matching_start(info.base_graph, rv, ncb, n, info.zc)
 
-    g = len(llrs)
-    out = np.zeros((n, c), dtype=np.float64)
+    g = int(llrs.numel())
+    out = torch.zeros((n, c), dtype=REAL_DTYPE, device=llrs.device)
     index = 0
-    for code_block_index in np.arange(c):
-        if code_block_index <= c - np.mod(g / (num_layers * qm), c) - 1:
-            e = qm * num_layers * int(np.floor(g / (qm * num_layers * c)))
+    for code_block_index in range(c):
+        if code_block_index <= c - (g / (num_layers * qm)) % c - 1:
+            e = qm * num_layers * int(math.floor(g / (qm * num_layers * c)))
         else:
-            e = qm * num_layers * int(np.ceil(g / (qm * num_layers * c)))
+            e = qm * num_layers * int(math.ceil(g / (qm * num_layers * c)))
 
         deconcatenated = llrs[index : index + e]
         index += e
@@ -169,13 +172,14 @@ def rate_recover_ulsch_ldpc(
 
 
 def decode_ulsch_ldpc(
-    llrs: np.ndarray,
+    llrs: torch.Tensor | np.ndarray,
     info: UlschLdpcInfo,
     max_num_iter: int,
     min_sum_scaling: float = 0.75,
     enable_py3gpp_fallback: bool = True,
-) -> np.ndarray:
-    decoded = np.zeros((info.cb_input_bits, llrs.shape[1]), dtype=np.uint8)
+) -> torch.Tensor:
+    llrs = as_real_tensor(llrs)
+    decoded = torch.zeros((info.cb_input_bits, llrs.shape[1]), dtype=BIT_DTYPE, device=llrs.device)
     for code_block_index in range(llrs.shape[1]):
         decoded[:, code_block_index] = _decode_single_code_block(
             llrs[:, code_block_index],
@@ -187,44 +191,48 @@ def decode_ulsch_ldpc(
     return decoded
 
 
-def _rate_match_single(codeword: np.ndarray, out_length: int, k0: int, ncb: int, qm: int) -> np.ndarray:
-    num_filler_bits = np.count_nonzero(codeword[:ncb] == -1)
-    tiled = np.tile(codeword, int(np.ceil(out_length / (len(codeword[:ncb]) - num_filler_bits))))
-    tiled = np.roll(tiled, -k0)
+def _rate_match_single(codeword: torch.Tensor, out_length: int, k0: int, ncb: int, qm: int) -> torch.Tensor:
+    codeword = as_int_tensor(codeword, dtype=BIT_DTYPE)
+    codeword_buffer = codeword[:ncb]
+    num_filler_bits = int(torch.count_nonzero(codeword_buffer == -1).item())
+    repeat_count = int(math.ceil(out_length / (codeword_buffer.numel() - num_filler_bits)))
+    tiled = codeword_buffer.repeat(repeat_count)
+    tiled = torch.roll(tiled, shifts=-k0)
     selected = tiled[tiled != -1][:out_length]
-    return np.reshape(selected, (qm, int(out_length / qm))).ravel(order="F")
+    return selected.reshape(qm, int(out_length / qm)).T.reshape(-1)
 
 
 def _rate_recover_single(
-    deconcatenated: np.ndarray,
+    deconcatenated: torch.Tensor,
     info: UlschLdpcInfo,
     k0: int,
     ncb: int,
     qm: int,
-) -> np.ndarray:
-    e = len(deconcatenated)
-    deconcatenated = np.reshape(deconcatenated, (int(e / qm), qm)).ravel("F")
+) -> torch.Tensor:
+    deconcatenated = as_real_tensor(deconcatenated)
+    e = int(deconcatenated.numel())
+    deconcatenated = deconcatenated.reshape(int(e / qm), qm).T.reshape(-1)
 
     k = int(info.cb_input_bits - 2 * info.zc)
     kd = int(k - info.num_filler_bits)
     num_filler_bits = int(min(k, ncb) - kd)
     n_buffer = ncb - num_filler_bits
 
-    indices = np.tile(np.arange(ncb), int(np.ceil(e / n_buffer)))
-    indices = np.roll(indices, -k0)
-    indices = np.delete(indices, (indices >= kd) & (indices < k))
+    indices = torch.arange(ncb, dtype=torch.int64, device=deconcatenated.device).repeat(int(math.ceil(e / n_buffer)))
+    indices = torch.roll(indices, shifts=-k0)
+    indices = indices[~((indices >= kd) & (indices < k))]
     indices = indices[:e]
 
-    out = np.zeros(info.encoded_block_bits, dtype=np.float64)
-    out[kd:k] = np.inf
+    out = torch.zeros(info.encoded_block_bits, dtype=REAL_DTYPE, device=deconcatenated.device)
+    out[kd:k] = torch.inf
 
     if e > n_buffer:
-        repeats = int(np.floor(e / n_buffer))
+        repeats = int(math.floor(e / n_buffer))
         for repeat_idx in range(repeats):
             start = repeat_idx * n_buffer
             stop = (repeat_idx + 1) * n_buffer
             out[indices[:n_buffer]] += deconcatenated[start:stop]
-        rem_bits = int(np.mod(e, n_buffer))
+        rem_bits = int(e % n_buffer)
         if rem_bits:
             out[indices[:rem_bits]] += deconcatenated[-rem_bits:]
     else:
@@ -234,9 +242,9 @@ def _rate_recover_single(
 
 def _rate_matching_start(base_graph: int, rv: int, ncb: int, n: int, zc: int) -> int:
     if base_graph == 1:
-        starts = {0: 0, 1: np.floor(17 * ncb / n) * zc, 2: np.floor(33 * ncb / n) * zc, 3: np.floor(56 * ncb / n) * zc}
+        starts = {0: 0, 1: math.floor(17 * ncb / n) * zc, 2: math.floor(33 * ncb / n) * zc, 3: math.floor(56 * ncb / n) * zc}
     else:
-        starts = {0: 0, 1: np.floor(13 * ncb / n) * zc, 2: np.floor(25 * ncb / n) * zc, 3: np.floor(43 * ncb / n) * zc}
+        starts = {0: 0, 1: math.floor(13 * ncb / n) * zc, 2: math.floor(25 * ncb / n) * zc, 3: math.floor(43 * ncb / n) * zc}
     return int(starts[rv])
 
 
@@ -283,16 +291,17 @@ def _select_lifting_kb(input_bits: int, base_graph: int) -> int:
 
 
 def _decode_single_code_block(
-    llrs: np.ndarray,
+    llrs: torch.Tensor,
     info: UlschLdpcInfo,
     max_num_iter: int,
     min_sum_scaling: float,
     enable_py3gpp_fallback: bool,
-) -> np.ndarray:
+) -> torch.Tensor:
     structure = _ldpc_decoder_structure(info.base_graph, info.cb_input_bits, info.zc)
-    punctured_prefix = np.zeros(2 * info.zc, dtype=np.float64)
-    channel_llr = np.concatenate([punctured_prefix, np.asarray(llrs, dtype=np.float64)])
-    channel_llr = np.nan_to_num(channel_llr, nan=0.0, posinf=1e6, neginf=-1e6)
+    llrs = as_real_tensor(llrs)
+    punctured_prefix = torch.zeros(2 * info.zc, dtype=REAL_DTYPE, device=llrs.device)
+    channel_llr = torch.cat([punctured_prefix, llrs])
+    channel_llr = torch.nan_to_num(channel_llr, nan=0.0, posinf=1e6, neginf=-1e6)
 
     posterior = _normalized_min_sum_decode(
         channel_llr,
@@ -301,69 +310,74 @@ def _decode_single_code_block(
         scaling=min_sum_scaling,
     )
     if posterior is not None:
-        return (posterior[: info.cb_input_bits] < 0).astype(np.uint8)
+        return (posterior[: info.cb_input_bits] < 0).to(dtype=BIT_DTYPE)
 
     direct = _direct_decode_from_hard_decisions(llrs.reshape(-1, 1), info)
     if direct is not None:
         return direct[:, 0]
 
     if not enable_py3gpp_fallback:
-        return (channel_llr[: info.cb_input_bits] < 0).astype(np.uint8)
+        return (channel_llr[: info.cb_input_bits] < 0).to(dtype=BIT_DTYPE)
 
-    decoded, _ = nrLDPCDecode(llrs.reshape(-1, 1), info.base_graph, maxNumIter=max_num_iter)
-    return decoded[:, 0].astype(np.uint8)
+    decoded, _ = nrLDPCDecode(to_numpy(llrs.reshape(-1, 1)), info.base_graph, maxNumIter=max_num_iter)
+    return torch.as_tensor(decoded[:, 0], dtype=BIT_DTYPE, device=llrs.device)
 
 
 def _normalized_min_sum_decode(
-    channel_llr: np.ndarray,
+    channel_llr: torch.Tensor,
     structure: LdpcDecoderStructure,
     max_num_iter: int,
     scaling: float,
-) -> np.ndarray | None:
-    edge_var_indices = structure.edge_var_indices
+) -> torch.Tensor | None:
+    edge_var_indices = structure.edge_var_indices.to(device=channel_llr.device)
     row_edge_groups = structure.row_edge_groups
     col_edge_groups = structure.col_edge_groups
 
-    v2c = channel_llr[edge_var_indices].astype(np.float64, copy=True)
-    c2v = np.zeros_like(v2c)
-    posterior = channel_llr.copy()
+    v2c = channel_llr[edge_var_indices].clone()
+    c2v = torch.zeros_like(v2c)
+    posterior = channel_llr.clone()
 
     for _ in range(max_num_iter):
         for row_edges in row_edge_groups:
-            incoming = v2c[row_edges]
-            if incoming.size == 0:
+            row_edges_tensor = row_edges.to(device=channel_llr.device)
+            incoming = v2c[row_edges_tensor]
+            if incoming.numel() == 0:
                 continue
-            signs = np.sign(incoming)
-            signs[signs == 0.0] = 1.0
-            abs_values = np.abs(incoming)
+            signs = torch.sign(incoming)
+            signs = torch.where(signs == 0.0, torch.ones_like(signs), signs)
+            abs_values = torch.abs(incoming)
 
-            min_index = int(np.argmin(abs_values))
-            min1 = float(abs_values[min_index])
-            min2 = float(np.min(np.delete(abs_values, min_index))) if abs_values.size > 1 else min1
-            total_sign = float(np.prod(signs))
+            min_index = int(torch.argmin(abs_values).item())
+            min1 = float(abs_values[min_index].item())
+            if abs_values.numel() > 1:
+                min2 = float(torch.min(torch.cat([abs_values[:min_index], abs_values[min_index + 1 :]])).item())
+            else:
+                min2 = min1
+            total_sign = float(torch.prod(signs).item())
 
-            outgoing = np.full(abs_values.shape, scaling * min1, dtype=np.float64)
+            outgoing = torch.full(abs_values.shape, scaling * min1, dtype=REAL_DTYPE, device=channel_llr.device)
             outgoing[min_index] = scaling * min2
-            c2v[row_edges] = total_sign * signs * outgoing
+            c2v[row_edges_tensor] = total_sign * signs * outgoing
 
-        posterior = channel_llr.copy()
+        posterior = channel_llr.clone()
         for var_index, edge_ids in enumerate(col_edge_groups):
-            if edge_ids.size:
-                posterior[var_index] += float(np.sum(c2v[edge_ids]))
+            if edge_ids.numel():
+                edge_ids_tensor = edge_ids.to(device=channel_llr.device)
+                posterior[var_index] += torch.sum(c2v[edge_ids_tensor])
 
-        hard = (posterior < 0).astype(np.uint8)
+        hard = (posterior < 0).to(dtype=BIT_DTYPE)
         if _parity_check_satisfied(hard, structure.parity_check):
             return posterior
 
         v2c = posterior[edge_var_indices] - c2v
 
-    if _parity_check_satisfied((posterior < 0).astype(np.uint8), structure.parity_check):
+    if _parity_check_satisfied((posterior < 0).to(dtype=BIT_DTYPE), structure.parity_check):
         return posterior
     return None
 
 
-def _parity_check_satisfied(bits: np.ndarray, parity_check: sp.csr_matrix) -> bool:
-    syndrome = parity_check.dot(bits.astype(np.uint8)) % 2
+def _parity_check_satisfied(bits: torch.Tensor | np.ndarray, parity_check: sp.csr_matrix) -> bool:
+    syndrome = parity_check.dot(np.asarray(to_numpy(bits), dtype=np.uint8)) % 2
     return not np.any(syndrome)
 
 
@@ -375,34 +389,34 @@ def _ldpc_decoder_structure(base_graph: int, cb_input_bits: int, zc: int) -> Ldp
     parity_check = _lift_basegraph(base_matrix, zc).tocsr()
 
     edge_var_indices: list[int] = []
-    row_edge_groups: list[np.ndarray] = []
+    row_edge_groups: list[torch.Tensor] = []
     col_edges: list[list[int]] = [[] for _ in range(parity_check.shape[1])]
 
     edge_id = 0
     for row_index in range(parity_check.shape[0]):
         cols = parity_check.indices[parity_check.indptr[row_index] : parity_check.indptr[row_index + 1]]
-        row_edge_ids = np.arange(edge_id, edge_id + len(cols), dtype=np.int32)
+        row_edge_ids = torch.arange(edge_id, edge_id + len(cols), dtype=torch.int64)
         row_edge_groups.append(row_edge_ids)
         for col in cols:
             edge_var_indices.append(int(col))
             col_edges[int(col)].append(edge_id)
             edge_id += 1
 
-    col_edge_groups = tuple(np.asarray(edges, dtype=np.int32) for edges in col_edges)
+    col_edge_groups = tuple(torch.tensor(edges, dtype=torch.int64) for edges in col_edges)
     return LdpcDecoderStructure(
         parity_check=parity_check,
-        edge_var_indices=np.asarray(edge_var_indices, dtype=np.int32),
+        edge_var_indices=torch.tensor(edge_var_indices, dtype=torch.int64),
         row_edge_groups=tuple(row_edge_groups),
         col_edge_groups=col_edge_groups,
     )
 
 
-def _direct_decode_from_hard_decisions(llrs: np.ndarray, info: UlschLdpcInfo) -> np.ndarray | None:
-    hard = (llrs < 0).astype(np.uint8)
+def _direct_decode_from_hard_decisions(llrs: torch.Tensor, info: UlschLdpcInfo) -> torch.Tensor | None:
+    hard = (as_real_tensor(llrs) < 0).to(dtype=BIT_DTYPE)
     if hard.ndim != 2:
         raise TypeError("LLR matrix must be 2-dimensional")
 
-    decoded = np.zeros((info.cb_input_bits, hard.shape[1]), dtype=np.uint8)
+    decoded = torch.zeros((info.cb_input_bits, hard.shape[1]), dtype=BIT_DTYPE, device=hard.device)
     for code_block_index in range(hard.shape[1]):
         code_block = _recover_code_block_from_hard_bits(hard[:, code_block_index], info)
         if code_block is None:
@@ -411,50 +425,57 @@ def _direct_decode_from_hard_decisions(llrs: np.ndarray, info: UlschLdpcInfo) ->
     return decoded
 
 
-def _recover_code_block_from_hard_bits(hard_bits: np.ndarray, info: UlschLdpcInfo) -> np.ndarray | None:
+def _recover_code_block_from_hard_bits(hard_bits: torch.Tensor, info: UlschLdpcInfo) -> torch.Tensor | None:
     zc = info.zc
-    full_codeword = np.concatenate([np.zeros(2 * zc, dtype=np.uint8), hard_bits.astype(np.uint8)])
+    hard_bits = as_int_tensor(hard_bits, dtype=BIT_DTYPE)
+    full_codeword = torch.cat([torch.zeros(2 * zc, dtype=BIT_DTYPE, device=hard_bits.device), hard_bits])
     kd = info.cb_input_bits - info.num_filler_bits
     full_codeword[kd : info.cb_input_bits] = 0
 
     parity_check, punctured_submatrix = _punctured_solver_matrices(info.base_graph, info.cb_input_bits, zc)
-    rhs = (parity_check[:, 2 * zc :] @ full_codeword[2 * zc :]) % 2
-    solution = _solve_gf2(punctured_submatrix, rhs.astype(np.uint8))
+    parity_check = parity_check.to(device=hard_bits.device)
+    punctured_submatrix = punctured_submatrix.to(device=hard_bits.device)
+    rhs = torch.remainder(parity_check[:, 2 * zc :] @ full_codeword[2 * zc :].to(dtype=torch.int64), 2).to(dtype=BIT_DTYPE)
+    solution = _solve_gf2(punctured_submatrix, rhs)
     if solution is None:
         return None
 
     full_codeword[: 2 * zc] = solution
-    syndrome = (parity_check @ full_codeword) % 2
-    if np.any(syndrome):
+    syndrome = torch.remainder(parity_check @ full_codeword.to(dtype=torch.int64), 2)
+    if torch.any(syndrome):
         return None
 
     return full_codeword[: info.cb_input_bits]
 
 
 @lru_cache(maxsize=None)
-def _punctured_solver_matrices(base_graph: int, cb_input_bits: int, zc: int) -> tuple[np.ndarray, np.ndarray]:
+def _punctured_solver_matrices(base_graph: int, cb_input_bits: int, zc: int) -> tuple[torch.Tensor, torch.Tensor]:
     lifting_kb = _select_lifting_kb(cb_input_bits, base_graph)
     lifting_set_index = _find_lifting_set_index(lifting_kb, cb_input_bits)
     base_matrix = _load_basegraph(lifting_set_index, base_graph)
     parity_check = _lift_basegraph(base_matrix, zc).astype(np.uint8).toarray() % 2
-    punctured_submatrix = parity_check[:, : 2 * zc].copy()
-    return parity_check, punctured_submatrix
+    parity_check_tensor = torch.as_tensor(parity_check, dtype=torch.int64)
+    punctured_submatrix = parity_check_tensor[:, : 2 * zc].clone()
+    return parity_check_tensor, punctured_submatrix
 
 
-def _solve_gf2(matrix: np.ndarray, rhs: np.ndarray) -> np.ndarray | None:
-    augmented = np.concatenate([matrix.copy() % 2, rhs.reshape(-1, 1) % 2], axis=1).astype(np.uint8)
+def _solve_gf2(matrix: torch.Tensor, rhs: torch.Tensor) -> torch.Tensor | None:
+    augmented = torch.cat(
+        [torch.remainder(matrix.clone(), 2), torch.remainder(rhs.reshape(-1, 1), 2).to(dtype=torch.int64)],
+        dim=1,
+    )
     num_rows, num_cols_aug = augmented.shape
     num_cols = num_cols_aug - 1
     pivot_columns: list[int] = []
     pivot_row = 0
 
     for col in range(num_cols):
-        candidate_rows = np.flatnonzero(augmented[pivot_row:, col]) + pivot_row
-        if candidate_rows.size == 0:
+        candidate_rows = torch.nonzero(augmented[pivot_row:, col], as_tuple=False).reshape(-1) + pivot_row
+        if candidate_rows.numel() == 0:
             continue
-        row = int(candidate_rows[0])
+        row = int(candidate_rows[0].item())
         if row != pivot_row:
-            augmented[[pivot_row, row], :] = augmented[[row, pivot_row], :]
+            augmented[[pivot_row, row], :] = augmented[[row, pivot_row], :].clone()
         for other_row in range(num_rows):
             if other_row != pivot_row and augmented[other_row, col]:
                 augmented[other_row, :] ^= augmented[pivot_row, :]
@@ -464,12 +485,12 @@ def _solve_gf2(matrix: np.ndarray, rhs: np.ndarray) -> np.ndarray | None:
             break
 
     for row in range(num_rows):
-        if not np.any(augmented[row, :num_cols]) and augmented[row, num_cols]:
+        if not torch.any(augmented[row, :num_cols]) and bool(augmented[row, num_cols]):
             return None
 
-    solution = np.zeros(num_cols, dtype=np.uint8)
+    solution = torch.zeros(num_cols, dtype=BIT_DTYPE, device=matrix.device)
     for row, col in enumerate(pivot_columns):
-        solution[col] = augmented[row, num_cols]
+        solution[col] = augmented[row, num_cols].to(dtype=BIT_DTYPE)
     return solution
 
 
@@ -497,10 +518,10 @@ def _get_code_block_info(b: int, base_graph: int) -> dict[str, int]:
         bd = b
     else:
         l = 24
-        c = int(np.ceil(b / (kcb - l)))
+        c = int(math.ceil(b / (kcb - l)))
         bd = b + c * l
 
-    kd = int(np.ceil(bd / c))
+    kd = int(math.ceil(bd / c))
     if base_graph == 1:
         kb = 22
     else:

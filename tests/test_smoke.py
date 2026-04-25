@@ -9,6 +9,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import numpy as np
+import torch
 from py3gpp import (
     nrCRCDecode,
     nrCRCEncode,
@@ -530,7 +531,7 @@ class UlschLdpcRegressionTest(unittest.TestCase):
         code_blocks = nrCodeBlockSegmentLDPC(tb_with_crc, info.base_graph)
         encoded = encode_ldpc_codeblocks(code_blocks, info.base_graph)
         rate_matched = rate_match_ulsch_ldpc(encoded, out_length=4608, rv=0, modulation="QPSK", num_layers=1)
-        llrs = (1 - 2 * rate_matched.astype(np.float64)) * 50.0
+        llrs = (1.0 - 2.0 * rate_matched.to(dtype=torch.float64)) * 50.0
         recovered = rate_recover_ulsch_ldpc(
             llrs,
             trblklen=tbs,
@@ -540,7 +541,7 @@ class UlschLdpcRegressionTest(unittest.TestCase):
             num_layers=1,
         )
         decoded_cbs = decode_ulsch_ldpc(recovered, info, max_num_iter=25)
-        tb_with_crc_hat, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
+        tb_with_crc_hat, _ = nrCodeBlockDesegmentLDPC(_as_numpy(decoded_cbs), info.base_graph, tbs + info.tb_crc_bits)
         decoded, crc_error = nrCRCDecode(tb_with_crc_hat.astype(np.int8), info.crc)
         self.assertEqual(int(np.asarray(crc_error).reshape(-1)[0]), 0)
         self.assertTrue(np.array_equal(np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8), transport_block))

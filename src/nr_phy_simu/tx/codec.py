@@ -36,8 +36,8 @@ class NrLdpcCoder(ChannelCoder):
             rv=int(config.link.mcs.rv),
             modulation=config.link.modulation,
             num_layers=config.link.num_layers,
-        ).astype("int8")
-        return torch.as_tensor(coded, dtype=BIT_DTYPE)
+        )
+        return coded.to(dtype=BIT_DTYPE)
 
 
 class RandomBitCoder(ChannelCoder):

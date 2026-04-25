@@ -44,7 +44,7 @@ class NrLdpcDecoder(ChannelDecoder):
             enable_py3gpp_fallback=bool(config.decoder.ldpc_enable_py3gpp_fallback),
         )
         with contextlib.redirect_stdout(io.StringIO()):
-            tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
+            tb_with_crc, _ = nrCodeBlockDesegmentLDPC(to_numpy(decoded_cbs), info.base_graph, tbs + info.tb_crc_bits)
         decoded, crc_error = nrCRCDecode(tb_with_crc.astype("int8"), info.crc)
         self.last_crc_ok = bool(crc_error == 0)
         return torch.as_tensor(decoded, dtype=BIT_DTYPE).reshape(-1)[:tbs]
