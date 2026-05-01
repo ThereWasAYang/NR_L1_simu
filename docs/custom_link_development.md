@@ -34,7 +34,7 @@ PuschSimulation / PdschSimulation
 其中 `DefaultSimulationComponentFactory` 会创建：
 
 - `TransmitterComponents`：编码、扰码、调制、资源映射、时域处理
-- `ReceiverComponents`：时域处理、频域抽取、信道估计、均衡、解调、解扰、译码
+- `ReceiverComponents`：时域处理、频域抽取、信道估计、均衡、解调、解扰、译码，以及可选的高层 `data_processor`
 - `SharedComponents`：发射机和接收机共享的公共对象，例如 `DMRS` 生成器
 
 这意味着你要替换某个模块时，优先改“组件工厂返回什么”，而不是改 `Transmitter` 或 `Receiver` 的内部流程。
@@ -289,7 +289,19 @@ class MyNeuralReceiverFactory(DefaultSimulationComponentFactory):
         )
 ```
 
-这种方式下，原来的 `estimator / equalizer / demodulator` 字段仍然存在，但不会被接收机主流程调用；它们只是保留为默认链路和兼容旧扩展方式使用。
+这里不会报错，因为当前 `ReceiverComponents` 已经显式定义了可选字段：
+
+```python
+data_processor: ReceiverDataProcessor | None = None
+```
+
+当 `data_processor` 为 `None` 时，`Receiver` 会自动创建默认的 `ThreeStageReceiverDataProcessor`，也就是继续按传统方式执行：
+
+```text
+ChannelEstimator -> MimoEqualizer -> Demodulator
+```
+
+当你通过 `replace(..., data_processor=self.receiver_processor)` 传入自定义对象后，接收机主流程会优先调用这个高层处理器，直接拿到解调 LLR。此时原来的 `estimator / equalizer / demodulator` 字段仍然存在，但不会被高层处理器路径调用；它们只是保留为默认链路和兼容旧扩展方式使用。
 
 ### 更灵活：任意组合多个接收处理 stage
 
