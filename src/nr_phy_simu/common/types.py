@@ -82,6 +82,34 @@ class ReceiverDataProcessingResult:
 
 
 @dataclass
+class ReceiverProcessingContext:
+    """Mutable context passed through a custom receiver-processing pipeline.
+
+    Shape conventions:
+        ``rx_grid``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        ``dmrs_symbols``: ``(num_dmrs_re,)``.
+        ``dmrs_mask`` and ``data_mask``: ``(num_subcarriers, num_symbols)``.
+        ``rx_data_symbols`` and ``data_channel``: usually ``(num_rx_ant, num_data_re)``.
+        ``equalized_symbols``: usually ``(num_data_symbols,)``.
+        ``llrs``: ``(coded_bit_capacity,)`` before data descrambling.
+    """
+    rx_grid: ComplexArray
+    dmrs_symbols: ComplexArray
+    dmrs_mask: np.ndarray
+    data_mask: np.ndarray
+    noise_variance: float
+    config: Any
+    channel_estimation: ChannelEstimateResult | None = None
+    rx_data_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
+    data_channel: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
+    equalized_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
+    llrs: RealArray = field(default_factory=lambda: np.array([], dtype=np.float64))
+    layer_symbols: tuple[ComplexArray, ...] = ()
+    plot_artifacts: tuple[PlotArtifact, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class RxPayload:
     """Receiver-side buffers for one TTI.
 

@@ -5,7 +5,11 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from nr_phy_simu.config import SimulationConfig
-from nr_phy_simu.common.types import ChannelEstimateResult, ReceiverDataProcessingResult
+from nr_phy_simu.common.types import (
+    ChannelEstimateResult,
+    ReceiverDataProcessingResult,
+    ReceiverProcessingContext,
+)
 
 
 class ChannelCoder(ABC):
@@ -304,6 +308,23 @@ class ReceiverDataProcessor(ABC):
         Returns:
             Data-processing result containing LLRs before data descrambling, plus
             optional channel estimates, equalized symbols, and plot artifacts.
+        """
+        raise NotImplementedError
+
+
+class ReceiverProcessingStage(ABC):
+    @abstractmethod
+    def process(self, context: ReceiverProcessingContext) -> ReceiverProcessingContext:
+        """Run one stage in a receiver data-processing pipeline.
+
+        Args:
+            context: Mutable receiver-processing context. Stages may read any
+                existing field and write new intermediate values such as channel
+                estimates, equalized symbols, neural features, LLRs, or plot artifacts.
+
+        Returns:
+            Updated processing context. Returning the same object after in-place
+            mutation is allowed.
         """
         raise NotImplementedError
 

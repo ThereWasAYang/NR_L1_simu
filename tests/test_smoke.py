@@ -27,7 +27,7 @@ from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
 from nr_phy_simu.common.harq import HarqManager
 from nr_phy_simu.common.layer_mapping import LayerMapper
-from nr_phy_simu.common.interfaces import ReceiverDataProcessor
+from nr_phy_simu.common.interfaces import ReceiverDataProcessor, ReceiverProcessingStage
 from nr_phy_simu.common.types import PlotArtifact, ReceiverDataProcessingResult
 from nr_phy_simu.common.transmission import build_transport_block_plan
 from nr_phy_simu.common.ulsch_ldpc import (
@@ -43,6 +43,7 @@ from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFa
 from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
+from nr_phy_simu.rx.data_processing import ReceiverDataProcessorPipeline
 from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.mcs import resolve_mcs
@@ -621,6 +622,44 @@ class ComponentAbstractionTest(unittest.TestCase):
         self.assertEqual(result.rx.llrs.size, int(result.transport_plan.codewords[0].coded_bit_capacity))
         self.assertEqual(result.rx.channel_estimation.channel_estimate.size, 0)
         self.assertEqual(result.rx.equalized_symbols.size, 0)
+        self.assertIsNone(result.crc_ok)
+
+    def test_receiver_data_processor_pipeline_allows_arbitrary_stage_composition(self):
+        class FeatureStage(ReceiverProcessingStage):
+            def process(self, context):
+                context.metadata["feature_shape"] = context.rx_grid.shape
+                return context
+
+        class DirectLlrStage(ReceiverProcessingStage):
+            def process(self, context):
+                context.llrs = np.ones(int(context.config.link.coded_bit_capacity or 0), dtype=np.float64)
+                return context
+
+        class PipelineFactory(DefaultSimulationComponentFactory):
+            def __init__(self, pipeline):
+                self.pipeline = pipeline
+
+            def create_components(self, config):
+                components = super().create_components(config)
+                return replace(
+                    components,
+                    receiver=replace(
+                        components.receiver,
+                        data_processor=self.pipeline,
+                    ),
+                )
+
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.simulation.bypass_channel_coding = True
+        cfg.plotting.enabled = False
+        pipeline = ReceiverDataProcessorPipeline([FeatureStage(), DirectLlrStage()])
+        result = PuschSimulation(
+            cfg,
+            component_factory=PipelineFactory(pipeline),
+        ).run()
+
+        self.assertEqual(result.rx.llrs.size, int(result.transport_plan.codewords[0].coded_bit_capacity))
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.size, 0)
         self.assertIsNone(result.crc_ok)
 
 

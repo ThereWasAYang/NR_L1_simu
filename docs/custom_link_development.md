@@ -291,6 +291,132 @@ class MyNeuralReceiverFactory(DefaultSimulationComponentFactory):
 
 这种方式下，原来的 `estimator / equalizer / demodulator` 字段仍然存在，但不会被接收机主流程调用；它们只是保留为默认链路和兼容旧扩展方式使用。
 
+### 更灵活：任意组合多个接收处理 stage
+
+如果你的算法不是一个完整黑盒，而是希望自由组合多个步骤，例如：
+
+```text
+自定义归一化 -> 特征构造 -> 神经网络推理 -> LLR 后处理
+```
+
+或者：
+
+```text
+传统 LS 信道估计 -> 自定义频域滤波 -> 神经网络均衡 -> 传统 QAM 解调
+```
+
+可以使用 `ReceiverDataProcessorPipeline`。它会创建一个 `ReceiverProcessingContext`，然后按顺序调用多个 `ReceiverProcessingStage`。每个 stage 都可以读写 context 中的变量。
+
+相关实现位于：
+
+- [data_processing.py](../src/nr_phy_simu/rx/data_processing.py)
+- [interfaces.py](../src/nr_phy_simu/common/interfaces.py)
+- [types.py](../src/nr_phy_simu/common/types.py)
+
+一个最小示例：
+
+```python
+import numpy as np
+
+from nr_phy_simu.common.interfaces import ReceiverProcessingStage
+from nr_phy_simu.rx.data_processing import ReceiverDataProcessorPipeline
+
+
+class FeatureStage(ReceiverProcessingStage):
+    def process(self, context):
+        # context.rx_grid shape: (num_rx_ant, num_subcarriers, num_symbols)
+        context.metadata["features"] = np.stack(
+            [context.rx_grid.real, context.rx_grid.imag],
+            axis=0,
+        )
+        return context
+
+
+class NeuralLlrStage(ReceiverProcessingStage):
+    def __init__(self, model) -> None:
+        self.model = model
+
+    def process(self, context):
+        features = context.metadata["features"]
+        context.llrs = np.asarray(self.model(features), dtype=np.float64).reshape(-1)
+        return context
+
+
+processor = ReceiverDataProcessorPipeline(
+    [
+        FeatureStage(),
+        NeuralLlrStage(model),
+    ]
+)
+```
+
+然后在组件工厂里注入：
+
+```python
+class MyPipelineReceiverFactory(DefaultSimulationComponentFactory):
+    def __init__(self, processor) -> None:
+        self.processor = processor
+
+    def create_components(self, config):
+        components = super().create_components(config)
+        return replace(
+            components,
+            receiver=replace(
+                components.receiver,
+                data_processor=self.processor,
+            ),
+        )
+```
+
+`ReceiverProcessingContext` 中常用字段包括：
+
+- `rx_grid`：接收频域栅格
+- `dmrs_symbols`：本地 DMRS 参考序列
+- `dmrs_mask / data_mask`：导频和数据 RE 位置
+- `noise_variance`：噪声方差
+- `config`：完整仿真配置
+- `channel_estimation`：可选信道估计结果
+- `rx_data_symbols`：可选抽取后的数据 RE
+- `data_channel`：可选数据 RE 上的信道估计
+- `equalized_symbols`：可选均衡星座点
+- `llrs`：必须在最后由某个 stage 填充，且应为解扰前 LLR
+- `metadata`：用户自定义中间变量字典
+
+如果最后没有任何 stage 生成 `context.llrs`，pipeline 会报错。这样可以尽早暴露“链路组装不完整”的问题。
+
+工程还提供了一些可复用的 stage：
+
+- `ChannelEstimationStage`
+- `DataExtractionStage`
+- `EqualizationStage`
+- `TransformPrecodingDespreadStage`
+- `LayerDemappingStage`
+- `DemodulationStage`
+
+因此用户可以混合传统模块和新算法。例如：
+
+```python
+from nr_phy_simu.rx.data_processing import (
+    ChannelEstimationStage,
+    DataExtractionStage,
+    DemodulationStage,
+    ReceiverDataProcessorPipeline,
+    TransformPrecodingDespreadStage,
+)
+
+processor = ReceiverDataProcessorPipeline(
+    [
+        ChannelEstimationStage(my_estimator),
+        DataExtractionStage(default_extractor),
+        MyNeuralEqualizationStage(model),
+        TransformPrecodingDespreadStage(),
+        DemodulationStage(default_demodulator),
+    ]
+)
+```
+
+这个模式适合“任意组合”的算法开发；如果你的模块本来就是完整黑盒，直接实现 `ReceiverDataProcessor` 会更简单。
+
 ## 5. 写一个专用运行脚本
 
 推荐为新链路写一个小脚本，而不是直接修改 [run_from_config.py](../examples/run_from_config.py)。例如：
