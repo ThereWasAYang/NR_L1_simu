@@ -27,8 +27,8 @@ from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
 from nr_phy_simu.common.harq import HarqManager
 from nr_phy_simu.common.layer_mapping import LayerMapper
-from nr_phy_simu.common.interfaces import ReceiverDataProcessor, ReceiverProcessingStage
-from nr_phy_simu.common.types import PlotArtifact, ReceiverDataProcessingResult
+from nr_phy_simu.common.interfaces import ReceiverDataProcessor, ReceiverProcessingStage, ReceiverProcessor
+from nr_phy_simu.common.types import ChannelEstimateResult, PlotArtifact, ReceiverDataProcessingResult, RxPayload
 from nr_phy_simu.common.transmission import build_transport_block_plan
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
@@ -658,6 +658,73 @@ class ComponentAbstractionTest(unittest.TestCase):
             component_factory=PipelineFactory(pipeline),
         ).run()
 
+        self.assertEqual(result.rx.llrs.size, int(result.transport_plan.codewords[0].coded_bit_capacity))
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.size, 0)
+        self.assertIsNone(result.crc_ok)
+
+    def test_receiver_processor_can_replace_arbitrary_receiver_steps(self):
+        class DirectReceiverProcessor(ReceiverProcessor):
+            def __init__(self):
+                self.called_from_waveform = False
+
+            def receive(self, receiver, rx_waveform, dmrs_symbols, dmrs_mask, data_mask, noise_variance, config):
+                self.called_from_waveform = True
+                rx_grid = receiver.time_processor.demodulate(rx_waveform, config)
+                return self.receive_from_grid(
+                    receiver,
+                    rx_grid,
+                    dmrs_symbols,
+                    dmrs_mask,
+                    data_mask,
+                    noise_variance,
+                    config,
+                    rx_waveform,
+                )
+
+            def receive_from_grid(self, receiver, rx_grid, dmrs_symbols, dmrs_mask, data_mask, noise_variance, config, rx_waveform=None):
+                if rx_grid.ndim == 2:
+                    rx_grid = rx_grid[np.newaxis, ...]
+                llrs = np.ones(int(config.link.coded_bit_capacity or 0), dtype=np.float64)
+                decoded_bits = receiver.decoder.decode(llrs, config)
+                return RxPayload(
+                    rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
+                    rx_grid=rx_grid,
+                    channel_estimation=ChannelEstimateResult(
+                        channel_estimate=np.array([], dtype=np.complex128),
+                        pilot_estimates=np.array([], dtype=np.complex128),
+                        pilot_symbol_indices=np.array([], dtype=int),
+                    ),
+                    equalized_symbols=np.array([], dtype=np.complex128),
+                    llrs=llrs,
+                    decoded_bits=decoded_bits,
+                    crc_ok=getattr(receiver.decoder, "last_crc_ok", None),
+                    dmrs_symbols=dmrs_symbols,
+                )
+
+        class DirectReceiverFactory(DefaultSimulationComponentFactory):
+            def __init__(self, processor):
+                self.processor = processor
+
+            def create_components(self, config):
+                components = super().create_components(config)
+                return replace(
+                    components,
+                    receiver=replace(
+                        components.receiver,
+                        receiver_processor=self.processor,
+                    ),
+                )
+
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.simulation.bypass_channel_coding = True
+        cfg.plotting.enabled = False
+        processor = DirectReceiverProcessor()
+        result = PuschSimulation(
+            cfg,
+            component_factory=DirectReceiverFactory(processor),
+        ).run()
+
+        self.assertTrue(processor.called_from_waveform)
         self.assertEqual(result.rx.llrs.size, int(result.transport_plan.codewords[0].coded_bit_capacity))
         self.assertEqual(result.rx.channel_estimation.channel_estimate.size, 0)
         self.assertIsNone(result.crc_ok)

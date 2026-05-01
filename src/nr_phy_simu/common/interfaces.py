@@ -9,6 +9,7 @@ from nr_phy_simu.common.types import (
     ChannelEstimateResult,
     ReceiverDataProcessingResult,
     ReceiverProcessingContext,
+    RxPayload,
 )
 
 
@@ -325,6 +326,71 @@ class ReceiverProcessingStage(ABC):
         Returns:
             Updated processing context. Returning the same object after in-place
             mutation is allowed.
+        """
+        raise NotImplementedError
+
+
+class ReceiverProcessor(ABC):
+    @abstractmethod
+    def receive(
+        self,
+        receiver,
+        rx_waveform: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        data_mask: np.ndarray,
+        noise_variance: float,
+        config: SimulationConfig,
+    ) -> RxPayload:
+        """Run or customize the complete receiver path from time-domain input.
+
+        Args:
+            receiver: Receiver instance that owns configured submodules. Custom
+                processors may reuse any subset, such as ``time_processor``,
+                ``scrambler`` or ``decoder``.
+            rx_waveform: Time-domain waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            noise_variance: Scalar receiver noise variance.
+            config: Full simulation configuration for receiver-side processing.
+
+        Returns:
+            Complete receiver payload.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def receive_from_grid(
+        self,
+        receiver,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        data_mask: np.ndarray,
+        noise_variance: float,
+        config: SimulationConfig,
+        rx_waveform: np.ndarray | None = None,
+    ) -> RxPayload:
+        """Run or customize the receiver path from an already demodulated grid.
+
+        Args:
+            receiver: Receiver instance that owns configured submodules.
+            rx_grid: Frequency-domain grid with shape
+                ``(num_subcarriers, num_symbols)`` or
+                ``(num_rx_ant, num_subcarriers, num_symbols)``.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            noise_variance: Scalar receiver noise variance.
+            config: Full simulation configuration for receiver-side processing.
+            rx_waveform: Optional original waveform.
+
+        Returns:
+            Complete receiver payload.
         """
         raise NotImplementedError
 

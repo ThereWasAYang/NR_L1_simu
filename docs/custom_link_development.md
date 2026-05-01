@@ -34,7 +34,7 @@ PuschSimulation / PdschSimulation
 其中 `DefaultSimulationComponentFactory` 会创建：
 
 - `TransmitterComponents`：编码、扰码、调制、资源映射、时域处理
-- `ReceiverComponents`：时域处理、频域抽取、信道估计、均衡、解调、解扰、译码，以及可选的高层 `data_processor`
+- `ReceiverComponents`：时域处理、频域抽取、信道估计、均衡、解调、解扰、译码，以及可选的 `data_processor / receiver_processor`
 - `SharedComponents`：发射机和接收机共享的公共对象，例如 `DMRS` 生成器
 
 这意味着你要替换某个模块时，优先改“组件工厂返回什么”，而不是改 `Transmitter` 或 `Receiver` 的内部流程。
@@ -428,6 +428,124 @@ processor = ReceiverDataProcessorPipeline(
 ```
 
 这个模式适合“任意组合”的算法开发；如果你的模块本来就是完整黑盒，直接实现 `ReceiverDataProcessor` 会更简单。
+
+### 更高一层：替换接收机中的任意几个步骤
+
+`ReceiverDataProcessor` 和 `ReceiverDataProcessorPipeline` 的入口是 `rx_grid`，所以它们适合替换“时域处理之后、解扰译码之前”的接收机中段。如果你希望替换的范围更大，例如：
+
+- 自定义时域处理 + 默认后续处理
+- 默认时域处理 + 自定义解扰 + 默认译码
+- 自定义频域抽取 + 神经网络接收机 + 自定义译码
+- 完全绕过默认 `Receiver` 内部所有步骤
+
+则可以使用更高层的 `ReceiverProcessor`。它直接接管 `Receiver.receive(...)` 和 `Receiver.receive_from_grid(...)`，因此可以自由决定复用哪些已有模块、替换哪些模块。
+
+一个简化示例：
+
+```python
+import numpy as np
+
+from nr_phy_simu.common.interfaces import ReceiverProcessor
+from nr_phy_simu.common.types import ChannelEstimateResult, RxPayload
+
+
+class MyReceiverProcessor(ReceiverProcessor):
+    def receive(
+        self,
+        receiver,
+        rx_waveform,
+        dmrs_symbols,
+        dmrs_mask,
+        data_mask,
+        noise_variance,
+        config,
+    ):
+        # 这里可以替换时域处理，也可以复用默认 OFDM 解调。
+        rx_grid = receiver.time_processor.demodulate(rx_waveform, config)
+        return self.receive_from_grid(
+            receiver,
+            rx_grid,
+            dmrs_symbols,
+            dmrs_mask,
+            data_mask,
+            noise_variance,
+            config,
+            rx_waveform,
+        )
+
+    def receive_from_grid(
+        self,
+        receiver,
+        rx_grid,
+        dmrs_symbols,
+        dmrs_mask,
+        data_mask,
+        noise_variance,
+        config,
+        rx_waveform=None,
+    ):
+        # 这里可以任意组合：自定义抽取、神经网络、解扰、译码等。
+        llrs = self._my_receiver_algorithm(
+            rx_grid=rx_grid,
+            dmrs_symbols=dmrs_symbols,
+            dmrs_mask=dmrs_mask,
+            data_mask=data_mask,
+            noise_variance=noise_variance,
+            config=config,
+        )
+
+        # 如果输出仍是扰码域 LLR，可以复用默认解扰和译码。
+        descrambled_llrs = receiver.scrambler.descramble_llrs(llrs, config)
+        decoded_bits = receiver.decoder.decode(descrambled_llrs, config)
+
+        if rx_grid.ndim == 2:
+            rx_grid = rx_grid[np.newaxis, ...]
+        return RxPayload(
+            rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
+            rx_grid=rx_grid,
+            channel_estimation=ChannelEstimateResult(
+                channel_estimate=np.array([], dtype=np.complex128),
+                pilot_estimates=np.array([], dtype=np.complex128),
+                pilot_symbol_indices=np.array([], dtype=int),
+            ),
+            equalized_symbols=np.array([], dtype=np.complex128),
+            llrs=descrambled_llrs,
+            decoded_bits=decoded_bits,
+            crc_ok=getattr(receiver.decoder, "last_crc_ok", None),
+            dmrs_symbols=dmrs_symbols,
+        )
+```
+
+然后通过工厂注入：
+
+```python
+class MyReceiverFactory(DefaultSimulationComponentFactory):
+    def __init__(self) -> None:
+        self.receiver_processor = MyReceiverProcessor()
+
+    def create_components(self, config):
+        components = super().create_components(config)
+        return replace(
+            components,
+            receiver=replace(
+                components.receiver,
+                receiver_processor=self.receiver_processor,
+            ),
+        )
+```
+
+当前 `ReceiverComponents` 中有两个不同层级的可选组合入口：
+
+```python
+data_processor: ReceiverDataProcessor | None = None
+receiver_processor: ReceiverProcessor | None = None
+```
+
+推荐选择方式：
+
+- 如果只想替换 `rx_grid -> LLR` 这段，用 `data_processor`。
+- 如果想替换时域处理、频域处理、解扰、译码等任意更大范围，用 `receiver_processor`。
+- 如果只是替换单个传统模块，继续替换 `estimator / equalizer / demodulator / decoder` 等字段即可。
 
 ## 5. 写一个专用运行脚本
 
