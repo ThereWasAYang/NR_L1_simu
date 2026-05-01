@@ -179,6 +179,118 @@ return replace(
 )
 ```
 
+### 一个模块直接替换信道估计、均衡、解调
+
+有些算法并不能自然拆成 `ChannelEstimator -> MimoEqualizer -> Demodulator` 三步。例如，一个神经网络接收机可能直接输入：
+
+- 接收频域栅格 `rx_grid`
+- 本地 DMRS 序列 `dmrs_symbols`
+- `dmrs_mask / data_mask`
+- 噪声方差、MCS、RB 位置、天线数等配置
+
+然后直接输出解调 LLR。对于这种情况，不要强行把算法拆成三个接口。当前工程提供了更高层的 `ReceiverDataProcessor` 接口，专门用于一次性替换“信道估计 + 均衡 + 解调”这一段。
+
+接口定义位于：
+
+- [interfaces.py](../src/nr_phy_simu/common/interfaces.py)
+
+返回结构位于：
+
+- [types.py](../src/nr_phy_simu/common/types.py)
+
+一个简化的神经网络接收机骨架如下：
+
+```python
+from __future__ import annotations
+
+import numpy as np
+
+from nr_phy_simu.common.interfaces import ReceiverDataProcessor
+from nr_phy_simu.common.types import ReceiverDataProcessingResult
+from nr_phy_simu.config import SimulationConfig
+
+
+class MyNeuralReceiver(ReceiverDataProcessor):
+    """Example processor that directly maps received grid to scrambled-domain LLRs."""
+
+    def __init__(self, model) -> None:
+        self.model = model
+
+    def process(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        data_mask: np.ndarray,
+        noise_variance: float,
+        config: SimulationConfig,
+    ) -> ReceiverDataProcessingResult:
+        # rx_grid shape: (num_rx_ant, num_subcarriers, num_symbols)
+        # dmrs_symbols shape: (num_dmrs_re,)
+        # dmrs_mask/data_mask shape: (num_subcarriers, num_symbols)
+        features = self._build_features(
+            rx_grid=rx_grid,
+            dmrs_symbols=dmrs_symbols,
+            dmrs_mask=dmrs_mask,
+            data_mask=data_mask,
+            noise_variance=noise_variance,
+            config=config,
+        )
+        llrs = self.model(features)
+        return ReceiverDataProcessingResult(
+            llrs=np.asarray(llrs, dtype=np.float64).reshape(-1),
+        )
+
+    def _build_features(self, **kwargs):
+        ...
+```
+
+这里返回的 `llrs` 仍然应处于“扰码域”，也就是和普通解调器输出一致：接收机会继续执行：
+
+```text
+data descrambling -> channel decoding
+```
+
+如果你的算法已经输出了解扰后的 LLR，建议同时替换 `BitScrambler`，让 `descramble_llrs(...)` 直接透传，避免重复解扰。
+
+如果你的算法能够额外输出信道估计、均衡星座点或调试图，也可以填充更多字段：
+
+```python
+return ReceiverDataProcessingResult(
+    llrs=llrs,
+    channel_estimation=my_channel_estimation,   # 可选
+    equalized_symbols=my_equalized_symbols,     # 可选，用于星座图和 EVM
+    plot_artifacts=my_plot_artifacts,           # 可选
+)
+```
+
+如果不提供 `channel_estimation`，系统不会绘制导频信道估计图；如果不提供 `equalized_symbols`，系统不会绘制星座图，也不会计算 EVM。这对“黑盒神经网络直接输出 LLR”的算法是合理的。
+
+在组件工厂中注入这个模块：
+
+```python
+from dataclasses import replace
+
+from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
+
+
+class MyNeuralReceiverFactory(DefaultSimulationComponentFactory):
+    def __init__(self, model) -> None:
+        self.receiver_processor = MyNeuralReceiver(model)
+
+    def create_components(self, config):
+        components = super().create_components(config)
+        return replace(
+            components,
+            receiver=replace(
+                components.receiver,
+                data_processor=self.receiver_processor,
+            ),
+        )
+```
+
+这种方式下，原来的 `estimator / equalizer / demodulator` 字段仍然存在，但不会被接收机主流程调用；它们只是保留为默认链路和兼容旧扩展方式使用。
+
 ## 5. 写一个专用运行脚本
 
 推荐为新链路写一个小脚本，而不是直接修改 [run_from_config.py](../examples/run_from_config.py)。例如：

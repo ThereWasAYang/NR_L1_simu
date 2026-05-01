@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from nr_phy_simu.config import SimulationConfig
-from nr_phy_simu.common.types import ChannelEstimateResult
+from nr_phy_simu.common.types import ChannelEstimateResult, ReceiverDataProcessingResult
 
 
 class ChannelCoder(ABC):
@@ -269,6 +269,41 @@ class MimoEqualizer(ABC):
 
         Returns:
             Equalized symbol stream ready for demodulation.
+        """
+        raise NotImplementedError
+
+
+class ReceiverDataProcessor(ABC):
+    @abstractmethod
+    def process(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+        data_mask: np.ndarray,
+        noise_variance: float,
+        config: SimulationConfig,
+    ) -> ReceiverDataProcessingResult:
+        """Convert a received grid directly to pre-descrambling LLRs.
+
+        This high-level interface is for algorithms that do not naturally split
+        into channel estimation, MIMO equalization, and demodulation. A neural
+        receiver can consume ``rx_grid``, local DMRS, masks, and config metadata,
+        then directly output LLRs.
+
+        Args:
+            rx_grid: Received frequency-domain grid with shape
+                ``(num_rx_ant, num_subcarriers, num_symbols)``.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            noise_variance: Scalar receiver noise variance.
+            config: Full simulation configuration for receiver-side processing.
+
+        Returns:
+            Data-processing result containing LLRs before data descrambling, plus
+            optional channel estimates, equalized symbols, and plot artifacts.
         """
         raise NotImplementedError
 

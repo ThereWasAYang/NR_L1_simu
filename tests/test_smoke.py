@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import replace
 import sys
 import tempfile
 import unittest
@@ -26,7 +27,8 @@ from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
 from nr_phy_simu.common.harq import HarqManager
 from nr_phy_simu.common.layer_mapping import LayerMapper
-from nr_phy_simu.common.types import PlotArtifact
+from nr_phy_simu.common.interfaces import ReceiverDataProcessor
+from nr_phy_simu.common.types import PlotArtifact, ReceiverDataProcessingResult
 from nr_phy_simu.common.transmission import build_transport_block_plan
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
@@ -576,6 +578,50 @@ class ComponentAbstractionTest(unittest.TestCase):
         self.assertIsInstance(components.transmitter.mapper, FrequencyDomainResourceMapper)
         self.assertIsInstance(components.receiver.extractor, FrequencyDomainExtractor)
         self.assertIsNotNone(factory.create_channel_factory().create(cfg))
+
+    def test_receiver_can_replace_estimation_equalization_demod_with_one_processor(self):
+        class DirectLlrProcessor(ReceiverDataProcessor):
+            def __init__(self):
+                self.called = False
+                self.rx_grid_shape = None
+
+            def process(self, rx_grid, dmrs_symbols, dmrs_mask, data_mask, noise_variance, config):
+                self.called = True
+                self.rx_grid_shape = rx_grid.shape
+                llr_count = int(config.link.coded_bit_capacity or 0)
+                return ReceiverDataProcessingResult(
+                    llrs=np.ones(llr_count, dtype=np.float64),
+                )
+
+        class DirectProcessorFactory(DefaultSimulationComponentFactory):
+            def __init__(self, processor):
+                self.processor = processor
+
+            def create_components(self, config):
+                components = super().create_components(config)
+                return replace(
+                    components,
+                    receiver=replace(
+                        components.receiver,
+                        data_processor=self.processor,
+                    ),
+                )
+
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.simulation.bypass_channel_coding = True
+        cfg.plotting.enabled = False
+        processor = DirectLlrProcessor()
+        result = PuschSimulation(
+            cfg,
+            component_factory=DirectProcessorFactory(processor),
+        ).run()
+
+        self.assertTrue(processor.called)
+        self.assertEqual(len(processor.rx_grid_shape), 3)
+        self.assertEqual(result.rx.llrs.size, int(result.transport_plan.codewords[0].coded_bit_capacity))
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.size, 0)
+        self.assertEqual(result.rx.equalized_symbols.size, 0)
+        self.assertIsNone(result.crc_ok)
 
 
 class FadingChannelSmokeTest(unittest.TestCase):

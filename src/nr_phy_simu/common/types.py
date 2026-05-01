@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -58,6 +58,26 @@ class ChannelEstimateResult:
     channel_estimate: ComplexArray
     pilot_estimates: ComplexArray
     pilot_symbol_indices: np.ndarray
+    plot_artifacts: tuple[PlotArtifact, ...] = ()
+
+
+@dataclass
+class ReceiverDataProcessingResult:
+    """Output of a receiver data processor before descrambling/decoding.
+
+    Shape conventions:
+        ``llrs``: ``(coded_bit_capacity,)`` before data descrambling.
+        ``channel_estimation``: optional ``ChannelEstimateResult``. It can be
+        ``None`` for algorithms such as neural receivers that do not expose an
+        explicit channel estimate.
+        ``equalized_symbols``: optional ``(num_data_symbols,)``. It can be empty
+        when the algorithm directly outputs LLRs.
+        ``layer_symbols``: optional tuple of per-layer arrays.
+    """
+    llrs: RealArray
+    channel_estimation: ChannelEstimateResult | None = None
+    equalized_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
+    layer_symbols: tuple[ComplexArray, ...] = ()
     plot_artifacts: tuple[PlotArtifact, ...] = ()
 
 
