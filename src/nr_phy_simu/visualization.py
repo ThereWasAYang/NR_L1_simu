@@ -99,6 +99,20 @@ def save_simulation_plots(
     show: bool = False,
     block: bool = False,
 ) -> dict[str, Path]:
+    """Render all enabled plot artifacts for one simulation result.
+
+    Args:
+        result: Simulation result whose TX/RX arrays follow ``SimulationResult``
+            shape conventions.
+        config: Full simulation configuration that supplies plot metadata.
+        output_dir: Directory where PNG files are written.
+        prefix: File-name prefix for generated PNG files.
+        show: Whether to show generated images in the foreground.
+        block: Whether foreground display should block the Python process.
+
+    Returns:
+        Mapping from artifact name to generated PNG path.
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +135,19 @@ def _collect_plot_artifacts(
     result: SimulationResult,
     config: SimulationConfig,
 ) -> tuple[PlotArtifact, ...]:
+    """Collect standard and custom plot artifacts from a result.
+
+    Args:
+        result: Simulation result. Relevant arrays include equalized symbols
+            ``(num_data_symbols,)``, channel estimate
+            ``(num_rx_ant, num_subcarriers, num_symbols)``, RX waveform
+            ``(num_rx_ant, slot_samples)`` and RX grid
+            ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        config: Full simulation configuration used to attach axis metadata.
+
+    Returns:
+        Tuple of plot artifacts. Each artifact carries its own data shape and metadata.
+    """
     artifacts: list[PlotArtifact] = []
     if result.rx.equalized_symbols.size:
         artifacts.append(
@@ -175,6 +202,15 @@ def _collect_plot_artifacts(
 
 
 def _build_constellation_figure(artifact: PlotArtifact) -> object:
+    """Build an I/Q constellation figure.
+
+    Args:
+        artifact: Plot artifact whose ``values`` are complex symbols with shape
+            ``(num_data_symbols,)``.
+
+    Returns:
+        Matplotlib figure object.
+    """
     symbols = _as_plot_array(artifact.values)
     snr_db = float((artifact.metadata or {}).get("snr_db", 0.0))
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -189,6 +225,17 @@ def _build_constellation_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
+    """Build per-antenna pilot channel-estimate magnitude/phase figures.
+
+    Args:
+        artifact: Plot artifact containing ``channel_estimation`` and ``dmrs_mask``.
+            The channel estimate has shape
+            ``(num_rx_ant, num_subcarriers, num_symbols)`` and ``dmrs_mask`` has
+            shape ``(num_subcarriers, num_symbols)``.
+
+    Returns:
+        Matplotlib figure object.
+    """
     values = artifact.values
     channel_estimation = values["channel_estimation"]
     channel_estimate = _as_plot_array(channel_estimation.channel_estimate)
@@ -265,6 +312,15 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
+    """Build received time-domain magnitude plots.
+
+    Args:
+        artifact: Plot artifact whose ``values`` have shape ``(slot_samples,)`` or
+            ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+
+    Returns:
+        Matplotlib figure object with one subplot per RX antenna.
+    """
     waveform = _as_plot_array(artifact.values)
     if waveform.ndim == 1:
         waveform = waveform[np.newaxis, :]
@@ -301,6 +357,16 @@ def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
+    """Build received frequency-domain magnitude plots.
+
+    Args:
+        artifact: Plot artifact whose ``values`` have shape
+            ``(num_subcarriers, num_symbols)`` or
+            ``(num_rx_ant, num_subcarriers, num_symbols)``.
+
+    Returns:
+        Matplotlib figure object with one subplot per RX antenna.
+    """
     rx_grid = _as_plot_array(artifact.values)
     if rx_grid.ndim == 2:
         rx_grid = rx_grid[np.newaxis, ...]
@@ -329,6 +395,16 @@ def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
 
 
 def _build_artifact_figure(artifact: PlotArtifact) -> object:
+    """Dispatch one plot artifact to the matching renderer.
+
+    Args:
+        artifact: Plot artifact. For generic plots, ``values`` may be scalar-like,
+            one-dimensional ``(num_points,)`` data, or two-dimensional
+            ``(num_series, num_points)``/image data.
+
+    Returns:
+        Matplotlib figure object.
+    """
     if artifact.plot_type == "constellation":
         return _build_constellation_figure(artifact)
     if artifact.plot_type == "pilot_estimates":
@@ -370,12 +446,30 @@ def _build_artifact_figure(artifact: PlotArtifact) -> object:
 
 
 def _plot_artifact_series(ax, values: np.ndarray, x_values: np.ndarray | None, plot_type: str, label: str | None) -> None:
+    """Plot one generic artifact series on an existing axis.
+
+    Args:
+        ax: Matplotlib axis object.
+        values: One-dimensional series with shape ``(num_points,)``.
+        x_values: Optional x-axis values with shape ``(num_points,)`` or longer.
+        plot_type: Series projection type such as magnitude, phase, real or imag.
+        label: Optional legend label for this series.
+    """
     y_values = _artifact_y_values(values, plot_type)
     x = np.arange(y_values.size) if x_values is None else x_values[: y_values.size]
     ax.plot(x, y_values, linewidth=1.0, label=label)
 
 
 def _artifact_y_values(values: np.ndarray, plot_type: str) -> np.ndarray:
+    """Project a generic artifact array to plottable real y-values.
+
+    Args:
+        values: Numeric array with arbitrary shape; all axes are preserved.
+        plot_type: Projection type such as magnitude, phase, real or imag.
+
+    Returns:
+        Real-valued array with the same shape as ``values``.
+    """
     if plot_type in {"phase", "angle"}:
         return np.angle(values)
     if plot_type in {"real", "i"}:
@@ -396,7 +490,15 @@ def _artifact_default_ylabel(plot_type: str) -> str:
 
 
 def _as_plot_array(value) -> np.ndarray:
-    """Convert list, numpy array, or torch-like tensor values for matplotlib."""
+    """Convert list, numpy array, or torch-like tensor values for matplotlib.
+
+    Args:
+        value: Array-like object with arbitrary shape. Torch-like tensors are moved
+            through ``detach().cpu().numpy()`` when available.
+
+    Returns:
+        NumPy array preserving the input shape and axis order.
+    """
     if hasattr(value, "detach"):
         value = value.detach()
     if hasattr(value, "cpu"):

@@ -20,7 +20,8 @@ class QamDemodulator(Demodulator):
         """Compute max-log LLRs for the configured constellation.
 
         Args:
-            symbols: Equalized complex data symbols to demodulate.
+            symbols: One-dimensional equalized complex data-symbol stream with
+                shape ``(num_data_symbols,)``; axis 0 is demodulation order.
             noise_variance: Receiver noise variance used for LLR normalization.
             config: Full simulation configuration that defines modulation order.
 
@@ -47,7 +48,9 @@ class QamDemodulator(Demodulator):
             modulation: Modulation name used by the link configuration.
 
         Returns:
-            Tuple of ``(symbols, bit_labels)`` for the full constellation.
+            Tuple of ``(symbols, bit_labels)`` for the full constellation:
+            ``symbols`` has shape ``(constellation_size,)`` and ``bit_labels`` has
+            shape ``(constellation_size, bits_per_symbol)``.
         """
         bps = bits_per_symbol(modulation)
         bit_patterns = np.array(list(itertools.product([0, 1], repeat=bps)), dtype=np.int8)

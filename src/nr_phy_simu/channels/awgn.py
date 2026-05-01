@@ -18,11 +18,15 @@ class AwgnChannel(ChannelModel):
         """Apply receive-branch expansion and AWGN impairment.
 
         Args:
-            waveform: Transmit waveform for one or more transmit branches.
+            waveform: Transmit waveform with shape ``(slot_samples,)`` for one TX
+                branch or ``(num_tx_ant, slot_samples)`` for multiple TX branches;
+                last axis is time-sample index.
             config: Full simulation configuration that defines receive antennas and SNR.
 
         Returns:
-            Tuple of ``(rx_waveform, channel_info)`` with added noise statistics.
+            Tuple of ``(rx_waveform, channel_info)``. ``rx_waveform`` has shape
+            ``(slot_samples,)`` for one RX antenna or ``(num_rx_ant, slot_samples)``
+            for multiple RX antennas.
         """
         tx_waveform = self._expand_receive_branches(waveform, config)
         if not bool(config.channel.params.get("add_noise", True)):
@@ -43,11 +47,13 @@ class AwgnChannel(ChannelModel):
         """Replicate a single received stream across configured receive branches.
 
         Args:
-            waveform: Input waveform before receive-antenna expansion.
+            waveform: Input waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
             config: Full simulation configuration that defines ``num_rx_ant``.
 
         Returns:
-            Waveform stacked by receive antenna when expansion is required.
+            Waveform with shape ``(slot_samples,)`` when ``num_rx_ant == 1`` or
+            ``(num_rx_ant, slot_samples)`` otherwise.
         """
         if waveform.ndim == 2:
             return waveform

@@ -14,7 +14,8 @@ class NrDataScrambler(BitScrambler):
         """Scramble coded bits with the configured NR data scrambling sequence.
 
         Args:
-            bits: Encoded bit sequence before modulation.
+            bits: One-dimensional encoded bit array with shape ``(coded_bits,)``;
+                axis 0 is coded-bit index before modulation.
             config: Full simulation configuration that provides scrambling seeds.
 
         Returns:
@@ -27,7 +28,8 @@ class NrDataScrambler(BitScrambler):
         """Apply the inverse scrambling sequence to demodulated LLRs.
 
         Args:
-            llrs: Demodulated LLR sequence before descrambling.
+            llrs: One-dimensional demodulated LLR array with shape ``(coded_bits,)``;
+                axis 0 is coded-bit index before descrambling.
             config: Full simulation configuration that provides scrambling seeds.
 
         Returns:
@@ -45,7 +47,7 @@ class NrDataScrambler(BitScrambler):
             config: Full simulation configuration that provides initialization state.
 
         Returns:
-            Binary scrambling sequence with values in ``{0, 1}``.
+            One-dimensional binary scrambling sequence with shape ``(length,)``.
         """
         return gold_sequence(self._c_init(config), length).astype(np.int8)
 

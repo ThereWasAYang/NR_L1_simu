@@ -16,6 +16,18 @@ class TdlChannel(FadingChannelBase):
         sample_rate_hz: float,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Generate TDL path delays and MIMO coefficients.
+
+        Args:
+            num_samples: Number of time samples in the slot waveform.
+            sample_rate_hz: Baseband sample rate in Hz.
+            config: Full simulation configuration with TDL profile and antennas.
+
+        Returns:
+            Tuple ``(delays_s, coeff)`` where ``delays_s`` has shape ``(num_paths,)``
+            and ``coeff`` has shape
+            ``(num_rx_ant, num_tx_ant, num_paths, num_samples)``.
+        """
         profile_name = str(config.channel.params.get("profile", "TDL-A")).upper()
         if profile_name not in TDL_PROFILES:
             raise ValueError(f"Unsupported TDL profile '{profile_name}'.")

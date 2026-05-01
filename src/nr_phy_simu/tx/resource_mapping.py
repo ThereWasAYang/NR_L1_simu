@@ -22,11 +22,15 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         """Map serialized data symbols and DMRS into the scheduled slot grid.
 
         Args:
-            data_symbols: Serialized complex data symbols from the modulator.
+            data_symbols: One-dimensional complex data-symbol stream with shape
+                ``(num_data_symbols,)``; axis 0 follows the mapper's scheduled RE order.
             config: Full simulation configuration that defines allocation and DMRS rules.
 
         Returns:
-            Tuple of ``(grid, dmrs_mask, data_mask, dmrs_symbols)`` for one slot.
+            Tuple of ``(grid, dmrs_mask, data_mask, dmrs_symbols)`` for one slot:
+            ``grid/dmrs_mask/data_mask`` have shape ``(num_subcarriers, num_symbols)``
+            where axis 0 is cell subcarrier index and axis 1 is OFDM symbol index;
+            ``dmrs_symbols`` has shape ``(num_dmrs_re,)`` in mapped RE order.
         """
         n_sc = config.carrier.n_subcarriers
         n_sym = config.carrier.symbols_per_slot
@@ -127,7 +131,8 @@ class FrequencyDomainResourceMapper(ResourceMapper):
             config: Full simulation configuration that provides PRB start and width.
 
         Returns:
-            Flat array of scheduled subcarrier indices within the cell bandwidth.
+            One-dimensional integer array with shape ``(num_prbs * 12,)``; axis 0
+            is the allocated subcarrier offset, values are absolute cell subcarrier indices.
         """
         start = config.link.prb_start * 12
         stop = start + config.link.num_prbs * 12
@@ -142,7 +147,8 @@ class FrequencyDomainResourceMapper(ResourceMapper):
             dmrs_info: DMRS metadata object returned by the DMRS generator.
 
         Returns:
-            Absolute DMRS offsets inside the allocated subcarrier set.
+            One-dimensional integer array with shape ``(num_dmrs_re_per_symbol,)``;
+            axis 0 enumerates DMRS REs inside the allocated bandwidth for one symbol.
         """
         per_prb = []
         for prb in range(config.link.num_prbs):
@@ -155,7 +161,9 @@ class FrequencyDomainResourceMapper(ResourceMapper):
         """Apply optional transform precoding before grid mapping.
 
         Args:
-            symbol_data: Complex data symbols scheduled onto one OFDM symbol.
+            symbol_data: One-dimensional complex array with shape
+                ``(num_data_re_in_symbol,)``; axis 0 enumerates scheduled data REs
+                within one OFDM symbol.
             config: Full simulation configuration that defines waveform behavior.
 
         Returns:

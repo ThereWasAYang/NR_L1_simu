@@ -23,7 +23,8 @@ class LayerMapper:
         """Partition a serialized symbol stream into per-layer views.
 
         Args:
-            symbols: Serialized modulation symbol stream for one codeword.
+            symbols: One-dimensional complex symbol stream with shape
+                ``(num_symbols_total,)``; axis 0 is serialized codeword symbol order.
             num_layers: Number of transmission layers requested by the link.
 
         Returns:
@@ -40,5 +41,15 @@ class LayerMapper:
         return LayerMappingResult(layer_symbols=layer_symbols, serialized_symbols=symbols)
 
     def unmap_symbols(self, symbols: np.ndarray, num_layers: int) -> LayerMappingResult:
-        """Build per-layer receive views from a serialized equalized stream."""
+        """Build per-layer receive views from a serialized equalized stream.
+
+        Args:
+            symbols: One-dimensional complex equalized stream with shape
+                ``(num_symbols_total,)``; axis 0 is serialized receive symbol order.
+            num_layers: Number of transmission layers requested by the link.
+
+        Returns:
+            Layer mapping bundle whose per-layer arrays have shape
+            ``(ceil(num_symbols_total / num_layers),)`` or shorter for tail layers.
+        """
         return self.map_symbols(symbols, num_layers)

@@ -25,11 +25,12 @@ class NrLdpcCoder(ChannelCoder):
         """Encode one transport block with the NR UL-SCH LDPC chain.
 
         Args:
-            bits: Input transport-block bits before CRC and LDPC processing.
+            bits: One-dimensional transport-block bit array with shape
+                ``(tbs_bits,)``; axis 0 is the transport-block bit index before CRC.
             config: Full simulation configuration that defines rate-matching targets.
 
         Returns:
-            Rate-matched coded bit sequence ready for scrambling.
+            Rate-matched coded bit sequence with shape ``(coded_bit_capacity,)``.
         """
         if config.link.coded_bit_capacity is None:
             raise ValueError("coded_bit_capacity must be resolved before LDPC encoding.")
@@ -61,11 +62,12 @@ class RandomBitCoder(ChannelCoder):
         """Generate deterministic pseudo-random coded bits in bypass mode.
 
         Args:
-            bits: Unused transport-block input kept for interface compatibility.
+            bits: One-dimensional transport-block bit array with shape
+                ``(tbs_bits,)``; unused, kept for interface compatibility.
             config: Full simulation configuration that defines coded-bit capacity.
 
         Returns:
-            Pseudo-random bit sequence with the same length as coded-bit capacity.
+            Pseudo-random bit sequence with shape ``(coded_bit_capacity,)``.
         """
         del bits
         if config.link.coded_bit_capacity is None:

@@ -18,11 +18,13 @@ def load_frequency_response(
     Args:
         values: In-memory coefficient list. Each element may be a complex number,
             a real scalar, a string such as ``"1+0j"``, or a 2-item real/imag pair.
+            The resulting array is one-dimensional with one value per cell subcarrier.
         path: Optional text file path. Each non-empty line follows the same formats
             accepted by :func:`_parse_complex_value`.
 
     Returns:
-        One-dimensional complex frequency-response array.
+        One-dimensional complex frequency-response array with shape
+        ``(num_subcarriers,)``; axis 0 is cell subcarrier index.
     """
     if values is None and path is None:
         raise ValueError("Either in-memory frequency_response values or frequency_response_path must be provided.")
@@ -51,7 +53,7 @@ def _parse_complex_value(value: Any) -> complex:
         value: Raw coefficient representation from config or text input.
 
     Returns:
-        Parsed complex coefficient.
+        One scalar complex frequency-response coefficient.
     """
     if isinstance(value, complex):
         return value

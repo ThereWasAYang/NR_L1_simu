@@ -49,7 +49,11 @@ class SharedChannelSimulation:
         """Run one end-to-end shared-channel simulation for a single TTI.
 
         Args:
-            None.
+            transport_block_override: Optional one-dimensional bit array with shape
+                ``(tbs_bits,)``. When provided, axis 0 is transport-block bit index
+                and replaces the random TB generator.
+            harq_process_id: Optional scalar HARQ process identifier stored in runtime context.
+            harq_retransmission: Optional scalar flag indicating whether this TTI is a retransmission.
 
         Returns:
             Structured simulation result containing TX/RX buffers and KPIs.
@@ -134,7 +138,22 @@ class SharedChannelSimulation:
         harq_process_id: int | None,
         harq_retransmission: bool | None,
     ) -> SimulationResult:
-        """Build the final simulation result object from chain outputs."""
+        """Build the final simulation result object from chain outputs.
+
+        Args:
+            tx_payload: TX payload whose arrays follow ``TxPayload`` shape conventions.
+            rx_payload: RX payload whose arrays follow ``RxPayload`` shape conventions.
+            transport_block: One-dimensional reference TB bit array with shape
+                ``(tbs_bits,)``.
+            transport_plan: Transport-block plan with scalar TBS/codeword metadata.
+            channel_info: Channel metadata dictionary, including scalar noise variance.
+            interference_reports: Tuple of per-interferer scalar report objects.
+            harq_process_id: Optional scalar HARQ process identifier.
+            harq_retransmission: Optional scalar retransmission flag.
+
+        Returns:
+            Structured simulation result containing payload arrays and scalar KPIs.
+        """
         if self.config.simulation.bypass_channel_coding:
             reference_bits = tx_payload.coded_bits
             decoded = rx_payload.decoded_bits[: reference_bits.size]
@@ -172,8 +191,10 @@ class SharedChannelSimulation:
         """Compute mean EVM and derived EVM-SNR from equalized symbols.
 
         Args:
-            reference_symbols: Ideal transmitted data symbols before the channel.
-            equalized_symbols: Equalized received data symbols after the receiver.
+            reference_symbols: One-dimensional ideal data-symbol array with shape
+                ``(num_data_symbols,)``; axis 0 is mapper/modulator symbol order.
+            equalized_symbols: One-dimensional equalized data-symbol array with shape
+                ``(num_data_symbols,)`` or longer; axis 0 is receiver extraction order.
 
         Returns:
             Tuple of ``(evm_percent, evm_snr_linear)`` for the compared symbols.

@@ -13,11 +13,14 @@ class OfdmProcessor(TimeDomainProcessor):
         """Apply OFDM modulation and cyclic-prefix insertion.
 
         Args:
-            grid: Frequency-domain slot grid with shape ``(n_subcarriers, n_symbols)``.
+            grid: Frequency-domain slot grid with shape
+                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index,
+                axis 1 is OFDM symbol index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
-            Serialized time-domain waveform for one slot.
+            Serialized time-domain waveform with shape ``(slot_samples,)``; axis 0
+            is time-sample index after CP insertion.
         """
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
@@ -41,11 +44,15 @@ class OfdmProcessor(TimeDomainProcessor):
         """Apply cyclic-prefix removal and FFT demodulation.
 
         Args:
-            waveform: Received time-domain waveform, optionally stacked by antenna.
+            waveform: Time-domain waveform with shape ``(slot_samples,)`` for SISO
+                or ``(num_rx_ant, slot_samples)`` for multiple RX branches; axis 0
+                is RX antenna when present, last axis is time-sample index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
-            Frequency-domain grid with an explicit receive-antenna dimension.
+            Frequency-domain grid with shape
+            ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX antenna,
+            cell subcarrier index, and OFDM symbol index.
         """
         if waveform.ndim == 2:
             return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
@@ -55,11 +62,13 @@ class OfdmProcessor(TimeDomainProcessor):
         """Demodulate a single-antenna waveform into one slot grid.
 
         Args:
-            waveform: Time-domain waveform for one receive antenna.
+            waveform: One-dimensional time-domain waveform with shape
+                ``(slot_samples,)``; axis 0 is time-sample index for one RX antenna.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
-            Frequency-domain resource grid for that antenna.
+            Frequency-domain resource grid with shape ``(num_subcarriers, num_symbols)``;
+            axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
         """
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths

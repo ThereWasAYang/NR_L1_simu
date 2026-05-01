@@ -10,6 +10,19 @@ _TEXT_FILE_READ_ENCODING = "utf-8-sig"
 
 
 def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray:
+    """Load one TTI of time-domain IQ samples from text.
+
+    Args:
+        path: Text file path. File samples are antenna-major: all samples for RX0,
+            then all samples for RX1, and so on.
+        config: Full simulation configuration that defines ``num_rx_ant`` and the
+            expected TTI sample count.
+
+    Returns:
+        Complex waveform with shape ``(slot_samples,)`` for one RX antenna or
+        ``(num_rx_ant, slot_samples)`` for multiple RX antennas. Axis 0 is RX
+        antenna when present, last axis is time-sample index.
+    """
     resolved = Path(path).expanduser().resolve()
     values = [
         _parse_complex_line(line)
@@ -37,6 +50,15 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
 
 
 def _parse_complex_line(line: str) -> complex:
+    """Parse one IQ text line into a complex sample.
+
+    Args:
+        line: One input line representing a scalar sample. Supported forms are
+            ``I Q``, ``I,Q`` and Python-style ``I+Qj``.
+
+    Returns:
+        One scalar complex time-domain sample.
+    """
     stripped = line.strip().strip("()")
     comma_parts = [part.strip() for part in stripped.split(",")]
     if len(comma_parts) == 2:

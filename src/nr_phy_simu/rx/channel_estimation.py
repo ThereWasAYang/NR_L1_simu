@@ -18,9 +18,13 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Estimate the full slot channel response from DMRS observations.
 
         Args:
-            rx_grid: Received slot grid, optionally stacked by receive antenna.
-            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            rx_grid: Received slot grid with shape ``(num_subcarriers, num_symbols)``
+                or ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX
+                antenna when present, cell subcarrier index, and OFDM symbol index.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
             config: Full simulation configuration for estimation context.
 
         Returns:
@@ -49,9 +53,12 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Estimate the channel for one receive antenna across the full slot.
 
         Args:
-            rx_grid: Single-antenna received slot grid.
-            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            rx_grid: Single-antenna received slot grid with shape
+                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index,
+                axis 1 is OFDM symbol index.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
             config: Full simulation configuration, unused by this LS implementation.
 
         Returns:
@@ -73,9 +80,11 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Estimate channel values on all DMRS symbols after frequency interpolation.
 
         Args:
-            rx_grid: Single-antenna received slot grid.
-            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            rx_grid: Single-antenna received slot grid with shape
+                ``(num_subcarriers, num_symbols)``.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
 
         Returns:
             Tuple of ``(dmrs_symbol_indices, dmrs_estimates)`` where:
@@ -104,8 +113,10 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Compute least-squares channel estimates on pilot RE locations.
 
         Args:
-            rx_pilots: Received pilot RE values sampled from the slot grid.
-            reference_pilots: Known transmitted DMRS values on the same REs.
+            rx_pilots: One-dimensional received pilot values with shape
+                ``(num_pilot_re_in_symbol,)``.
+            reference_pilots: One-dimensional reference DMRS values with the same
+                shape as ``rx_pilots`` and the same RE ordering.
 
         Returns:
             LS channel estimates on the pilot RE locations.
@@ -121,8 +132,10 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Interpolate pilot-only estimates across the frequency axis.
 
         Args:
-            pilot_subcarriers: Subcarrier indices where DMRS pilots are present.
-            pilot_values: LS channel estimates at the pilot subcarriers.
+            pilot_subcarriers: One-dimensional integer array with shape
+                ``(num_pilot_re_in_symbol,)``; values are cell subcarrier indices.
+            pilot_values: One-dimensional complex LS estimates with the same shape
+                and ordering as ``pilot_subcarriers``.
             num_subcarriers: Full subcarrier count of the slot grid.
 
         Returns:
@@ -142,8 +155,11 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Interpolate full-band DMRS estimates across OFDM symbols.
 
         Args:
-            dmrs_symbol_indices: OFDM symbol indices where DMRS is present.
-            dmrs_estimates: Full-band channel estimates on the DMRS symbols.
+            dmrs_symbol_indices: One-dimensional integer array with shape
+                ``(num_dmrs_symbols,)``; values are OFDM symbol indices.
+            dmrs_estimates: Complex array with shape
+                ``(num_dmrs_symbols, num_subcarriers)``; axis 0 is DMRS symbol,
+                axis 1 is cell subcarrier index.
             num_symbols: Total OFDM symbol count in the slot.
 
         Returns:
@@ -170,8 +186,10 @@ class LeastSquaresEstimator(ChannelEstimator):
         """Extract pilot-only channel estimates for plotting and debug views.
 
         Args:
-            channel_estimate: Full-grid estimate, optionally stacked by antenna.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
+            channel_estimate: Complex estimate with shape
+                ``(num_subcarriers, num_symbols)`` or
+                ``(num_rx_ant, num_subcarriers, num_symbols)``.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
 
         Returns:
             Tuple of ``(pilot_estimates, pilot_symbol_indices)`` where:

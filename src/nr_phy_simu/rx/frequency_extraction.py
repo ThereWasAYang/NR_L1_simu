@@ -19,8 +19,11 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         """Extract scheduled data REs from a slot grid or estimate grid.
 
         Args:
-            grid: Input grid, optionally stacked by receive antenna.
-            data_mask: Boolean mask that marks scheduled data REs.
+            grid: Input grid with shape ``(num_subcarriers, num_symbols)`` or
+                ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX antenna
+                when present, cell subcarrier index, and OFDM symbol index.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
             config: Full simulation configuration that defines waveform behavior.
             despread: Whether to undo DFT spreading for DFT-s-OFDM PUSCH.
 
@@ -45,8 +48,9 @@ class FrequencyDomainExtractor(FrequencyExtractor):
         """Extract scheduled data REs from a single-antenna grid.
 
         Args:
-            grid: Single-antenna frequency-domain grid.
-            data_mask: Boolean mask that marks scheduled data REs.
+            grid: Single-antenna frequency-domain grid with shape
+                ``(num_subcarriers, num_symbols)``.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
             config: Full simulation configuration that defines waveform behavior.
             despread: Whether to undo DFT spreading for DFT-s-OFDM PUSCH.
 

@@ -17,8 +17,11 @@ class OneTapMmseEqualizer(MimoEqualizer):
         """Apply one-tap MMSE equalization to extracted data symbols.
 
         Args:
-            rx_symbols: Received data symbols, optionally stacked by receive antenna.
-            channel_estimate: Channel estimate sampled on the same data REs.
+            rx_symbols: Received data symbols with shape ``(num_data_re,)`` for
+                SISO or ``(num_rx_ant, num_data_re)`` for RX combining; axis 0 is
+                RX antenna when present and last axis is extracted data-RE order.
+            channel_estimate: Channel estimate sampled on the same data REs with
+                the same shape and axis meaning as ``rx_symbols``.
             noise_variance: Receiver noise variance used in MMSE weighting.
             config: Full simulation configuration, unused by this implementation.
 

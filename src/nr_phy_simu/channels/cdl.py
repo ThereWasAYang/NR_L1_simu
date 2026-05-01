@@ -16,6 +16,18 @@ class CdlChannel(FadingChannelBase):
         sample_rate_hz: float,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Generate CDL cluster delays and MIMO coefficients.
+
+        Args:
+            num_samples: Number of time samples in the slot waveform.
+            sample_rate_hz: Baseband sample rate in Hz.
+            config: Full simulation configuration with CDL profile and antennas.
+
+        Returns:
+            Tuple ``(delays_s, coeff)`` where ``delays_s`` has shape
+            ``(num_clusters,)`` and ``coeff`` has shape
+            ``(num_rx_ant, num_tx_ant, num_clusters, num_samples)``.
+        """
         profile_name = str(config.channel.params.get("profile", "CDL-A")).upper()
         if profile_name not in CDL_PROFILES:
             raise ValueError(f"Unsupported CDL profile '{profile_name}'.")
@@ -96,6 +108,15 @@ class CdlChannel(FadingChannelBase):
 
     @staticmethod
     def _unit_vector(azimuth_deg: float, zenith_deg: float) -> np.ndarray:
+        """Convert spherical angles to a Cartesian unit vector.
+
+        Args:
+            azimuth_deg: Azimuth angle in degrees.
+            zenith_deg: Zenith angle in degrees.
+
+        Returns:
+            One-dimensional real vector with shape ``(3,)``; axes are x, y, z.
+        """
         az = np.deg2rad(azimuth_deg)
         ze = np.deg2rad(zenith_deg)
         sin_ze = np.sin(ze)

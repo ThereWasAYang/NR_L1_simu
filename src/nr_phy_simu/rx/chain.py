@@ -52,10 +52,15 @@ class Receiver:
         """Run the complete receive chain for one slot.
 
         Args:
-            rx_waveform: Received time-domain waveform, optionally stacked by antenna.
-            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
-            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            rx_waveform: Time-domain waveform with shape ``(slot_samples,)`` for
+                one RX antenna or ``(num_rx_ant, slot_samples)`` for multiple RX
+                antennas; last axis is time-sample index.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
             noise_variance: Receiver noise variance used for equalization and demodulation.
             config: Full simulation configuration for waveform and link parameters.
 
@@ -86,13 +91,19 @@ class Receiver:
         """Run the receive chain starting from an already demodulated grid.
 
         Args:
-            rx_grid: Received frequency-domain slot grid, optionally stacked by antenna.
-            dmrs_symbols: Serialized transmitted DMRS sequence used as reference.
-            dmrs_mask: Boolean mask that marks DMRS RE locations in the slot grid.
-            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            rx_grid: Frequency-domain grid with shape ``(num_subcarriers, num_symbols)``
+                or ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX
+                antenna when present, cell subcarrier index, and OFDM symbol index.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
             noise_variance: Receiver noise variance used for equalization and demodulation.
             config: Full simulation configuration for waveform and link parameters.
-            rx_waveform: Optional received waveform. Use ``None`` when bypassing time domain.
+            rx_waveform: Optional waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``. Use ``None`` when bypassing time domain.
 
         Returns:
             Structured RX payload containing intermediate buffers and decoded bits.
@@ -138,12 +149,15 @@ class Receiver:
         """Undo DFT spreading on equalized PUSCH symbols.
 
         Args:
-            equalized_symbols: Serialized equalized data symbols before de-spreading.
-            data_mask: Boolean mask that marks data RE locations in the slot grid.
+            equalized_symbols: One-dimensional complex equalized stream with shape
+                ``(num_data_re,)`` before DFT-s-OFDM de-spreading.
+            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
+                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
             config: Full simulation configuration that defines scheduled symbols.
 
         Returns:
-            De-spread equalized symbol sequence for DFT-s-OFDM PUSCH.
+            One-dimensional de-spread complex symbol sequence with shape
+            ``(num_data_symbols_after_despreading,)``.
         """
         despread = []
         cursor = 0

@@ -26,11 +26,12 @@ class NrLdpcDecoder(ChannelDecoder):
         """Decode one transport block from descrambled soft bits.
 
         Args:
-            llrs: Descrambled LLR sequence for the scheduled codeword.
+            llrs: One-dimensional descrambled LLR array with shape
+                ``(coded_bit_capacity,)``; axis 0 is coded-bit index after rate recovery order.
             config: Full simulation configuration that defines UL-SCH parameters.
 
         Returns:
-            Decoded transport-block bit sequence after CRC removal.
+            Decoded transport-block bit sequence with shape ``(tbs_bits,)`` after CRC removal.
         """
         tbs = int(config.link.transport_block_size or 0)
         if tbs <= 0:
@@ -67,7 +68,8 @@ class HardDecisionBypassDecoder(ChannelDecoder):
         """Convert descrambled LLRs to hard bits when channel decoding is bypassed.
 
         Args:
-            llrs: Descrambled LLR sequence for the scheduled codeword.
+            llrs: One-dimensional descrambled LLR array with shape
+                ``(coded_bit_capacity,)``; axis 0 is coded-bit index.
             config: Full simulation configuration, unused by this bypass decoder.
 
         Returns:

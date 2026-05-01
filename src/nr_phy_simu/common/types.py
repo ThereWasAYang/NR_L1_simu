@@ -24,6 +24,17 @@ class PlotArtifact:
 
 @dataclass
 class TxPayload:
+    """Transmitter-side buffers for one TTI.
+
+    Shape conventions:
+        ``transport_block``: ``(tbs_bits,)``.
+        ``coded_bits``: ``(coded_bit_capacity,)``.
+        ``tx_symbols``: ``(num_data_symbols,)``.
+        ``resource_grid``: ``(num_subcarriers, num_symbols)``.
+        ``waveform``: ``(slot_samples,)`` or ``(num_tx_ant, slot_samples)``.
+        ``dmrs_symbols``: ``(num_dmrs_re,)``.
+        ``dmrs_mask`` and ``data_mask``: ``(num_subcarriers, num_symbols)``.
+    """
     transport_block: BitArray
     coded_bits: BitArray
     tx_symbols: ComplexArray
@@ -37,6 +48,13 @@ class TxPayload:
 
 @dataclass
 class ChannelEstimateResult:
+    """Channel-estimation buffers for one TTI.
+
+    Shape conventions:
+        ``channel_estimate``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        ``pilot_estimates``: ``(num_rx_ant, num_dmrs_re)``.
+        ``pilot_symbol_indices``: ``(num_dmrs_re,)``.
+    """
     channel_estimate: ComplexArray
     pilot_estimates: ComplexArray
     pilot_symbol_indices: np.ndarray
@@ -45,6 +63,16 @@ class ChannelEstimateResult:
 
 @dataclass
 class RxPayload:
+    """Receiver-side buffers for one TTI.
+
+    Shape conventions:
+        ``rx_waveform``: ``(slot_samples,)`` or ``(num_rx_ant, slot_samples)``.
+        ``rx_grid``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        ``equalized_symbols``: ``(num_data_symbols,)``.
+        ``llrs``: ``(coded_bit_capacity,)``.
+        ``decoded_bits``: ``(tbs_bits,)``.
+        ``dmrs_symbols``: ``(num_dmrs_re,)``.
+    """
     rx_waveform: ComplexArray
     rx_grid: ComplexArray
     channel_estimation: ChannelEstimateResult
@@ -86,6 +114,14 @@ class MultiTtiSimulationResult:
 
     @property
     def last_result(self) -> SimulationResult | None:
+        """Return the final TTI result.
+
+        Args:
+            None.
+
+        Returns:
+            Last ``SimulationResult`` in ``tti_results`` or ``None`` when empty.
+        """
         if not self.tti_results:
             return None
         return self.tti_results[-1]

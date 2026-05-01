@@ -255,6 +255,15 @@ SHORT_LOW_PAPR_TYPE2_BITS: dict[int, dict[int, tuple[int, ...]]] = {
 
 
 def gold_sequence(c_init: int, length: int) -> np.ndarray:
+    """Generate the NR Gold sequence bits.
+
+    Args:
+        c_init: Scalar 31-bit sequence initialization value.
+        length: Number of output bits.
+
+    Returns:
+        One-dimensional binary array with shape ``(length,)``; axis 0 is PRBS bit index.
+    """
     nc = 1600
     seq_len = nc + length + 31
     x1 = np.zeros(seq_len, dtype=np.int8)
@@ -272,12 +281,30 @@ def gold_sequence(c_init: int, length: int) -> np.ndarray:
 
 
 def qpsk_from_prbs(bits: np.ndarray) -> np.ndarray:
+    """Map PRBS bits to unit-power QPSK symbols.
+
+    Args:
+        bits: One-dimensional binary array with shape ``(2 * num_symbols,)``; even
+            indices drive the I component and odd indices drive the Q component.
+
+    Returns:
+        One-dimensional complex QPSK array with shape ``(num_symbols,)``.
+    """
     real = 1 - 2 * bits[0::2]
     imag = 1 - 2 * bits[1::2]
     return (real + 1j * imag) / np.sqrt(2.0)
 
 
 def pi_over_two_bpsk_from_bits(bits: np.ndarray) -> np.ndarray:
+    """Map bits to pi/2-BPSK symbols.
+
+    Args:
+        bits: One-dimensional binary array with shape ``(num_symbols,)``; axis 0 is
+            output symbol index before alternating pi/2 rotation.
+
+    Returns:
+        One-dimensional complex pi/2-BPSK sequence with shape ``(num_symbols,)``.
+    """
     bits = np.asarray(bits, dtype=np.int8).reshape(-1)
     real = np.where(bits == 0, 1.0, -1.0)
     imag = real.copy()
@@ -302,6 +329,15 @@ def _largest_prime_less_than_or_equal(value: int) -> int:
 
 
 def _zadoff_chu_extension(root: int, length: int) -> np.ndarray:
+    """Generate an extended Zadoff-Chu sequence.
+
+    Args:
+        root: Scalar Zadoff-Chu root index.
+        length: Number of requested output symbols.
+
+    Returns:
+        One-dimensional complex sequence with shape ``(length,)``.
+    """
     nzc = _largest_prime_less_than_or_equal(length)
     n = np.arange(nzc)
     base = np.exp(-1j * np.pi * root * n * (n + 1) / nzc)
@@ -328,6 +364,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
     """
 
     def get_dmrs_info(self, config: SimulationConfig) -> DmrsInfo:
+        """Resolve DMRS positions inside one slot.
+
+        Args:
+            config: Full simulation configuration defining channel, waveform and DMRS type.
+
+        Returns:
+            DMRS metadata. ``re_offsets`` has shape ``(dmrs_re_per_prb,)``; axis 0
+            enumerates RE offsets inside one PRB. ``symbol_indices`` enumerates OFDM
+            symbol indices carrying DMRS.
+        """
         if (
             config.link.channel_type.upper() == "PUSCH"
             and config.link.waveform.upper() == "DFT-S-OFDM"
@@ -350,6 +396,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
         )
 
     def generate_for_symbol(self, symbol: int, config: SimulationConfig) -> np.ndarray:
+        """Generate DMRS symbols for one OFDM symbol.
+
+        Args:
+            symbol: Scalar OFDM symbol index inside the slot.
+            config: Full simulation configuration defining sequence initialization.
+
+        Returns:
+            One-dimensional complex DMRS array with shape ``(num_dmrs_re_in_symbol,)``;
+            axis 0 follows mapper RE order over the scheduled bandwidth.
+        """
         info = self.get_dmrs_info(config)
         num_prbs = config.link.num_prbs
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
@@ -361,6 +417,14 @@ class DmrsGenerator(DmrsSequenceGenerator):
         raise ValueError(f"Unsupported channel type: {config.link.channel_type}")
 
     def _dmrs_symbol_indices(self, config: SimulationConfig) -> tuple[int, ...]:
+        """Resolve the OFDM symbol indices that carry DMRS.
+
+        Args:
+            config: Full simulation configuration with explicit or table-driven DMRS positions.
+
+        Returns:
+            Tuple of scalar OFDM symbol indices in ascending mapping order.
+        """
         if config.dmrs.symbol_positions:
             return tuple(config.dmrs.symbol_positions)
         return resolve_dmrs_symbol_indices(
@@ -396,6 +460,18 @@ class DmrsGenerator(DmrsSequenceGenerator):
         info: DmrsInfo,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Generate CP-OFDM style Gold-sequence DMRS for one symbol.
+
+        Args:
+            symbol: Scalar OFDM symbol index inside the slot.
+            num_prbs: Number of scheduled PRBs.
+            info: DMRS metadata whose ``re_offsets`` axis enumerates REs per PRB.
+            config: Full simulation configuration defining scrambling IDs.
+
+        Returns:
+            One-dimensional complex QPSK DMRS sequence with shape
+            ``(num_prbs * dmrs_re_per_prb,)``.
+        """
         dmrs_begin = info.re_per_prb * config.link.prb_start * 2
         dmrs_end = info.re_per_prb * (config.link.prb_start + num_prbs) * 2
         dmrs_size = info.re_per_prb * config.carrier.n_size_grid * 2
@@ -409,6 +485,18 @@ class DmrsGenerator(DmrsSequenceGenerator):
         info: DmrsInfo,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Generate transform-precoded PUSCH low-PAPR DMRS for one symbol.
+
+        Args:
+            symbol: Scalar OFDM symbol index inside the slot.
+            num_prbs: Number of scheduled PRBs.
+            info: DMRS metadata whose ``re_offsets`` axis enumerates REs per PRB.
+            config: Full simulation configuration defining hopping and pi/2-BPSK flags.
+
+        Returns:
+            One-dimensional constant-envelope DMRS sequence with shape
+            ``(num_prbs * dmrs_re_per_prb,)``.
+        """
         length = num_prbs * info.re_per_prb
         if self._use_type2_low_papr_sequence(config):
             return self._generate_type2_low_papr_sequence(symbol, length, config)
@@ -422,6 +510,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
         sequence_length: int,
         config: SimulationConfig,
     ) -> tuple[int, int]:
+        """Resolve low-PAPR group and sequence hopping indices.
+
+        Args:
+            symbol: Scalar OFDM symbol index inside the slot.
+            sequence_length: Number of DMRS symbols in the sequence.
+            config: Full simulation configuration defining hopping options.
+
+        Returns:
+            Tuple ``(u, v)`` of scalar low-PAPR group and sequence numbers.
+        """
         n_id_rs = config.dmrs.n_pusch_identity
         if n_id_rs is None:
             n_id_rs = self._effective_scrambling_id(config)
@@ -445,6 +543,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
         return u, v
 
     def _low_papr_type1(self, u: int, v: int, length: int) -> np.ndarray:
+        """Generate low-PAPR sequence type 1.
+
+        Args:
+            u: Scalar group number.
+            v: Scalar sequence number.
+            length: Number of requested DMRS symbols.
+
+        Returns:
+            One-dimensional complex sequence with shape ``(length,)``.
+        """
         if length in SHORT_LOW_PAPR_TYPE1_PHASES:
             phases = np.array(SHORT_LOW_PAPR_TYPE1_PHASES[length][u], dtype=np.float64)
             sequence = np.exp(1j * np.pi * phases / 4.0)
@@ -457,6 +565,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
         length: int,
         config: SimulationConfig,
     ) -> np.ndarray:
+        """Generate low-PAPR sequence type 2 for pi/2-BPSK transform precoding.
+
+        Args:
+            symbol: Scalar OFDM symbol index inside the slot.
+            length: Number of requested DMRS symbols.
+            config: Full simulation configuration defining scrambling IDs.
+
+        Returns:
+            One-dimensional complex sequence with shape ``(length,)``.
+        """
         if length == 6:
             phases = np.array(SHORT_LOW_PAPR_TYPE2_PHASES_6[self._type2_u_index(symbol, config)], dtype=np.float64)
             return np.exp(1j * np.pi * phases / 4.0)
@@ -509,6 +627,16 @@ class DmrsGenerator(DmrsSequenceGenerator):
 
     @staticmethod
     def _zc_low_papr_sequence(u: int, v: int, length: int) -> np.ndarray:
+        """Generate long low-PAPR sequence from a Zadoff-Chu root.
+
+        Args:
+            u: Scalar group number.
+            v: Scalar sequence number.
+            length: Number of requested DMRS symbols.
+
+        Returns:
+            One-dimensional normalized complex sequence with shape ``(length,)``.
+        """
         nzc = _largest_prime_less_than_or_equal(length)
         q_bar = nzc * (u + 1) / 31.0
         q = int(np.floor(q_bar + 0.5)) + v * ((-1) ** int(np.floor(2 * q_bar)))

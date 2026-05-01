@@ -39,7 +39,17 @@ class HarqManager:
         return bool(self.config.enabled)
 
     def schedule(self, tti_index: int, tbs_bits: int, rng: np.random.Generator) -> HarqTransmission:
-        """Schedule one HARQ process for the current TTI."""
+        """Schedule one HARQ process for the current TTI.
+
+        Args:
+            tti_index: Scalar TTI index.
+            tbs_bits: Scalar transport-block size in bits.
+            rng: Random generator used to create a new transport block.
+
+        Returns:
+            HARQ transmission descriptor. ``transport_block`` is a one-dimensional
+            bit array with shape ``(tbs_bits,)``; axis 0 is TB bit index.
+        """
         process_id = int(tti_index % int(self.config.num_processes))
         state = self.processes[process_id]
         rv_sequence = tuple(int(rv) for rv in self.config.rv_sequence)
@@ -64,7 +74,12 @@ class HarqManager:
         )
 
     def update(self, process_id: int, crc_ok: bool | None) -> None:
-        """Update HARQ process state after one transmission result."""
+        """Update HARQ process state after one transmission result.
+
+        Args:
+            process_id: Scalar HARQ process identifier.
+            crc_ok: Scalar CRC result. ``None`` clears the process in bypass mode.
+        """
         if crc_ok is None:
             self.processes[int(process_id)].active_transport_block = None
             self.processes[int(process_id)].rv_index = 0

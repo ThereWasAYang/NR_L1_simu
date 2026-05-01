@@ -31,6 +31,18 @@ class InterferenceMixer:
         noise_variance: float,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, tuple[InterferenceReport, ...]]:
+        """Add all configured interferer waveforms to the desired waveform.
+
+        Args:
+            waveform: Desired RX waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            noise_variance: Scalar receiver noise variance used to define INR.
+            config: Full simulation configuration containing interference sources.
+
+        Returns:
+            Tuple of composite waveform with the same shape as ``waveform`` and
+            per-interferer scalar reports.
+        """
         if not config.interference.enabled:
             return waveform, ()
 
@@ -52,6 +64,15 @@ class InterferenceMixer:
         return composite, tuple(reports)
 
     def _generate_interferer_waveform(self, config: SimulationConfig) -> np.ndarray:
+        """Generate one interferer after its own TX and channel path.
+
+        Args:
+            config: Interferer-specific simulation configuration.
+
+        Returns:
+            Complex interferer waveform with shape ``(slot_samples,)`` or
+            ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+        """
         components = self.component_factory.create_components(config)
         transmitter = build_transmitter(components)
         channel = self.component_factory.create_channel_factory().create(config)
@@ -124,6 +145,19 @@ class InterferenceMixer:
         source: InterferenceSourceConfig,
         index: int,
     ) -> tuple[np.ndarray, InterferenceReport]:
+        """Scale one interferer waveform to its target INR.
+
+        Args:
+            waveform: Interferer RX waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``.
+            noise_variance: Scalar receiver noise variance.
+            source: Interference source configuration containing target INR.
+            index: Scalar source index used for default labels.
+
+        Returns:
+            Tuple of scaled waveform with the same shape as ``waveform`` and a
+            scalar report describing the applied scale.
+        """
         rx_power = float(np.mean(np.abs(waveform) ** 2))
         target_power = float(noise_variance * (10 ** (source.inr_db / 10.0)))
         scale = 0.0 if rx_power <= 0.0 else np.sqrt(target_power / rx_power)

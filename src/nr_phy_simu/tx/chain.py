@@ -40,7 +40,8 @@ class Transmitter:
         """Build all transmit-domain buffers up to the frequency-domain slot grid.
 
         Args:
-            transport_block: Input payload bits before CRC, coding, and scrambling.
+            transport_block: One-dimensional bit array with shape ``(tbs_bits,)``;
+                axis 0 is the transport-block bit index before CRC/coding/scrambling.
             config: Full simulation configuration for waveform and link parameters.
 
         Returns:
@@ -68,7 +69,8 @@ class Transmitter:
         """Run the complete transmit chain for one slot.
 
         Args:
-            transport_block: Input payload bits before CRC, coding, and scrambling.
+            transport_block: One-dimensional bit array with shape ``(tbs_bits,)``;
+                axis 0 is the transport-block bit index before CRC/coding/scrambling.
             config: Full simulation configuration for waveform and link parameters.
 
         Returns:

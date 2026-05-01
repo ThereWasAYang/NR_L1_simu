@@ -19,6 +19,20 @@ class FadingChannelBase(ChannelModel, ABC):
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
+        """Propagate a time-domain waveform through a time-varying tapped channel.
+
+        Args:
+            waveform: Transmit waveform with shape ``(slot_samples,)`` or
+                ``(num_tx_ant, slot_samples)``; last axis is time-sample index.
+            config: Full simulation configuration that defines antennas, channel
+                profile parameters, sample rate, and SNR.
+
+        Returns:
+            Tuple of ``(rx_waveform, channel_info)``. ``rx_waveform`` has shape
+            ``(slot_samples,)`` for one RX antenna or ``(num_rx_ant, slot_samples)``
+            for multiple RX antennas. ``channel_info["path_coefficients"]`` has
+            shape ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
+        """
         tx_waveform = self._expand_tx_branches(waveform, config)
         sample_rate = config.carrier.sample_rate_effective_hz
         delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
@@ -45,6 +59,19 @@ class FadingChannelBase(ChannelModel, ABC):
         sample_rate_hz: float,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Generate path delays and time-varying MIMO path coefficients.
+
+        Args:
+            num_samples: Number of time samples in the slot waveform.
+            sample_rate_hz: Baseband sample rate in Hz.
+            config: Full simulation configuration with channel and antenna settings.
+
+        Returns:
+            Tuple ``(delays_s, coefficients)`` where ``delays_s`` has shape
+            ``(num_paths,)`` and ``coefficients`` has shape
+            ``(num_rx_ant, num_tx_ant, num_paths, num_samples)``. Coefficient axes
+            are RX antenna, TX antenna, path index, and time-sample index.
+        """
         raise NotImplementedError
 
     def _apply_time_varying_channel(
@@ -54,6 +81,19 @@ class FadingChannelBase(ChannelModel, ABC):
         coefficients: np.ndarray,
         sample_rate_hz: float,
     ) -> np.ndarray:
+        """Apply delayed time-varying MIMO taps to all TX branches.
+
+        Args:
+            tx_waveform: TX waveform matrix with shape ``(num_tx_ant, slot_samples)``.
+            delays_s: Path delays with shape ``(num_paths,)`` in seconds.
+            coefficients: Channel taps with shape
+                ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
+            sample_rate_hz: Baseband sample rate used to convert delay to samples.
+
+        Returns:
+            RX waveform with shape ``(slot_samples,)`` for one RX antenna or
+            ``(num_rx_ant, slot_samples)`` for multiple RX antennas.
+        """
         num_rx_ant, num_tx_ant, _, _ = coefficients.shape
         rx_waveform = np.zeros((num_rx_ant, tx_waveform.shape[-1]), dtype=np.complex128)
 
@@ -70,6 +110,16 @@ class FadingChannelBase(ChannelModel, ABC):
 
     @staticmethod
     def _fractional_delay(waveform: np.ndarray, delay_samples: float, filter_half_len: int = 8) -> np.ndarray:
+        """Apply a fractional sample delay to one time-domain branch.
+
+        Args:
+            waveform: One-dimensional waveform with shape ``(slot_samples,)``.
+            delay_samples: Delay measured in samples, including fractional part.
+            filter_half_len: Half length of the sinc interpolation filter.
+
+        Returns:
+            Delayed waveform with shape ``(slot_samples,)``.
+        """
         integer_delay = int(math.floor(delay_samples))
         fractional = delay_samples - integer_delay
         taps_index = np.arange(-filter_half_len, filter_half_len + 1, dtype=np.float64)
@@ -89,6 +139,18 @@ class FadingChannelBase(ChannelModel, ABC):
         max_doppler_hz: float,
         num_sinusoids: int,
     ) -> np.ndarray:
+        """Generate one complex Rayleigh fading process.
+
+        Args:
+            num_samples: Number of time samples to generate.
+            sample_rate_hz: Baseband sample rate in Hz.
+            max_doppler_hz: Maximum Doppler frequency in Hz.
+            num_sinusoids: Number of sinusoids used by the fading approximation.
+
+        Returns:
+            One-dimensional complex fading process with shape ``(num_samples,)``;
+            axis 0 is time-sample index.
+        """
         if abs(max_doppler_hz) < 1e-12:
             sample = (self.rng.normal() + 1j * self.rng.normal()) / np.sqrt(2.0)
             return np.full(num_samples, sample, dtype=np.complex128)
@@ -115,6 +177,20 @@ class FadingChannelBase(ChannelModel, ABC):
         specular_doppler_hz: float | None = None,
         initial_phase: float | None = None,
     ) -> np.ndarray:
+        """Generate one complex Rician fading process.
+
+        Args:
+            num_samples: Number of time samples to generate.
+            sample_rate_hz: Baseband sample rate in Hz.
+            max_doppler_hz: Diffuse component maximum Doppler frequency in Hz.
+            k_factor_linear: Rician K-factor in linear scale.
+            num_sinusoids: Number of sinusoids used for the diffuse component.
+            specular_doppler_hz: Optional Doppler frequency for the LOS component.
+            initial_phase: Optional initial LOS phase in radians.
+
+        Returns:
+            One-dimensional complex fading process with shape ``(num_samples,)``.
+        """
         diffuse = self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
         phase0 = self.rng.uniform(0.0, 2 * np.pi) if initial_phase is None else initial_phase
         spec_freq = specular_doppler_hz if specular_doppler_hz is not None else max_doppler_hz
@@ -127,11 +203,31 @@ class FadingChannelBase(ChannelModel, ABC):
 
     @staticmethod
     def _normalize_powers_db(power_db: np.ndarray) -> np.ndarray:
+        """Normalize per-path powers from dB to linear fractions.
+
+        Args:
+            power_db: One-dimensional path power array with shape ``(num_paths,)``.
+
+        Returns:
+            One-dimensional linear power array with shape ``(num_paths,)`` whose
+            values sum to 1.
+        """
         linear = 10 ** (power_db / 10.0)
         linear /= np.sum(linear)
         return linear
 
     def _add_awgn(self, waveform: np.ndarray, config: SimulationConfig) -> tuple[np.ndarray, float, float]:
+        """Add AWGN to a time-domain RX waveform.
+
+        Args:
+            waveform: RX waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            config: Full simulation configuration that provides SNR.
+
+        Returns:
+            Tuple of noisy waveform with the same shape as ``waveform``, scalar
+            noise variance, and scalar SNR in dB.
+        """
         snr_db = float(config.channel.params.get("snr_db", config.snr_db))
         snr_linear = 10 ** (snr_db / 10.0)
         signal_power = np.mean(np.abs(waveform) ** 2)
@@ -168,6 +264,22 @@ class FadingChannelBase(ChannelModel, ABC):
         power_key: str = "path_powers_db",
         delay_spread_key: str = "delay_spread_ns",
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Resolve default or user-provided path delays and powers.
+
+        Args:
+            config: Full simulation configuration containing channel params.
+            normalized_delays: One-dimensional default delay array with shape
+                ``(num_paths,)`` in profile-normalized units.
+            power_db: One-dimensional default path power array with shape
+                ``(num_paths,)`` in dB.
+            delay_key: Config key for explicit path/cluster delays in ns.
+            power_key: Config key for explicit path/cluster powers in dB.
+            delay_spread_key: Config key for RMS delay spread in ns.
+
+        Returns:
+            Tuple ``(delays_s, power_db)`` where both arrays have shape
+            ``(num_paths,)``.
+        """
         params = config.channel.params
         custom_delays = params.get(delay_key)
         custom_powers = params.get(power_key)
@@ -189,6 +301,17 @@ class FadingChannelBase(ChannelModel, ABC):
 
     @staticmethod
     def _expand_tx_branches(waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Ensure the TX waveform has an explicit transmit-antenna axis.
+
+        Args:
+            waveform: Input waveform with shape ``(slot_samples,)`` or
+                ``(num_tx_ant, slot_samples)``.
+            config: Full simulation configuration that defines ``num_tx_ant``.
+
+        Returns:
+            TX waveform matrix with shape ``(num_tx_ant, slot_samples)``; axis 0 is
+            TX antenna and axis 1 is time-sample index.
+        """
         if waveform.ndim == 2:
             return waveform
 
@@ -203,5 +326,16 @@ class FadingChannelBase(ChannelModel, ABC):
         spatial_frequency: float,
         spacing_lambda: float,
     ) -> np.ndarray:
+        """Generate a uniform-linear-array response vector.
+
+        Args:
+            num_ant: Number of antenna elements.
+            spatial_frequency: Direction cosine projected onto the array axis.
+            spacing_lambda: Element spacing measured in wavelengths.
+
+        Returns:
+            One-dimensional complex response vector with shape ``(num_ant,)``;
+            axis 0 is antenna-element index.
+        """
         antenna_index = np.arange(num_ant, dtype=np.float64)
         return np.exp(1j * 2.0 * np.pi * spacing_lambda * spatial_frequency * antenna_index)

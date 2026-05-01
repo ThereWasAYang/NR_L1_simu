@@ -38,6 +38,16 @@ class WaveformReplaySimulation:
         self.interference_mixer = InterferenceMixer(self.component_factory)
 
     def run(self) -> SimulationResult:
+        """Run one replay simulation by feeding captured waveform into the receiver.
+
+        Args:
+            None.
+
+        Returns:
+            Simulation result. TX arrays are placeholders; ``rx.rx_waveform`` has
+            shape ``(slot_samples,)`` or ``(num_rx_ant, slot_samples)`` from the
+            input file, and receiver arrays follow normal RX shape conventions.
+        """
         self.runtime_context.clear()
         set_runtime_context(self.runtime_context)
         apply_mcs_to_link(self.config)
@@ -86,11 +96,30 @@ class WaveformReplaySimulation:
         )
 
     def _build_reference_masks(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Build DMRS/data masks and reference DMRS for replay mode.
+
+        Args:
+            None.
+
+        Returns:
+            Tuple ``(dmrs_mask, data_mask, dmrs_symbols)``. Masks have shape
+            ``(num_subcarriers, num_symbols)``; ``dmrs_symbols`` has shape
+            ``(num_dmrs_re,)`` in mapper RE order.
+        """
         dummy_symbols = np.zeros(self.mapper.count_data_re(self.config), dtype=np.complex128)
         _, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(dummy_symbols, self.config)
         return dmrs_mask, data_mask, dmrs_symbols
 
     def _resolve_noise_variance(self, waveform: np.ndarray) -> float:
+        """Resolve replay-mode noise variance.
+
+        Args:
+            waveform: Captured waveform with shape ``(slot_samples,)`` or
+                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+
+        Returns:
+            Scalar noise variance used by equalizer and demodulator.
+        """
         if self.config.waveform_input.noise_variance is not None:
             return float(self.config.waveform_input.noise_variance)
 

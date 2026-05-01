@@ -31,6 +31,15 @@ class LdpcDecoderStructure:
 
 
 def get_ulsch_ldpc_info(tbs: int, target_code_rate: float) -> UlschLdpcInfo:
+    """Resolve UL-SCH LDPC segmentation and base-graph metadata.
+
+    Args:
+        tbs: Scalar transport-block size in bits.
+        target_code_rate: Scalar target coding rate.
+
+    Returns:
+        Scalar metadata describing code-block count, lifting size and bit lengths.
+    """
     assert tbs >= 0
     assert isinstance(tbs, int)
     assert 0 < target_code_rate < 1
@@ -52,6 +61,17 @@ def get_ulsch_ldpc_info(tbs: int, target_code_rate: float) -> UlschLdpcInfo:
 
 
 def encode_ldpc_codeblocks(code_blocks: np.ndarray, base_graph: int) -> np.ndarray:
+    """Encode segmented LDPC code blocks.
+
+    Args:
+        code_blocks: Integer bit matrix with shape ``(cb_input_bits, num_code_blocks)``;
+            axis 0 is bit index within one code block and axis 1 is code-block index.
+        base_graph: LDPC base graph number, either 1 or 2.
+
+    Returns:
+        Encoded code-block matrix with shape ``(encoded_block_bits, num_code_blocks)``;
+        axis 0 is circular-buffer bit index and axis 1 is code-block index.
+    """
     code_blocks = code_blocks.copy()
     input_bits, num_code_blocks = code_blocks.shape
     if base_graph == 1:
@@ -96,6 +116,20 @@ def rate_match_ulsch_ldpc(
     modulation: str,
     num_layers: int,
 ) -> np.ndarray:
+    """Rate-match encoded UL-SCH LDPC code blocks into one codeword stream.
+
+    Args:
+        encoded_code_blocks: Encoded code-block matrix with shape
+            ``(encoded_block_bits, num_code_blocks)``; axis 0 is circular-buffer bit
+            index, axis 1 is code-block index.
+        out_length: Scalar output codeword length in bits.
+        rv: Redundancy version index.
+        modulation: Modulation name used to derive ``Qm``.
+        num_layers: Number of transmission layers. Currently only 1 is supported.
+
+    Returns:
+        One-dimensional rate-matched bit stream with shape ``(out_length,)``.
+    """
     assert num_layers == 1, "nLayers > 1 is not yet implemented"
     assert rv in [0, 1, 2, 3], "rv has to be in [0, 1, 2, 3]"
 
@@ -137,6 +171,22 @@ def rate_recover_ulsch_ldpc(
     num_layers: int,
     num_code_blocks: int | None = None,
 ) -> np.ndarray:
+    """Recover LDPC soft buffers from one rate-matched LLR stream.
+
+    Args:
+        llrs: One-dimensional LLR stream with shape ``(coded_bit_capacity,)``; axis 0
+            is rate-matched coded-bit order.
+        trblklen: Scalar transport-block size in bits.
+        target_code_rate: Scalar target coding rate.
+        rv: Redundancy version index.
+        modulation: Modulation name used to derive ``Qm``.
+        num_layers: Number of transmission layers.
+        num_code_blocks: Optional explicit code-block count override.
+
+    Returns:
+        Soft-buffer matrix with shape ``(encoded_block_bits, num_code_blocks)``;
+        axis 0 is circular-buffer bit index and axis 1 is code-block index.
+    """
     assert 0 < target_code_rate < 1, "R has to satisfy 0 < R < 1"
     assert rv in [0, 1, 2, 3], "rv has to be in [0, 1, 2, 3]"
 
@@ -175,6 +225,19 @@ def decode_ulsch_ldpc(
     min_sum_scaling: float = 0.75,
     enable_py3gpp_fallback: bool = True,
 ) -> np.ndarray:
+    """Decode recovered UL-SCH LDPC soft buffers.
+
+    Args:
+        llrs: Soft-buffer matrix with shape ``(encoded_block_bits, num_code_blocks)``;
+            axis 0 is circular-buffer bit index and axis 1 is code-block index.
+        info: LDPC segmentation metadata for the transport block.
+        max_num_iter: Maximum number of iterative decoder iterations.
+        min_sum_scaling: Normalized min-sum scaling factor.
+        enable_py3gpp_fallback: Whether to use py3gpp decoder if local decode fails.
+
+    Returns:
+        Decoded code-block matrix with shape ``(cb_input_bits, num_code_blocks)``.
+    """
     decoded = np.zeros((info.cb_input_bits, llrs.shape[1]), dtype=np.uint8)
     for code_block_index in range(llrs.shape[1]):
         decoded[:, code_block_index] = _decode_single_code_block(
@@ -188,6 +251,18 @@ def decode_ulsch_ldpc(
 
 
 def _rate_match_single(codeword: np.ndarray, out_length: int, k0: int, ncb: int, qm: int) -> np.ndarray:
+    """Rate-match one encoded code block.
+
+    Args:
+        codeword: One-dimensional encoded block with shape ``(encoded_block_bits,)``.
+        out_length: Number of output bits for this code block.
+        k0: Circular-buffer starting index.
+        ncb: Circular-buffer length.
+        qm: Modulation order in bits per modulation symbol.
+
+    Returns:
+        One-dimensional bit array with shape ``(out_length,)``.
+    """
     num_filler_bits = np.count_nonzero(codeword[:ncb] == -1)
     tiled = np.tile(codeword, int(np.ceil(out_length / (len(codeword[:ncb]) - num_filler_bits))))
     tiled = np.roll(tiled, -k0)
@@ -202,6 +277,19 @@ def _rate_recover_single(
     ncb: int,
     qm: int,
 ) -> np.ndarray:
+    """Recover one code block's circular soft buffer.
+
+    Args:
+        deconcatenated: One-dimensional LLR segment with shape ``(e_bits,)`` for
+            one code block after code-block deconcatenation.
+        info: LDPC metadata for the transport block.
+        k0: Circular-buffer starting index.
+        ncb: Circular-buffer length.
+        qm: Modulation order in bits per modulation symbol.
+
+    Returns:
+        One-dimensional soft buffer with shape ``(encoded_block_bits,)``.
+    """
     e = len(deconcatenated)
     deconcatenated = np.reshape(deconcatenated, (int(e / qm), qm)).ravel("F")
 
@@ -289,6 +377,18 @@ def _decode_single_code_block(
     min_sum_scaling: float,
     enable_py3gpp_fallback: bool,
 ) -> np.ndarray:
+    """Decode one recovered LDPC code block.
+
+    Args:
+        llrs: One-dimensional soft buffer with shape ``(encoded_block_bits,)``.
+        info: LDPC metadata for the transport block.
+        max_num_iter: Maximum local decoder iteration count.
+        min_sum_scaling: Normalized min-sum scaling factor.
+        enable_py3gpp_fallback: Whether to use py3gpp as a fallback.
+
+    Returns:
+        One-dimensional decoded block with shape ``(cb_input_bits,)``.
+    """
     structure = _ldpc_decoder_structure(info.base_graph, info.cb_input_bits, info.zc)
     punctured_prefix = np.zeros(2 * info.zc, dtype=np.float64)
     channel_llr = np.concatenate([punctured_prefix, np.asarray(llrs, dtype=np.float64)])
@@ -320,6 +420,19 @@ def _normalized_min_sum_decode(
     max_num_iter: int,
     scaling: float,
 ) -> np.ndarray | None:
+    """Run normalized min-sum LDPC decoding on one full codeword LLR vector.
+
+    Args:
+        channel_llr: One-dimensional LLR vector with shape
+            ``(2 * zc + encoded_block_bits,)`` including punctured prefix nodes.
+        structure: Sparse parity-check graph structure.
+        max_num_iter: Maximum decoder iteration count.
+        scaling: Normalized min-sum check-node scaling factor.
+
+    Returns:
+        Posterior LLR vector with the same shape as ``channel_llr`` if parity checks
+        pass, otherwise ``None``.
+    """
     edge_var_indices = structure.edge_var_indices
     row_edge_groups = structure.row_edge_groups
     col_edge_groups = structure.col_edge_groups
@@ -363,6 +476,16 @@ def _normalized_min_sum_decode(
 
 
 def _parity_check_satisfied(bits: np.ndarray, parity_check: sp.csr_matrix) -> bool:
+    """Check a hard LDPC codeword against the parity-check matrix.
+
+    Args:
+        bits: One-dimensional hard-bit vector with shape ``(num_variable_nodes,)``.
+        parity_check: Sparse parity-check matrix with shape
+            ``(num_check_nodes, num_variable_nodes)``.
+
+    Returns:
+        ``True`` when all parity checks are zero.
+    """
     syndrome = parity_check.dot(bits.astype(np.uint8)) % 2
     return not np.any(syndrome)
 
@@ -398,6 +521,15 @@ def _ldpc_decoder_structure(base_graph: int, cb_input_bits: int, zc: int) -> Ldp
 
 
 def _direct_decode_from_hard_decisions(llrs: np.ndarray, info: UlschLdpcInfo) -> np.ndarray | None:
+    """Attempt deterministic recovery from hard decisions.
+
+    Args:
+        llrs: LLR matrix with shape ``(encoded_block_bits, num_code_blocks)``.
+        info: LDPC metadata for the transport block.
+
+    Returns:
+        Decoded matrix with shape ``(cb_input_bits, num_code_blocks)`` or ``None``.
+    """
     hard = (llrs < 0).astype(np.uint8)
     if hard.ndim != 2:
         raise TypeError("LLR matrix must be 2-dimensional")
@@ -412,6 +544,15 @@ def _direct_decode_from_hard_decisions(llrs: np.ndarray, info: UlschLdpcInfo) ->
 
 
 def _recover_code_block_from_hard_bits(hard_bits: np.ndarray, info: UlschLdpcInfo) -> np.ndarray | None:
+    """Recover one code block from hard circular-buffer bits.
+
+    Args:
+        hard_bits: One-dimensional hard-bit vector with shape ``(encoded_block_bits,)``.
+        info: LDPC metadata for the transport block.
+
+    Returns:
+        One-dimensional decoded block with shape ``(cb_input_bits,)`` or ``None``.
+    """
     zc = info.zc
     full_codeword = np.concatenate([np.zeros(2 * zc, dtype=np.uint8), hard_bits.astype(np.uint8)])
     kd = info.cb_input_bits - info.num_filler_bits
@@ -433,6 +574,18 @@ def _recover_code_block_from_hard_bits(hard_bits: np.ndarray, info: UlschLdpcInf
 
 @lru_cache(maxsize=None)
 def _punctured_solver_matrices(base_graph: int, cb_input_bits: int, zc: int) -> tuple[np.ndarray, np.ndarray]:
+    """Build GF(2) matrices for solving punctured LDPC prefix bits.
+
+    Args:
+        base_graph: LDPC base graph number.
+        cb_input_bits: Number of input bits per code block after lifting.
+        zc: Lifting size.
+
+    Returns:
+        Tuple ``(parity_check, punctured_submatrix)``. ``parity_check`` has shape
+        ``(num_check_nodes, num_variable_nodes)`` and ``punctured_submatrix`` has
+        shape ``(num_check_nodes, 2 * zc)``.
+    """
     lifting_kb = _select_lifting_kb(cb_input_bits, base_graph)
     lifting_set_index = _find_lifting_set_index(lifting_kb, cb_input_bits)
     base_matrix = _load_basegraph(lifting_set_index, base_graph)
@@ -442,6 +595,16 @@ def _punctured_solver_matrices(base_graph: int, cb_input_bits: int, zc: int) -> 
 
 
 def _solve_gf2(matrix: np.ndarray, rhs: np.ndarray) -> np.ndarray | None:
+    """Solve a binary linear system over GF(2).
+
+    Args:
+        matrix: Binary coefficient matrix with shape ``(num_equations, num_unknowns)``.
+        rhs: Binary right-hand-side vector with shape ``(num_equations,)``.
+
+    Returns:
+        Binary solution vector with shape ``(num_unknowns,)`` or ``None`` if the
+        system is inconsistent.
+    """
     augmented = np.concatenate([matrix.copy() % 2, rhs.reshape(-1, 1) % 2], axis=1).astype(np.uint8)
     num_rows, num_cols_aug = augmented.shape
     num_cols = num_cols_aug - 1

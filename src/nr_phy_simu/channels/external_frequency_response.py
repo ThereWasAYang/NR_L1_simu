@@ -15,7 +15,15 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
 
     @staticmethod
     def load_frequency_response(config: SimulationConfig) -> np.ndarray:
-        """Load and validate the configured per-subcarrier frequency response."""
+        """Load and validate the configured per-subcarrier frequency response.
+
+        Args:
+            config: Full simulation configuration containing channel params.
+
+        Returns:
+            One-dimensional complex response with shape ``(num_subcarriers,)``;
+            axis 0 is cell subcarrier index.
+        """
         params = config.channel.params
         frequency_response = load_frequency_response(
             values=params.get("frequency_response"),
@@ -39,7 +47,17 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
 
     @staticmethod
     def full_fft_response(frequency_response: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        """Embed active-subcarrier response into the full FFT bin grid."""
+        """Embed active-subcarrier response into the full FFT bin grid.
+
+        Args:
+            frequency_response: One-dimensional active-band response with shape
+                ``(num_subcarriers,)``; axis 0 is cell subcarrier index.
+            config: Full simulation configuration that defines FFT size.
+
+        Returns:
+            One-dimensional FFT-bin response with shape ``(fft_size,)``; axis 0 is
+            shifted FFT-bin index before IFFT conversion to taps.
+        """
         fft_size = config.carrier.fft_size_effective
         n_sc = config.carrier.n_subcarriers
         fft_bins = np.ones(fft_size, dtype=np.complex128)
@@ -50,7 +68,17 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
 
     @staticmethod
     def add_awgn(samples: np.ndarray, config: SimulationConfig) -> tuple[np.ndarray, float, float]:
-        """Add AWGN using the configured SNR."""
+        """Add AWGN using the configured SNR.
+
+        Args:
+            samples: Complex samples or grid with arbitrary shape; all axes are
+                preserved and noise is generated element-wise.
+            config: Full simulation configuration that provides SNR.
+
+        Returns:
+            Tuple of noisy samples with the same shape as ``samples``, scalar noise
+            variance, and scalar SNR in dB.
+        """
         if not bool(config.channel.params.get("add_noise", True)):
             return samples, 0.0, float("inf")
 
@@ -74,7 +102,15 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
-        """Convert external frequency response to FIR taps and filter the waveform."""
+        """Convert external frequency response to FIR taps and filter the waveform.
+
+        Args:
+            waveform: One-dimensional SISO TX waveform with shape ``(slot_samples,)``.
+            config: Full simulation configuration with external frequency response.
+
+        Returns:
+            Tuple of RX waveform with shape ``(slot_samples,)`` and channel metadata.
+        """
         self.require_siso(config)
         if waveform.ndim != 1:
             raise ValueError("External frequency-response time-domain channel expects a single TX waveform branch.")
@@ -102,7 +138,15 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
         waveform: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
-        """Reject time-domain propagation for the direct frequency-domain channel."""
+        """Reject time-domain propagation for the direct frequency-domain channel.
+
+        Args:
+            waveform: Time-domain waveform input, unused by this channel mode.
+            config: Full simulation configuration, unused by this channel mode.
+
+        Returns:
+            This method always raises; use :meth:`propagate_grid` instead.
+        """
         del waveform, config
         raise NotImplementedError(
             "Frequency-domain direct channel must be used through propagate_grid(...), not propagate(...)."
@@ -113,7 +157,17 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
         grid: np.ndarray,
         config: SimulationConfig,
     ) -> tuple[np.ndarray, dict]:
-        """Apply the configured frequency response directly on the slot grid."""
+        """Apply the configured frequency response directly on the slot grid.
+
+        Args:
+            grid: SISO frequency-domain slot grid with shape
+                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index
+                and axis 1 is OFDM symbol index.
+            config: Full simulation configuration with external frequency response.
+
+        Returns:
+            Tuple of RX grid with the same shape as ``grid`` and channel metadata.
+        """
         self.require_siso(config)
         if grid.ndim != 2:
             raise ValueError("Frequency-domain direct channel expects a single-layer 2D resource grid.")

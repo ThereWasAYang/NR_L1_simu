@@ -13,11 +13,12 @@ class QamModulator(Modulator):
         """Map coded bits to modulation symbols selected by the link config.
 
         Args:
-            bits: Scrambled coded-bit sequence to be modulated.
+            bits: One-dimensional scrambled coded-bit array with shape
+                ``(coded_bits,)``; axis 0 is the coded-bit index.
             config: Full simulation configuration that defines modulation order.
 
         Returns:
-            Serialized complex modulation symbols.
+            Serialized complex modulation symbols with shape ``(num_mod_symbols,)``.
         """
         return self.map_bits_for_modulation(bits, config.link.modulation)
 
@@ -26,11 +27,13 @@ class QamModulator(Modulator):
         """Map bits to symbols for an explicitly selected modulation format.
 
         Args:
-            bits: Bit sequence to modulate.
+            bits: One-dimensional bit array with shape ``(num_bits,)``; axis 0 is
+                grouped by ``bits_per_symbol(modulation)`` into output symbols.
             modulation: Modulation name understood by ``py3gpp.nrSymbolModulate``.
 
         Returns:
-            Complex modulation symbols in serial order.
+            Complex modulation symbols in serial order with shape
+            ``(ceil(num_bits / bits_per_symbol),)``.
         """
         bps = bits_per_symbol(modulation)
         padded = QamModulator._pad_bits(bits, bps)
@@ -41,7 +44,8 @@ class QamModulator(Modulator):
         """Pad the bit sequence so it aligns with the modulation order.
 
         Args:
-            bits: Bit sequence that may have a partial tail symbol.
+            bits: One-dimensional bit array with shape ``(num_bits,)``; axis 0 is
+                the coded-bit index before grouping into modulation symbols.
             bits_per_mod_symbol: Number of bits represented by one modulated symbol.
 
         Returns:
