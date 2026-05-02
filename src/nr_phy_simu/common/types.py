@@ -77,7 +77,7 @@ class ReceiverDataProcessingResult:
     """
     llrs: RealArray
     channel_estimation: ChannelEstimateResult | None = None
-    equalized_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
+    equalized_symbols: ComplexArray = field(default_factory=lambda: torch.empty(0, dtype=torch.complex128))
     layer_symbols: tuple[ComplexArray, ...] = ()
     plot_artifacts: tuple[PlotArtifact, ...] = ()
 
@@ -96,15 +96,15 @@ class ReceiverProcessingContext:
     """
     rx_grid: ComplexArray
     dmrs_symbols: ComplexArray
-    dmrs_mask: np.ndarray
-    data_mask: np.ndarray
+    dmrs_mask: torch.Tensor
+    data_mask: torch.Tensor
     noise_variance: float
     config: Any
     channel_estimation: ChannelEstimateResult | None = None
-    rx_data_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
-    data_channel: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
-    equalized_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
-    llrs: RealArray = field(default_factory=lambda: np.array([], dtype=np.float64))
+    rx_data_symbols: ComplexArray = field(default_factory=lambda: torch.empty(0, dtype=torch.complex128))
+    data_channel: ComplexArray = field(default_factory=lambda: torch.empty(0, dtype=torch.complex128))
+    equalized_symbols: ComplexArray = field(default_factory=lambda: torch.empty(0, dtype=torch.complex128))
+    llrs: RealArray = field(default_factory=lambda: torch.empty(0, dtype=torch.float64))
     layer_symbols: tuple[ComplexArray, ...] = ()
     plot_artifacts: tuple[PlotArtifact, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
