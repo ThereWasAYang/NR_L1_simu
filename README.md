@@ -363,16 +363,21 @@ channel:
 
 #### 典型用例
 
-仓库中已有一个可运行示例：
+仓库中已有可运行的 `SISO` 外部频域信道示例：
 
 - 配置文件：[configs/pusch_external_freqresp_fd.yaml](configs/pusch_external_freqresp_fd.yaml)
-- 信道系数文件：[inputs/frequency_response_typical_24rb.txt](inputs/frequency_response_typical_24rb.txt)
+- 信道系数文件：[inputs/siso_frequency_response_24rb_flat.txt](inputs/siso_frequency_response_24rb_flat.txt)
 
 运行方式：
 
 ```bash
 python examples/run_from_config.py configs/pusch_external_freqresp_fd.yaml
 ```
+
+`inputs/` 目录还提供了两个 MIMO 信道系数格式样例：
+
+- [inputs/mimo_frequency_response_24rb_2rx2tx.txt](inputs/mimo_frequency_response_24rb_2rx2tx.txt)：`2Rx x 2Tx` 频域信道系数示例，共 `288` 行，对应 `24RB` 小区带宽。每行是一个子载波上的 `2 x 2` 信道矩阵，按 `H[k,0,0]; H[k,0,1]; H[k,1,0]; H[k,1,1]` 排列。
+- [inputs/mimo_time_domain_taps_2rx2tx_8tap.txt](inputs/mimo_time_domain_taps_2rx2tx_8tap.txt)：`2Rx x 2Tx` 时域 tap 系数格式示例，共 `8` 行，每行是一个 tap 上的 `2 x 2` tap 矩阵，按 `h[tap,0,0]; h[tap,0,1]; h[tap,1,0]; h[tap,1,1]` 排列。当前内置 `EXTERNAL_FREQRESP_TD` 仍只消费外部频域响应并仅支持 `SISO`，该文件主要用于说明 MIMO 时域 tap 文件的推荐排布，便于后续自定义 MIMO 时域信道读取。
 
 对于 `TDL/CDL`，当前已支持的典型信道参数包括：
 

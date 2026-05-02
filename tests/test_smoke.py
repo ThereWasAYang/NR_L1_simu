@@ -23,6 +23,7 @@ from py3gpp import (
 )
 
 from nr_phy_simu.io.config_loader import load_simulation_config
+from nr_phy_simu.io.frequency_response_loader import load_frequency_response
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
 from nr_phy_simu.common.harq import HarqManager
@@ -426,6 +427,13 @@ class ConfigLoaderTest(unittest.TestCase):
                 Path(cfg.channel.params["frequency_response_path"]),
                 response_path.resolve(),
             )
+
+    def test_repository_mimo_frequency_response_example_shape(self):
+        response = load_frequency_response(path=ROOT / "inputs" / "mimo_frequency_response_24rb_2rx2tx.txt")
+        self.assertEqual(response.shape, (24 * 12, 4))
+
+        tap_rows = load_frequency_response(path=ROOT / "inputs" / "mimo_time_domain_taps_2rx2tx_8tap.txt")
+        self.assertEqual(tap_rows.shape, (8, 4))
 
     def test_load_yaml_with_utf8_bom_and_chinese_comments(self):
         with tempfile.TemporaryDirectory() as tmpdir:
