@@ -21,8 +21,8 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
             config: Full simulation configuration containing channel params.
 
         Returns:
-            One-dimensional complex response with shape ``(num_subcarriers,)``;
-            axis 0 is cell subcarrier index.
+            Complex response with shape ``(num_subcarriers,)`` for SISO or
+            ``(num_subcarriers, num_rx_ant, num_tx_ant)`` for MIMO.
         """
         params = config.channel.params
         frequency_response = load_frequency_response(
@@ -30,9 +30,9 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
             path=params.get("frequency_response_path"),
         )
         expected = config.carrier.n_subcarriers
-        if frequency_response.size != expected:
+        if frequency_response.shape[0] != expected:
             raise ValueError(
-                f"Frequency-response length ({frequency_response.size}) must equal cell-bandwidth subcarriers ({expected})."
+                f"Frequency-response first dimension ({frequency_response.shape[0]}) must equal cell-bandwidth subcarriers ({expected})."
             )
         return frequency_response
 
@@ -160,23 +160,68 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
         """Apply the configured frequency response directly on the slot grid.
 
         Args:
-            grid: SISO frequency-domain slot grid with shape
-                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index
-                and axis 1 is OFDM symbol index.
+            grid: Frequency-domain slot grid with shape
+                ``(num_subcarriers, num_symbols)`` for SISO/single-stream input or
+                ``(num_tx_ant, num_subcarriers, num_symbols)`` for explicit MIMO TX.
             config: Full simulation configuration with external frequency response.
 
         Returns:
-            Tuple of RX grid with the same shape as ``grid`` and channel metadata.
+            Tuple of RX grid with shape ``(num_subcarriers, num_symbols)`` for one
+            RX antenna or ``(num_rx_ant, num_subcarriers, num_symbols)`` for MIMO.
         """
-        self.require_siso(config)
-        if grid.ndim != 2:
-            raise ValueError("Frequency-domain direct channel expects a single-layer 2D resource grid.")
-
         frequency_response = self.load_frequency_response(config)
-        rx_grid = grid * frequency_response[:, np.newaxis]
+        channel_matrix = self._frequency_response_matrix(frequency_response, config)
+        tx_grid = self._tx_grid_matrix(grid, config)
+        rx_grid = np.einsum("krt,tks->rks", channel_matrix, tx_grid)
+        if rx_grid.shape[0] == 1:
+            rx_grid = rx_grid[0]
         rx_grid, noise_variance, snr_db = self.add_awgn(rx_grid, config)
         return rx_grid, {
             "noise_variance": noise_variance,
             "snr_db": snr_db,
             "frequency_response": frequency_response,
         }
+
+    @staticmethod
+    def _frequency_response_matrix(frequency_response: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Normalize external frequency response to ``(K, Nrx, Ntx)``."""
+        num_sc = int(config.carrier.n_subcarriers)
+        num_rx_ant = int(config.link.num_rx_ant)
+        num_tx_ant = int(config.link.num_tx_ant)
+        response = np.asarray(frequency_response, dtype=np.complex128)
+        if response.ndim == 1:
+            if num_rx_ant != 1 or num_tx_ant != 1:
+                raise ValueError(
+                    "MIMO EXTERNAL_FREQRESP_FD requires frequency_response shape "
+                    "(num_subcarriers, num_rx_ant, num_tx_ant)."
+                )
+            if response.shape[0] != num_sc:
+                raise ValueError(f"Frequency-response length must be {num_sc}.")
+            return response[:, np.newaxis, np.newaxis]
+        if response.ndim == 2 and response.shape == (num_sc, num_rx_ant * num_tx_ant):
+            return response.reshape(num_sc, num_rx_ant, num_tx_ant)
+        expected_shape = (num_sc, num_rx_ant, num_tx_ant)
+        if response.shape != expected_shape:
+            raise ValueError(
+                f"MIMO frequency_response shape must be {expected_shape} or "
+                f"({num_sc}, {num_rx_ant * num_tx_ant}), got {response.shape}."
+            )
+        return response
+
+    @staticmethod
+    def _tx_grid_matrix(grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Normalize TX grid to ``(Ntx, K, L)`` for frequency-domain MIMO."""
+        num_tx_ant = int(config.link.num_tx_ant)
+        tx_grid = np.asarray(grid, dtype=np.complex128)
+        if tx_grid.ndim == 2:
+            if num_tx_ant == 1:
+                return tx_grid[np.newaxis, ...]
+            return np.repeat(tx_grid[np.newaxis, ...], num_tx_ant, axis=0) / np.sqrt(num_tx_ant)
+        if tx_grid.ndim == 3:
+            if tx_grid.shape[0] != num_tx_ant:
+                raise ValueError(f"TX grid antenna dimension must be {num_tx_ant}, got {tx_grid.shape[0]}.")
+            return tx_grid
+        raise ValueError(
+            "Frequency-domain direct channel expects grid shape "
+            "(num_subcarriers, num_symbols) or (num_tx_ant, num_subcarriers, num_symbols)."
+        )

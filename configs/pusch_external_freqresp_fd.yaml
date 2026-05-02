@@ -14,8 +14,8 @@ channel:
   model: EXTERNAL_FREQRESP_FD   # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   params:
     snr_db: 25.0                # 加性白噪声信噪比，单位 dB
-    frequency_response_path: ../inputs/frequency_response_typical_24rb.txt  # 外部频域信道系数文本文件路径
-    frequency_response: null    # 若直接在 YAML 中给数组，则可填这里；与 frequency_response_path 二选一
+    frequency_response_path: ../inputs/frequency_response_typical_24rb.txt  # 外部频域信道系数文本文件路径；SISO为每行1个复数，MIMO可每行用分号写Nrx*Ntx个复数
+    frequency_response: null    # 若直接在 YAML 中给数组，则可填这里；SISO形状为(K)，MIMO形状为(K,Nrx,Ntx)
     time_domain_tap_length: null  # 仅 EXTERNAL_FREQRESP_TD 时使用；FD 直通模式下忽略
 
 # 数据扰码配置

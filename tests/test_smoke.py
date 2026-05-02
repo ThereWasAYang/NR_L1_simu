@@ -50,6 +50,7 @@ from nr_phy_simu.common.mcs import resolve_mcs
 from nr_phy_simu.channels.channel_factory import DefaultChannelFactory
 from nr_phy_simu.channels.tdl import TdlChannel
 from nr_phy_simu.channels.cdl import CdlChannel
+from nr_phy_simu.channels.external_frequency_response import ExternalFrequencyResponseFrequencyDomainChannel
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.scenarios.sweep import run_snr_sweep, write_snr_sweep_csv
@@ -195,6 +196,32 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.tx.waveform.size, 0)
         self.assertEqual(result.rx.rx_waveform.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
+
+    def test_external_frequency_response_frequency_domain_mimo_matrix_multiply(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.link.num_tx_ant = 2
+        config.link.num_rx_ant = 3
+        config.channel.params = {"add_noise": False}
+        num_sc = config.carrier.n_subcarriers
+        num_symbols = 4
+        frequency_response = np.zeros((num_sc, 3, 2), dtype=np.complex128)
+        frequency_response[:, 0, 0] = 1.0
+        frequency_response[:, 0, 1] = 2.0
+        frequency_response[:, 1, 0] = 0.5j
+        frequency_response[:, 1, 1] = -1.0
+        frequency_response[:, 2, 0] = 0.25
+        frequency_response[:, 2, 1] = 0.75j
+        config.channel.params["frequency_response"] = frequency_response
+        tx_grid = np.zeros((2, num_sc, num_symbols), dtype=np.complex128)
+        tx_grid[0] = 1.0 + 0.5j
+        tx_grid[1] = -0.25 + 2.0j
+
+        rx_grid, info = ExternalFrequencyResponseFrequencyDomainChannel().propagate_grid(tx_grid, config)
+        expected = np.einsum("krt,tks->rks", frequency_response, tx_grid)
+
+        self.assertEqual(rx_grid.shape, (3, num_sc, num_symbols))
+        self.assertTrue(np.allclose(rx_grid, expected))
+        self.assertEqual(info["noise_variance"], 0.0)
 
     def test_external_frequency_response_sample_config_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_external_freqresp_fd.yaml")
