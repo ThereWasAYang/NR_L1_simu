@@ -18,13 +18,19 @@ def load_frequency_response(
     """Load complex frequency-response coefficients from config values or a text file.
 
     Args:
-        values: In-memory coefficient list. Each element may be a complex number,
-            a real scalar, a string such as ``"1+0j"``, or a 2-item real/imag pair.
-        path: Optional text file path. Each non-empty line follows the same formats
-            accepted by :func:`_parse_complex_value`.
+        values: In-memory coefficient list. SISO input may be a one-dimensional
+            list of complex values or ``[real, imag]`` pairs. MIMO input may be a
+            nested array with shape ``(num_subcarriers, num_rx_ant, num_tx_ant)``,
+            where each leaf is a complex value or ``[real, imag]`` pair.
+        path: Optional text file path. For SISO, each non-empty line is one complex
+            coefficient. For MIMO, each line may contain a semicolon-separated flat
+            row of coefficients for one subcarrier, for example
+            ``h00;h01;h10;h11``.
 
     Returns:
-        One-dimensional complex frequency-response array.
+        Complex frequency-response tensor. SISO shape is ``(num_subcarriers,)``;
+        MIMO text-file flat rows have shape ``(num_subcarriers, num_rx_ant*num_tx_ant)``;
+        nested MIMO config values keep shape ``(num_subcarriers, num_rx_ant, num_tx_ant)``.
     """
     if values is None and path is None:
         raise ValueError("Either in-memory frequency_response values or frequency_response_path must be provided.")
@@ -32,18 +38,53 @@ def load_frequency_response(
     if path is not None:
         resolved = Path(path).expanduser().resolve()
         entries = [
-            _parse_complex_value(line)
+            _parse_complex_line(line)
             for line in resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING).splitlines()
             if line.strip()
         ]
     else:
         if not isinstance(values, (list, tuple, torch.Tensor)):
             raise ValueError("channel.params.frequency_response must be a sequence of complex coefficients.")
-        entries = [_parse_complex_value(item) for item in values]
+        entries = _parse_complex_array(values)
 
-    if not entries:
+    tensor = torch.as_tensor(entries, dtype=COMPLEX_DTYPE)
+    if tensor.numel() == 0:
         raise ValueError("Frequency-response input is empty.")
-    return torch.as_tensor(entries, dtype=COMPLEX_DTYPE).reshape(-1)
+    return tensor
+
+
+def _parse_complex_array(value: Any):
+    """Parse nested complex coefficient arrays while preserving dimensions."""
+    if _is_complex_pair(value):
+        return _parse_complex_value(value)
+    if isinstance(value, torch.Tensor):
+        if value.ndim == 0:
+            return _parse_complex_value(value.item())
+        return [_parse_complex_array(item) for item in value.detach().cpu().tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_parse_complex_array(item) for item in value]
+    return _parse_complex_value(value)
+
+
+def _parse_complex_line(line: str):
+    """Parse one SISO coefficient or one flat MIMO coefficient row from text."""
+    stripped = line.strip()
+    if ";" in stripped:
+        return [_parse_complex_value(part.strip()) for part in stripped.split(";") if part.strip()]
+    return _parse_complex_value(stripped)
+
+
+def _is_complex_pair(value: Any) -> bool:
+    """Return whether ``value`` is a scalar complex coefficient pair."""
+    if isinstance(value, torch.Tensor):
+        if value.ndim == 1 and value.numel() == 2 and not torch.is_complex(value):
+            return True
+        return False
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and all(isinstance(item, (int, float)) for item in value)
+    )
 
 
 def _parse_complex_value(value: Any) -> complex:

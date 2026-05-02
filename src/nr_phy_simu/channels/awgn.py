@@ -36,10 +36,16 @@ class AwgnChannel(ChannelModel):
     @staticmethod
     def _expand_receive_branches(waveform: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         """Replicate a single received stream across configured receive branches."""
-        if waveform.ndim == 2:
-            return waveform
-
         num_rx_ant = int(config.link.num_rx_ant)
-        if num_rx_ant <= 1:
+        if waveform.ndim == 1:
+            return waveform.unsqueeze(0).repeat(num_rx_ant, 1)
+        if waveform.ndim != 2:
+            raise ValueError("AWGN channel expects waveform shape (slot_samples,) or (num_ant, slot_samples).")
+        if waveform.shape[0] == num_rx_ant:
             return waveform
-        return waveform.unsqueeze(0).repeat(num_rx_ant, 1)
+        if waveform.shape[0] == 1:
+            return waveform.repeat(num_rx_ant, 1)
+        reference_stream = torch.sum(waveform, dim=0) / torch.sqrt(
+            torch.tensor(float(waveform.shape[0]), dtype=torch.float64, device=waveform.device)
+        )
+        return reference_stream.unsqueeze(0).repeat(num_rx_ant, 1)

@@ -87,7 +87,11 @@ class SharedChannelSimulation:
             )
             tx_payload = replace(
                 tx_payload,
-                waveform=torch.zeros(0, dtype=tx_payload.resource_grid.dtype, device=tx_payload.resource_grid.device),
+                waveform=torch.empty(
+                    (int(self.config.link.num_tx_ant), 0),
+                    dtype=tx_payload.resource_grid.dtype,
+                    device=tx_payload.resource_grid.device,
+                ),
             )
             return self._build_result(
                 tx_payload=tx_payload,

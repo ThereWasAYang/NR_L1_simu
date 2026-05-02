@@ -13,6 +13,18 @@ class OfdmProcessor(TimeDomainProcessor):
     def modulate(self, grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
         """Apply OFDM modulation and cyclic-prefix insertion."""
         grid = as_complex_tensor(grid)
+        if grid.ndim == 3:
+            return torch.stack([self._modulate_single(antenna_grid, config) for antenna_grid in grid], dim=0)
+        if grid.ndim != 2:
+            raise ValueError(
+                "OFDM modulation expects grid shape (num_subcarriers, num_symbols) "
+                "or (num_tx_ant, num_subcarriers, num_symbols)."
+            )
+
+        return self._modulate_single(grid, config).unsqueeze(0)
+
+    def _modulate_single(self, grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Modulate one transmit branch."""
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
         n_sc = config.carrier.n_subcarriers

@@ -14,6 +14,8 @@ from nr_phy_simu.common.interfaces import (
     FrequencyExtractor,
     MimoEqualizer,
     Modulator,
+    ReceiverDataProcessor,
+    ReceiverProcessor,
     ResourceMapper,
     TimeDomainProcessor,
 )
@@ -52,6 +54,8 @@ class ReceiverComponents:
     demodulator: Demodulator
     scrambler: BitScrambler
     decoder: ChannelDecoder
+    data_processor: ReceiverDataProcessor | None = None
+    receiver_processor: ReceiverProcessor | None = None
 
 
 @dataclass(frozen=True)
@@ -131,4 +135,6 @@ def build_receiver(components: SimulationComponents) -> Receiver:
         dmrs_generator=components.shared.dmrs_generator,
         scrambler=components.receiver.scrambler,
         layer_mapper=LayerMapper(),
+        data_processor=components.receiver.data_processor,
+        receiver_processor=components.receiver.receiver_processor,
     )

@@ -71,8 +71,6 @@ class FadingChannelBase(ChannelModel, ABC):
                     delayed = self._fractional_delay(tx_branch, delay_s * sample_rate_hz)
                     rx_waveform[rx_idx] += delayed * coefficients[rx_idx, tx_idx, path_idx, : tx_branch.numel()]
 
-        if num_rx_ant == 1:
-            return rx_waveform[0]
         return rx_waveform
 
     @staticmethod

@@ -14,8 +14,8 @@ channel:
   model: EXTERNAL_FREQRESP_FD   # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   params:
     snr_db: 25.0                # 加性白噪声信噪比，单位 dB
-    frequency_response_path: ../inputs/frequency_response_typical_24rb.txt  # 外部频域信道系数文本文件路径
-    frequency_response: null    # 若直接在 YAML 中给数组，则可填这里；与 frequency_response_path 二选一
+    frequency_response_path: ../inputs/siso_frequency_response_24rb_flat.txt  # 外部频域信道系数文本文件路径；SISO为每行1个复数，MIMO可每行用分号写Nrx*Ntx个复数
+    frequency_response: null    # 若直接在 YAML 中给数组，则可填这里；SISO形状为(K)，MIMO形状为(K,Nrx,Ntx)
     time_domain_tap_length: null  # 仅 EXTERNAL_FREQRESP_TD 时使用；FD 直通模式下忽略
 
 # 数据扰码配置
@@ -30,8 +30,8 @@ link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM；本用例示范 CP-OFDM 频域直通过信道
   num_layers: 1                 # 传输层数
-  num_tx_ant: 1                 # 发射天线数；外部频响模式当前要求 SISO
-  num_rx_ant: 1                 # 接收天线数；外部频响模式当前要求 SISO
+  num_tx_ant: 1                 # 发射天线数；EXTERNAL_FREQRESP_FD 支持 MIMO，EXTERNAL_FREQRESP_TD 当前仅支持 SISO
+  num_rx_ant: 1                 # 接收天线数；MIMO 文本文件每行需写 num_rx_ant*num_tx_ant 个复数
   prb_start: 4                  # 资源分配起始 PRB
   num_prbs: 16                  # 用户占用带宽，单位 PRB
   start_symbol: 0               # 时域起始 OFDM symbol

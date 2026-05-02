@@ -25,11 +25,11 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
             )
         )
         expected = config.carrier.n_subcarriers
-        if frequency_response.numel() != expected:
+        if frequency_response.shape[0] != expected:
             raise ValueError(
-                f"Frequency-response length ({frequency_response.numel()}) must equal cell-bandwidth subcarriers ({expected})."
+                f"Frequency-response first dimension ({frequency_response.shape[0]}) must equal cell-bandwidth subcarriers ({expected})."
             )
-        return frequency_response.reshape(-1)
+        return frequency_response
 
     @staticmethod
     def require_siso(config: SimulationConfig) -> None:
@@ -72,6 +72,32 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
         )
         return samples + noise, float(noise_variance), snr_db
 
+    @staticmethod
+    def _frequency_response_matrix(frequency_response: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Normalize external frequency response to ``(K, Nrx, Ntx)``."""
+        num_sc = int(config.carrier.n_subcarriers)
+        num_rx_ant = int(config.link.num_rx_ant)
+        num_tx_ant = int(config.link.num_tx_ant)
+        response = as_complex_tensor(frequency_response)
+        if response.ndim == 1:
+            if num_rx_ant != 1 or num_tx_ant != 1:
+                raise ValueError(
+                    "MIMO EXTERNAL_FREQRESP_FD requires frequency_response shape "
+                    "(num_subcarriers, num_rx_ant, num_tx_ant)."
+                )
+            if response.shape[0] != num_sc:
+                raise ValueError(f"Frequency-response length must be {num_sc}.")
+            return response[:, None, None]
+        if response.ndim == 2 and tuple(response.shape) == (num_sc, num_rx_ant * num_tx_ant):
+            return response.reshape(num_sc, num_rx_ant, num_tx_ant)
+        expected_shape = (num_sc, num_rx_ant, num_tx_ant)
+        if tuple(response.shape) != expected_shape:
+            raise ValueError(
+                f"MIMO frequency_response shape must be {expected_shape} or "
+                f"({num_sc}, {num_rx_ant * num_tx_ant}), got {tuple(response.shape)}."
+            )
+        return response
+
 
 class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
     """Time-domain channel built from an externally supplied frequency response."""
@@ -84,11 +110,15 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         """Convert external frequency response to FIR taps and filter the waveform."""
         self.require_siso(config)
         waveform = as_complex_tensor(waveform)
+        if waveform.ndim == 2 and waveform.shape[0] == 1:
+            waveform = waveform[0]
         if waveform.ndim != 1:
-            raise ValueError("External frequency-response time-domain channel expects a single TX waveform branch.")
+            raise ValueError("External frequency-response time-domain channel expects exactly one TX waveform branch.")
 
         frequency_response = self.load_frequency_response(config).to(device=waveform.device)
-        fft_response = self.full_fft_response(frequency_response, config)
+        channel_matrix = self._frequency_response_matrix(frequency_response, config)
+        siso_response = channel_matrix[:, 0, 0]
+        fft_response = self.full_fft_response(siso_response, config)
         impulse_response = torch.fft.ifft(torch.fft.ifftshift(fft_response))
         tap_length = int(config.channel.params.get("time_domain_tap_length", impulse_response.numel()))
         taps = impulse_response[:tap_length]
@@ -98,11 +128,12 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
             padding=taps.numel() - 1,
         ).reshape(-1)[: waveform.numel()]
         rx_waveform, noise_variance, snr_db = self.add_awgn(filtered, config)
+        rx_waveform = rx_waveform.unsqueeze(0)
         return rx_waveform, {
             "noise_variance": noise_variance,
             "snr_db": snr_db,
-            "frequency_response": frequency_response,
-            "time_domain_taps": taps,
+            "frequency_response": channel_matrix,
+            "time_domain_taps": taps.reshape(1, 1, -1),
         }
 
 
@@ -126,16 +157,33 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
         config: SimulationConfig,
     ) -> tuple[torch.Tensor, dict]:
         """Apply the configured frequency response directly on the slot grid."""
-        self.require_siso(config)
         grid = as_complex_tensor(grid)
-        if grid.ndim != 2:
-            raise ValueError("Frequency-domain direct channel expects a single-layer 2D resource grid.")
-
         frequency_response = self.load_frequency_response(config).to(device=grid.device)
-        rx_grid = grid * frequency_response[:, None]
+        channel_matrix = self._frequency_response_matrix(frequency_response, config)
+        tx_grid = self._tx_grid_matrix(grid, config)
+        rx_grid = torch.einsum("krt,tks->rks", channel_matrix, tx_grid)
         rx_grid, noise_variance, snr_db = self.add_awgn(rx_grid, config)
         return rx_grid, {
             "noise_variance": noise_variance,
             "snr_db": snr_db,
-            "frequency_response": frequency_response,
+            "frequency_response": channel_matrix,
         }
+
+    @staticmethod
+    def _tx_grid_matrix(grid: torch.Tensor, config: SimulationConfig) -> torch.Tensor:
+        """Normalize TX grid to ``(Ntx, K, L)`` for frequency-domain MIMO."""
+        num_tx_ant = int(config.link.num_tx_ant)
+        tx_grid = as_complex_tensor(grid)
+        if tx_grid.ndim == 2:
+            if num_tx_ant == 1:
+                return tx_grid.unsqueeze(0)
+            scale = torch.sqrt(torch.tensor(float(num_tx_ant), dtype=REAL_DTYPE, device=tx_grid.device))
+            return tx_grid.unsqueeze(0).repeat(num_tx_ant, 1, 1) / scale
+        if tx_grid.ndim == 3:
+            if tx_grid.shape[0] != num_tx_ant:
+                raise ValueError(f"TX grid antenna dimension must be {num_tx_ant}, got {tx_grid.shape[0]}.")
+            return tx_grid
+        raise ValueError(
+            "Frequency-domain direct channel expects grid shape "
+            "(num_subcarriers, num_symbols) or (num_tx_ant, num_subcarriers, num_symbols)."
+        )

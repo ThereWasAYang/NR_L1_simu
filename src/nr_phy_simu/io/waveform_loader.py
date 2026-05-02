@@ -34,7 +34,7 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> torch.Tens
         )
 
     waveform = torch.as_tensor(values, dtype=COMPLEX_DTYPE).reshape(num_rx_ant, num_samples)
-    return waveform[0] if num_rx_ant == 1 else waveform
+    return waveform
 
 
 def _parse_complex_line(line: str) -> complex:

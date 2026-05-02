@@ -69,7 +69,11 @@ class WaveformReplaySimulation:
             coded_bits=torch.zeros(0, dtype=BIT_DTYPE),
             tx_symbols=torch.zeros(0, dtype=COMPLEX_DTYPE),
             resource_grid=torch.zeros(
-                (self.config.carrier.n_subcarriers, self.config.carrier.symbols_per_slot),
+                (
+                    int(self.config.link.num_tx_ant),
+                    self.config.carrier.n_subcarriers,
+                    self.config.carrier.symbols_per_slot,
+                ),
                 dtype=COMPLEX_DTYPE,
             ),
             waveform=as_complex_tensor(waveform),
