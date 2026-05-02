@@ -178,6 +178,9 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         result = PuschSimulation(config).run()
         self.assertIs(result.crc_ok, True)
         self.assertEqual(result.bit_error_rate, 0.0)
+        self.assertEqual(result.tx.resource_grid.shape, (1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot))
+        self.assertEqual(result.tx.waveform.shape[0], 1)
+        self.assertEqual(result.rx.rx_waveform.shape[0], 1)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
 
     def test_external_frequency_response_frequency_domain_channel_smoke(self):
@@ -194,6 +197,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertIs(result.crc_ok, True)
         self.assertEqual(result.bit_error_rate, 0.0)
         self.assertEqual(result.tx.waveform.size, 0)
+        self.assertEqual(result.tx.waveform.shape, (1, 0))
+        self.assertEqual(result.rx.rx_waveform.shape, (1, 0))
         self.assertEqual(result.rx.rx_waveform.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
 
@@ -764,7 +769,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
         channel = DefaultChannelFactory().create(cfg)
         self.assertIsInstance(channel, TdlChannel)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, waveform.shape)
+        self.assertEqual(rx_waveform.shape, (1, waveform.size))
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
 
@@ -837,7 +842,7 @@ class SweepSmokeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             waveform_path = Path(tmpdir) / "capture.txt"
             waveform_path.write_text(
-                "\n".join(f"{sample.real:.12e} {sample.imag:.12e}" for sample in tx_payload.waveform)
+                "\n".join(f"{sample.real:.12e} {sample.imag:.12e}" for sample in tx_payload.waveform[0])
             )
             replay_cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
             replay_cfg.link.num_rx_ant = 1
@@ -856,7 +861,7 @@ class SweepSmokeTest(unittest.TestCase):
         channel = DefaultChannelFactory().create(cfg)
         self.assertIsInstance(channel, CdlChannel)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, waveform.shape)
+        self.assertEqual(rx_waveform.shape, (1, waveform.size))
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
 

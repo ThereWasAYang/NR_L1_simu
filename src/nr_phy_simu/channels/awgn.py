@@ -25,8 +25,8 @@ class AwgnChannel(ChannelModel):
 
         Returns:
             Tuple of ``(rx_waveform, channel_info)``. ``rx_waveform`` has shape
-            ``(slot_samples,)`` for one RX antenna or ``(num_rx_ant, slot_samples)``
-            for multiple RX antennas.
+            ``(num_rx_ant, slot_samples)`` for both SISO and MIMO. The receive
+            antenna axis is never omitted.
         """
         tx_waveform = self._expand_receive_branches(waveform, config)
         if not bool(config.channel.params.get("add_noise", True)):
@@ -52,13 +52,17 @@ class AwgnChannel(ChannelModel):
             config: Full simulation configuration that defines ``num_rx_ant``.
 
         Returns:
-            Waveform with shape ``(slot_samples,)`` when ``num_rx_ant == 1`` or
-            ``(num_rx_ant, slot_samples)`` otherwise.
+            Waveform with shape ``(num_rx_ant, slot_samples)``.
         """
-        if waveform.ndim == 2:
-            return waveform
-
         num_rx_ant = int(config.link.num_rx_ant)
-        if num_rx_ant <= 1:
-            return waveform
-        return np.repeat(waveform[np.newaxis, :], num_rx_ant, axis=0)
+        samples = np.asarray(waveform, dtype=np.complex128)
+        if samples.ndim == 1:
+            return np.repeat(samples[np.newaxis, :], num_rx_ant, axis=0)
+        if samples.ndim != 2:
+            raise ValueError("AWGN channel expects waveform shape (slot_samples,) or (num_ant, slot_samples).")
+        if samples.shape[0] == num_rx_ant:
+            return samples
+        if samples.shape[0] == 1:
+            return np.repeat(samples, num_rx_ant, axis=0)
+        reference_stream = np.sum(samples, axis=0) / np.sqrt(samples.shape[0])
+        return np.repeat(reference_stream[np.newaxis, :], num_rx_ant, axis=0)

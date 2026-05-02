@@ -64,8 +64,15 @@ class DefaultReceiverProcessor(ReceiverProcessor):
         descrambled_llrs = receiver.scrambler.descramble_llrs(processing.llrs, config)
         decoded_bits = receiver.decoder.decode(descrambled_llrs, config)
         crc_ok = getattr(receiver.decoder, "last_crc_ok", None)
+        rx_waveform_out = (
+            np.empty((int(config.link.num_rx_ant), 0), dtype=np.complex128)
+            if rx_waveform is None
+            else np.asarray(rx_waveform, dtype=np.complex128)
+        )
+        if rx_waveform_out.ndim == 1:
+            rx_waveform_out = rx_waveform_out[np.newaxis, :]
         return RxPayload(
-            rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
+            rx_waveform=rx_waveform_out,
             rx_grid=rx_grid,
             channel_estimation=channel_estimation,
             equalized_symbols=processing.equalized_symbols,

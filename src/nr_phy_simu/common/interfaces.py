@@ -156,12 +156,13 @@ class TimeDomainProcessor(ABC):
 
         Args:
             grid: Frequency-domain resource grid with shape
-                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index,
-                axis 1 is OFDM symbol index.
+                ``(num_tx_ant, num_subcarriers, num_symbols)``; axes are TX antenna,
+                cell subcarrier index, and OFDM symbol index. Legacy single-branch
+                implementations may also accept ``(num_subcarriers, num_symbols)``.
             config: Full simulation configuration that defines OFDM numerology.
 
         Returns:
-            Time-domain waveform for transmission.
+            Time-domain waveform with shape ``(num_tx_ant, slot_samples)``.
         """
         raise NotImplementedError
 
@@ -170,12 +171,13 @@ class TimeDomainProcessor(ABC):
         """Convert time-domain waveform samples back into a frequency-domain grid.
 
         Args:
-            waveform: Time-domain waveform with shape ``(slot_samples,)`` or
-                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: Time-domain waveform with shape ``(num_rx_ant, slot_samples)``;
+                legacy callers may pass ``(slot_samples,)`` for a single branch.
             config: Full simulation configuration that defines OFDM numerology.
 
         Returns:
-            Frequency-domain grid, keeping the receive-antenna dimension when present.
+            Frequency-domain grid with shape
+            ``(num_rx_ant, num_subcarriers, num_symbols)``.
         """
         raise NotImplementedError
 
@@ -190,12 +192,13 @@ class ChannelModel(ABC):
         """Propagate a transmit waveform through the configured channel model.
 
         Args:
-            waveform: Time-domain waveform with shape ``(slot_samples,)`` or
-                ``(num_tx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: Time-domain waveform with shape ``(num_tx_ant, slot_samples)``;
+                legacy callers may pass ``(slot_samples,)`` for a single branch.
             config: Full simulation configuration that defines channel settings.
 
         Returns:
-            Tuple of ``(rx_waveform, channel_state)`` where ``channel_state`` stores
+            Tuple of ``(rx_waveform, channel_state)`` where ``rx_waveform`` has
+            shape ``(num_rx_ant, slot_samples)`` and ``channel_state`` stores
             implementation-specific metadata such as tap coefficients or noise power.
         """
         raise NotImplementedError
@@ -348,8 +351,7 @@ class ReceiverProcessor(ABC):
             receiver: Receiver instance that owns configured submodules. Custom
                 processors may reuse any subset, such as ``time_processor``,
                 ``scrambler`` or ``decoder``.
-            rx_waveform: Time-domain waveform with shape ``(slot_samples,)`` or
-                ``(num_rx_ant, slot_samples)``.
+            rx_waveform: Time-domain waveform with shape ``(num_rx_ant, slot_samples)``.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
             dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
@@ -379,7 +381,6 @@ class ReceiverProcessor(ABC):
         Args:
             receiver: Receiver instance that owns configured submodules.
             rx_grid: Frequency-domain grid with shape
-                ``(num_subcarriers, num_symbols)`` or
                 ``(num_rx_ant, num_subcarriers, num_symbols)``.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.

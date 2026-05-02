@@ -115,7 +115,7 @@ class SharedChannelSimulation:
                 harq_retransmission=harq_retransmission,
             )
 
-        tx_payload = replace(tx_payload, waveform=np.asarray([], dtype=np.complex128))
+        tx_payload = replace(tx_payload, waveform=np.empty((int(self.config.link.num_tx_ant), 0), dtype=np.complex128))
         return self._build_result(
             tx_payload=tx_payload,
             rx_payload=rx_payload,

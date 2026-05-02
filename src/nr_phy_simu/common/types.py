@@ -30,8 +30,8 @@ class TxPayload:
         ``transport_block``: ``(tbs_bits,)``.
         ``coded_bits``: ``(coded_bit_capacity,)``.
         ``tx_symbols``: ``(num_data_symbols,)``.
-        ``resource_grid``: ``(num_subcarriers, num_symbols)``.
-        ``waveform``: ``(slot_samples,)`` or ``(num_tx_ant, slot_samples)``.
+        ``resource_grid``: ``(num_tx_ant, num_subcarriers, num_symbols)``.
+        ``waveform``: ``(num_tx_ant, slot_samples)``.
         ``dmrs_symbols``: ``(num_dmrs_re,)``.
         ``dmrs_mask`` and ``data_mask``: ``(num_subcarriers, num_symbols)``.
     """
@@ -114,7 +114,7 @@ class RxPayload:
     """Receiver-side buffers for one TTI.
 
     Shape conventions:
-        ``rx_waveform``: ``(slot_samples,)`` or ``(num_rx_ant, slot_samples)``.
+        ``rx_waveform``: ``(num_rx_ant, slot_samples)``.
         ``rx_grid``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
         ``equalized_symbols``: ``(num_data_symbols,)``.
         ``llrs``: ``(coded_bit_capacity,)``.

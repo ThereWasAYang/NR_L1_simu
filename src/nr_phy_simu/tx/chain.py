@@ -53,17 +53,41 @@ class Transmitter:
         tx_symbols = self.modulator.map_bits(scrambled_bits, config)
         layer_mapping = self.layer_mapper.map_symbols(tx_symbols, config.link.num_layers)
         grid, dmrs_mask, data_mask, dmrs_symbols = self.mapper.map_to_grid(layer_mapping.serialized_symbols, config)
+        grid = self._expand_tx_grid(grid, config)
         return TxPayload(
             transport_block=transport_block,
             coded_bits=coded_bits,
             tx_symbols=tx_symbols,
             resource_grid=grid,
-            waveform=np.array([], dtype=np.complex128),
+            waveform=np.empty((int(config.link.num_tx_ant), 0), dtype=np.complex128),
             dmrs_symbols=dmrs_symbols,
             dmrs_mask=dmrs_mask,
             data_mask=data_mask,
             layer_symbols=layer_mapping.layer_symbols,
         )
+
+    @staticmethod
+    def _expand_tx_grid(grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Add an explicit transmit-antenna axis to the mapped resource grid.
+
+        Args:
+            grid: Legacy mapper output with shape ``(num_subcarriers, num_symbols)``.
+            config: Full simulation configuration that defines ``num_tx_ant``.
+
+        Returns:
+            TX resource grid with shape ``(num_tx_ant, num_subcarriers, num_symbols)``.
+            Until a true precoder is introduced, multiple TX antennas carry the
+            same scheduled grid with total power preserved by ``1/sqrt(num_tx_ant)``.
+        """
+        tx_grid = np.asarray(grid, dtype=np.complex128)
+        if tx_grid.ndim == 3:
+            return tx_grid
+        if tx_grid.ndim != 2:
+            raise ValueError("TX resource grid must have shape (num_subcarriers, num_symbols).")
+        num_tx_ant = int(config.link.num_tx_ant)
+        if num_tx_ant <= 1:
+            return tx_grid[np.newaxis, ...]
+        return np.repeat(tx_grid[np.newaxis, ...], num_tx_ant, axis=0) / np.sqrt(num_tx_ant)
 
     def transmit(self, transport_block: np.ndarray, config: SimulationConfig) -> TxPayload:
         """Run the complete transmit chain for one slot.

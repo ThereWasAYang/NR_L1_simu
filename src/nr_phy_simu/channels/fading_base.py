@@ -29,8 +29,8 @@ class FadingChannelBase(ChannelModel, ABC):
 
         Returns:
             Tuple of ``(rx_waveform, channel_info)``. ``rx_waveform`` has shape
-            ``(slot_samples,)`` for one RX antenna or ``(num_rx_ant, slot_samples)``
-            for multiple RX antennas. ``channel_info["path_coefficients"]`` has
+            ``(num_rx_ant, slot_samples)`` for both SISO and MIMO.
+            ``channel_info["path_coefficients"]`` has
             shape ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
         """
         tx_waveform = self._expand_tx_branches(waveform, config)
@@ -91,8 +91,8 @@ class FadingChannelBase(ChannelModel, ABC):
             sample_rate_hz: Baseband sample rate used to convert delay to samples.
 
         Returns:
-            RX waveform with shape ``(slot_samples,)`` for one RX antenna or
-            ``(num_rx_ant, slot_samples)`` for multiple RX antennas.
+            RX waveform with shape ``(num_rx_ant, slot_samples)``. The receive
+            antenna axis is never omitted, including SISO.
         """
         num_rx_ant, num_tx_ant, _, _ = coefficients.shape
         rx_waveform = np.zeros((num_rx_ant, tx_waveform.shape[-1]), dtype=np.complex128)
@@ -104,8 +104,6 @@ class FadingChannelBase(ChannelModel, ABC):
                     delayed = self._fractional_delay(tx_branch, delay_s * sample_rate_hz)
                     rx_waveform[rx_idx] += delayed * coefficients[rx_idx, tx_idx, path_idx, : tx_branch.size]
 
-        if num_rx_ant == 1:
-            return rx_waveform[0]
         return rx_waveform
 
     @staticmethod
@@ -220,8 +218,8 @@ class FadingChannelBase(ChannelModel, ABC):
         """Add AWGN to a time-domain RX waveform.
 
         Args:
-            waveform: RX waveform with shape ``(slot_samples,)`` or
-                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: RX waveform with shape ``(num_rx_ant, slot_samples)``; axis
+                0 is RX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that provides SNR.
 
         Returns:

@@ -34,6 +34,18 @@
 
 因此，这个版本更适合作为“工程基础框架 + 可扩展参考实现”，而不是“已完成全部 R18 细节校准的协议级金模型”。协议严格化工作已经在结构上预留好了接入点。
 
+## 信号维度约定
+
+所有信号流数组都必须保留天线、流等物理维度，不能因为 `SISO`、单天线或单流场景省略维度，避免二次开发时误解各轴含义。
+
+- 发射频域网格：`(num_tx_ant, num_subcarriers, num_symbols)`，`SISO` 时为 `(1, num_subcarriers, num_symbols)`。
+- 发射时域波形：`(num_tx_ant, slot_samples)`，`SISO` 时为 `(1, slot_samples)`。
+- 接收时域波形：`(num_rx_ant, slot_samples)`，`SISO` 时为 `(1, slot_samples)`。
+- 接收频域网格：`(num_rx_ant, num_subcarriers, num_symbols)`，`SISO` 时为 `(1, num_subcarriers, num_symbols)`。
+- 频域 MIMO 信道系数：`(num_subcarriers, num_rx_ant, num_tx_ant)`，`SISO` 时为 `(num_subcarriers, 1, 1)`。
+
+部分底层函数仍会兼容旧的一维/二维输入，便于单元测试和外部脚本迁移；但主链路模块的输出必须遵守上述固定维度。
+
 ## 目录结构
 
 ```text

@@ -14,13 +14,36 @@ class OfdmProcessor(TimeDomainProcessor):
 
         Args:
             grid: Frequency-domain slot grid with shape
-                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index,
-                axis 1 is OFDM symbol index.
+                ``(num_subcarriers, num_symbols)`` for legacy single-branch input
+                or ``(num_tx_ant, num_subcarriers, num_symbols)``; axes are TX
+                antenna, cell subcarrier index, and OFDM symbol index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
-            Serialized time-domain waveform with shape ``(slot_samples,)``; axis 0
-            is time-sample index after CP insertion.
+            Serialized time-domain waveform with shape ``(num_tx_ant, slot_samples)``;
+            axis 0 is TX antenna and axis 1 is time-sample index after CP insertion.
+        """
+        grid = np.asarray(grid, dtype=np.complex128)
+        if grid.ndim == 3:
+            return np.stack([self._modulate_single(antenna_grid, config) for antenna_grid in grid], axis=0)
+        if grid.ndim != 2:
+            raise ValueError(
+                "OFDM modulation expects grid shape (num_subcarriers, num_symbols) "
+                "or (num_tx_ant, num_subcarriers, num_symbols)."
+            )
+        single = self._modulate_single(grid, config)
+        return single[np.newaxis, :]
+
+    def _modulate_single(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Modulate one transmit branch.
+
+        Args:
+            grid: Single-antenna frequency-domain grid with shape
+                ``(num_subcarriers, num_symbols)``.
+            config: Full simulation configuration that defines FFT size and CP lengths.
+
+        Returns:
+            Serialized time-domain waveform with shape ``(slot_samples,)``.
         """
         fft_size = config.carrier.fft_size_effective
         cp_lengths = config.carrier.cyclic_prefix_lengths
@@ -44,9 +67,9 @@ class OfdmProcessor(TimeDomainProcessor):
         """Apply cyclic-prefix removal and FFT demodulation.
 
         Args:
-            waveform: Time-domain waveform with shape ``(slot_samples,)`` for SISO
-                or ``(num_rx_ant, slot_samples)`` for multiple RX branches; axis 0
-                is RX antenna when present, last axis is time-sample index.
+            waveform: Time-domain waveform with shape ``(slot_samples,)`` for
+                legacy single-branch input or ``(num_rx_ant, slot_samples)``; axis
+                0 is RX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:

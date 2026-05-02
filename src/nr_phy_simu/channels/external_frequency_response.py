@@ -93,6 +93,32 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
         )
         return samples + noise, float(noise_variance), snr_db
 
+    @staticmethod
+    def _frequency_response_matrix(frequency_response: np.ndarray, config: SimulationConfig) -> np.ndarray:
+        """Normalize external frequency response to ``(K, Nrx, Ntx)``."""
+        num_sc = int(config.carrier.n_subcarriers)
+        num_rx_ant = int(config.link.num_rx_ant)
+        num_tx_ant = int(config.link.num_tx_ant)
+        response = np.asarray(frequency_response, dtype=np.complex128)
+        if response.ndim == 1:
+            if num_rx_ant != 1 or num_tx_ant != 1:
+                raise ValueError(
+                    "MIMO EXTERNAL_FREQRESP_FD requires frequency_response shape "
+                    "(num_subcarriers, num_rx_ant, num_tx_ant)."
+                )
+            if response.shape[0] != num_sc:
+                raise ValueError(f"Frequency-response length must be {num_sc}.")
+            return response[:, np.newaxis, np.newaxis]
+        if response.ndim == 2 and response.shape == (num_sc, num_rx_ant * num_tx_ant):
+            return response.reshape(num_sc, num_rx_ant, num_tx_ant)
+        expected_shape = (num_sc, num_rx_ant, num_tx_ant)
+        if response.shape != expected_shape:
+            raise ValueError(
+                f"MIMO frequency_response shape must be {expected_shape} or "
+                f"({num_sc}, {num_rx_ant * num_tx_ant}), got {response.shape}."
+            )
+        return response
+
 
 class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
     """Time-domain channel built from an externally supplied frequency response."""
@@ -105,28 +131,34 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         """Convert external frequency response to FIR taps and filter the waveform.
 
         Args:
-            waveform: One-dimensional SISO TX waveform with shape ``(slot_samples,)``.
+            waveform: SISO TX waveform with shape ``(slot_samples,)`` for legacy
+                input or ``(1, slot_samples)`` with an explicit TX antenna axis.
             config: Full simulation configuration with external frequency response.
 
         Returns:
-            Tuple of RX waveform with shape ``(slot_samples,)`` and channel metadata.
+            Tuple of RX waveform with shape ``(1, slot_samples)`` and channel metadata.
         """
         self.require_siso(config)
-        if waveform.ndim != 1:
-            raise ValueError("External frequency-response time-domain channel expects a single TX waveform branch.")
+        tx_waveform = np.asarray(waveform, dtype=np.complex128)
+        if tx_waveform.ndim == 2 and tx_waveform.shape[0] == 1:
+            tx_waveform = tx_waveform[0]
+        if tx_waveform.ndim != 1:
+            raise ValueError("External frequency-response time-domain channel expects exactly one TX waveform branch.")
 
         frequency_response = self.load_frequency_response(config)
         fft_response = self.full_fft_response(frequency_response, config)
         impulse_response = np.fft.ifft(np.fft.ifftshift(fft_response))
         tap_length = int(config.channel.params.get("time_domain_tap_length", impulse_response.size))
         taps = impulse_response[:tap_length]
-        filtered = fftconvolve(waveform, taps, mode="full")[: waveform.size]
+        filtered = fftconvolve(tx_waveform, taps, mode="full")[: tx_waveform.size]
         rx_waveform, noise_variance, snr_db = self.add_awgn(filtered, config)
+        rx_waveform = rx_waveform[np.newaxis, :]
+        channel_matrix = self._frequency_response_matrix(frequency_response, config)
         return rx_waveform, {
             "noise_variance": noise_variance,
             "snr_db": snr_db,
-            "frequency_response": frequency_response,
-            "time_domain_taps": taps,
+            "frequency_response": channel_matrix,
+            "time_domain_taps": taps[np.newaxis, np.newaxis, :],
         }
 
 
@@ -166,47 +198,20 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
             config: Full simulation configuration with external frequency response.
 
         Returns:
-            Tuple of RX grid with shape ``(num_subcarriers, num_symbols)`` for one
-            RX antenna or ``(num_rx_ant, num_subcarriers, num_symbols)`` for MIMO.
+            Tuple of RX grid with shape
+            ``(num_rx_ant, num_subcarriers, num_symbols)``. The receive antenna
+            axis is never omitted, including SISO.
         """
         frequency_response = self.load_frequency_response(config)
         channel_matrix = self._frequency_response_matrix(frequency_response, config)
         tx_grid = self._tx_grid_matrix(grid, config)
         rx_grid = np.einsum("krt,tks->rks", channel_matrix, tx_grid)
-        if rx_grid.shape[0] == 1:
-            rx_grid = rx_grid[0]
         rx_grid, noise_variance, snr_db = self.add_awgn(rx_grid, config)
         return rx_grid, {
             "noise_variance": noise_variance,
             "snr_db": snr_db,
-            "frequency_response": frequency_response,
+            "frequency_response": channel_matrix,
         }
-
-    @staticmethod
-    def _frequency_response_matrix(frequency_response: np.ndarray, config: SimulationConfig) -> np.ndarray:
-        """Normalize external frequency response to ``(K, Nrx, Ntx)``."""
-        num_sc = int(config.carrier.n_subcarriers)
-        num_rx_ant = int(config.link.num_rx_ant)
-        num_tx_ant = int(config.link.num_tx_ant)
-        response = np.asarray(frequency_response, dtype=np.complex128)
-        if response.ndim == 1:
-            if num_rx_ant != 1 or num_tx_ant != 1:
-                raise ValueError(
-                    "MIMO EXTERNAL_FREQRESP_FD requires frequency_response shape "
-                    "(num_subcarriers, num_rx_ant, num_tx_ant)."
-                )
-            if response.shape[0] != num_sc:
-                raise ValueError(f"Frequency-response length must be {num_sc}.")
-            return response[:, np.newaxis, np.newaxis]
-        if response.ndim == 2 and response.shape == (num_sc, num_rx_ant * num_tx_ant):
-            return response.reshape(num_sc, num_rx_ant, num_tx_ant)
-        expected_shape = (num_sc, num_rx_ant, num_tx_ant)
-        if response.shape != expected_shape:
-            raise ValueError(
-                f"MIMO frequency_response shape must be {expected_shape} or "
-                f"({num_sc}, {num_rx_ant * num_tx_ant}), got {response.shape}."
-            )
-        return response
 
     @staticmethod
     def _tx_grid_matrix(grid: np.ndarray, config: SimulationConfig) -> np.ndarray:

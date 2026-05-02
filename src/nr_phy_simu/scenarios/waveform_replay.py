@@ -45,8 +45,8 @@ class WaveformReplaySimulation:
 
         Returns:
             Simulation result. TX arrays are placeholders; ``rx.rx_waveform`` has
-            shape ``(slot_samples,)`` or ``(num_rx_ant, slot_samples)`` from the
-            input file, and receiver arrays follow normal RX shape conventions.
+            shape ``(num_rx_ant, slot_samples)`` from the input file, and receiver
+            arrays follow normal RX shape conventions.
         """
         self.runtime_context.clear()
         set_runtime_context(self.runtime_context)
@@ -77,7 +77,14 @@ class WaveformReplaySimulation:
             transport_block=np.array([], dtype=np.int8),
             coded_bits=np.array([], dtype=np.int8),
             tx_symbols=np.array([], dtype=np.complex128),
-            resource_grid=np.zeros((self.config.carrier.n_subcarriers, self.config.carrier.symbols_per_slot), dtype=np.complex128),
+            resource_grid=np.zeros(
+                (
+                    int(self.config.link.num_tx_ant),
+                    self.config.carrier.n_subcarriers,
+                    self.config.carrier.symbols_per_slot,
+                ),
+                dtype=np.complex128,
+            ),
             waveform=np.asarray(waveform, dtype=np.complex128),
             dmrs_symbols=dmrs_symbols,
             dmrs_mask=dmrs_mask,
@@ -114,8 +121,8 @@ class WaveformReplaySimulation:
         """Resolve replay-mode noise variance.
 
         Args:
-            waveform: Captured waveform with shape ``(slot_samples,)`` or
-                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: Captured waveform with shape ``(num_rx_ant, slot_samples)``;
+                axis 0 is RX antenna and axis 1 is time-sample index.
 
         Returns:
             Scalar noise variance used by equalizer and demodulator.

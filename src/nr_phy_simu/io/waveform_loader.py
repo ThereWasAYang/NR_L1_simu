@@ -19,9 +19,8 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
             expected TTI sample count.
 
     Returns:
-        Complex waveform with shape ``(slot_samples,)`` for one RX antenna or
-        ``(num_rx_ant, slot_samples)`` for multiple RX antennas. Axis 0 is RX
-        antenna when present, last axis is time-sample index.
+        Complex waveform with shape ``(num_rx_ant, slot_samples)``. Axis 0 is RX
+        antenna and axis 1 is time-sample index; the antenna axis is never omitted.
     """
     resolved = Path(path).expanduser().resolve()
     values = [
@@ -46,7 +45,7 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
         )
 
     waveform = np.asarray(values, dtype=np.complex128).reshape(num_rx_ant, num_samples)
-    return waveform[0] if num_rx_ant == 1 else waveform
+    return waveform
 
 
 def _parse_complex_line(line: str) -> complex:
