@@ -30,8 +30,8 @@ link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM；本用例示范 CP-OFDM 频域直通过信道
   num_layers: 1                 # 传输层数
-  num_tx_ant: 1                 # 发射天线数；外部频响模式当前要求 SISO
-  num_rx_ant: 1                 # 接收天线数；外部频响模式当前要求 SISO
+  num_tx_ant: 1                 # 发射天线数；EXTERNAL_FREQRESP_FD 支持 MIMO，EXTERNAL_FREQRESP_TD 当前仅支持 SISO
+  num_rx_ant: 1                 # 接收天线数；MIMO 文本文件每行需写 num_rx_ant*num_tx_ant 个复数
   prb_start: 4                  # 资源分配起始 PRB
   num_prbs: 16                  # 用户占用带宽，单位 PRB
   start_symbol: 0               # 时域起始 OFDM symbol

@@ -185,6 +185,7 @@ context.add_plot_artifact(
 - [configs/pusch_awgn_multi_tti.yaml](configs/pusch_awgn_multi_tti.yaml)
 - [configs/pusch_dfts_awgn.yaml](configs/pusch_dfts_awgn.yaml)
 - [configs/pdsch_awgn.yaml](configs/pdsch_awgn.yaml)
+- [configs/pusch_external_freqresp_fd.yaml](configs/pusch_external_freqresp_fd.yaml)
 - [configs/pusch_replay_template.yaml](configs/pusch_replay_template.yaml)
 - [inputs/pusch_capture.txt](inputs/pusch_capture.txt)
 
@@ -217,6 +218,161 @@ context.add_plot_artifact(
 - `waveform_input.waveform_path`
 - `waveform_input.num_samples_per_tti`
 - `waveform_input.noise_variance`
+
+### 外部频域信道系数
+
+工程支持从配置或文本文件输入每子载波频域信道系数。对应信道类型为：
+
+- `EXTERNAL_FREQRESP_FD`：频域直通过信道，跳过发端 OFDM 调制和收端 OFDM 解调，直接对频域资源栅格做 `Y[k,l] = H[k] X[k,l] + N[k,l]`。
+- `EXTERNAL_FREQRESP_TD`：先把外部频域响应 IFFT 成时域 FIR tap，再对时域波形滤波。当前该模式仅支持 `SISO`。
+
+配置入口位于 `channel.params`：
+
+- `frequency_response_path`：外部信道系数文本文件路径。
+- `frequency_response`：直接写在 YAML/JSON/XML 中的信道系数数组。
+- `time_domain_tap_length`：仅 `EXTERNAL_FREQRESP_TD` 使用，表示从 IFFT 后的 impulse response 中截取多少个时域 tap；`null` 表示保留完整 IFFT 长度。
+
+无论从文件还是从配置数组读取，子载波维度长度都必须等于小区带宽子载波数：
+
+```text
+num_subcarriers = carrier.cell_bandwidth_rbs * 12
+```
+
+例如 `cell_bandwidth_rbs: 24` 时，文件必须有 `288` 行，每行对应一个小区带宽内的子载波。
+
+#### 子载波顺序
+
+文件第 `0` 行对应资源栅格的 `subcarrier index = 0`，第 `1` 行对应 `subcarrier index = 1`，依次递增，直到 `num_subcarriers - 1`。
+
+这里的索引是工程内部 cell-band active subcarrier 的顺序，不需要在文件里写 FFT 负频率/正频率的移位顺序，也不需要包含保护子载波。外部系数只覆盖小区带宽内的 active subcarriers。
+
+#### SISO 文本文件格式
+
+`SISO` 时，虽然主链路内部统一使用 `(num_subcarriers, 1, 1)`，但文本文件可以简写为“每行一个复数”。每行就是当前子载波上的标量信道系数 `H[k, rx0, tx0]`。
+
+支持的复数写法包括：
+
+```text
+1.0 0.0
+0.98 -0.05
+0.92+0.12j
+0.87,-0.18
+```
+
+等价含义为：
+
+```text
+第0个子载波: H[0,0,0] = 1.0 + 0.0j
+第1个子载波: H[1,0,0] = 0.98 - 0.05j
+第2个子载波: H[2,0,0] = 0.92 + 0.12j
+第3个子载波: H[3,0,0] = 0.87 - 0.18j
+```
+
+#### MIMO 文本文件格式
+
+`MIMO` 时，每一行仍然对应一个子载波，但这一行需要写出该子载波上完整的 `Nrx x Ntx` 信道矩阵。当前文本格式使用分号 `;` 分隔矩阵元素，并按“先 RX、后 TX”的行优先顺序展开：
+
+```text
+H[k,rx0,tx0]; H[k,rx0,tx1]; ...; H[k,rx1,tx0]; H[k,rx1,tx1]; ...
+```
+
+也就是说，每行元素个数必须等于：
+
+```text
+num_rx_ant * num_tx_ant
+```
+
+例如 `num_rx_ant = 2`、`num_tx_ant = 2` 时，每行写 `4` 个复数：
+
+```text
+h00; h01; h10; h11
+```
+
+对应矩阵为：
+
+```text
+H[k] = [[h00, h01],
+        [h10, h11]]
+```
+
+一个具体例子：
+
+```text
+1.0+0.0j; 0.2+0.1j; -0.1+0.05j; 0.9-0.2j
+0.98-0.02j; 0.22+0.08j; -0.12+0.04j; 0.88-0.18j
+```
+
+含义为：
+
+```text
+第0个子载波:
+  H[0,0,0] = 1.0+0.0j
+  H[0,0,1] = 0.2+0.1j
+  H[0,1,0] = -0.1+0.05j
+  H[0,1,1] = 0.9-0.2j
+
+第1个子载波:
+  H[1,0,0] = 0.98-0.02j
+  H[1,0,1] = 0.22+0.08j
+  H[1,1,0] = -0.12+0.04j
+  H[1,1,1] = 0.88-0.18j
+```
+
+如果是 `num_rx_ant = 4`、`num_tx_ant = 2`，则每行必须写 `8` 个复数，顺序为：
+
+```text
+H[k,0,0]; H[k,0,1]; H[k,1,0]; H[k,1,1]; H[k,2,0]; H[k,2,1]; H[k,3,0]; H[k,3,1]
+```
+
+#### 在 YAML 中直接配置
+
+也可以不使用文本文件，直接在 `frequency_response` 中写数组。
+
+`SISO` 可以写成长度为 `num_subcarriers` 的数组，每个元素可以是 `[real, imag]`：
+
+```yaml
+channel:
+  model: EXTERNAL_FREQRESP_FD
+  params:
+    add_noise: false
+    frequency_response_path: null
+    frequency_response:
+      - [1.0, 0.0]
+      - [0.98, -0.05]
+      - [0.92, 0.12]
+```
+
+`MIMO` 推荐写成形状为 `(num_subcarriers, num_rx_ant, num_tx_ant)` 的三维数组：
+
+```yaml
+channel:
+  model: EXTERNAL_FREQRESP_FD
+  params:
+    add_noise: false
+    frequency_response_path: null
+    frequency_response:
+      - # subcarrier 0
+        - [[1.0, 0.0], [0.2, 0.1]]
+        - [[-0.1, 0.05], [0.9, -0.2]]
+      - # subcarrier 1
+        - [[0.98, -0.02], [0.22, 0.08]]
+        - [[-0.12, 0.04], [0.88, -0.18]]
+```
+
+其中每个 `[real, imag]` 表示一个复数系数。上述例子的第一层是子载波，第二层是 RX 天线，第三层是 TX 天线。
+
+#### 典型用例
+
+仓库中已有一个可运行示例：
+
+- 配置文件：[configs/pusch_external_freqresp_fd.yaml](configs/pusch_external_freqresp_fd.yaml)
+- 信道系数文件：[inputs/frequency_response_typical_24rb.txt](inputs/frequency_response_typical_24rb.txt)
+
+运行方式：
+
+```bash
+python examples/run_from_config.py configs/pusch_external_freqresp_fd.yaml
+```
 
 对于 `TDL/CDL`，当前已支持的典型信道参数包括：
 
