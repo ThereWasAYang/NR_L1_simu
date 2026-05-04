@@ -120,6 +120,10 @@ python examples\run_from_config.py configs\pusch_awgn.yaml
 
 如果你在 Windows 上仍然遇到中文方框或乱码，通常说明系统缺少上述字体之一；优先建议安装或启用 `Microsoft YaHei`。
 
+如果你希望先从整体上理解系统设计、模块职责、数据维度约定和主要函数调用链，建议先阅读：
+
+- [docs/system_design.md](docs/system_design.md)
+
 绘图调用链和如何新增绘图节点的开发说明见：
 
 - [docs/plotting_development.md](docs/plotting_development.md)
