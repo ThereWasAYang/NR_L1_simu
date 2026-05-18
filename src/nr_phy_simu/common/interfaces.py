@@ -157,8 +157,7 @@ class TimeDomainProcessor(ABC):
         Args:
             grid: Frequency-domain resource grid with shape
                 ``(num_tx_ant, num_subcarriers, num_symbols)``; axes are TX antenna,
-                cell subcarrier index, and OFDM symbol index. Legacy single-branch
-                implementations may also accept ``(num_subcarriers, num_symbols)``.
+                cell subcarrier index, and OFDM symbol index.
             config: Full simulation configuration that defines OFDM numerology.
 
         Returns:
@@ -172,7 +171,7 @@ class TimeDomainProcessor(ABC):
 
         Args:
             waveform: Time-domain waveform with shape ``(num_rx_ant, slot_samples)``;
-                legacy callers may pass ``(slot_samples,)`` for a single branch.
+                axis 0 is RX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines OFDM numerology.
 
         Returns:
@@ -193,7 +192,7 @@ class ChannelModel(ABC):
 
         Args:
             waveform: Time-domain waveform with shape ``(num_tx_ant, slot_samples)``;
-                legacy callers may pass ``(slot_samples,)`` for a single branch.
+                axis 0 is TX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines channel settings.
 
         Returns:
@@ -216,15 +215,15 @@ class FrequencyExtractor(ABC):
         """Extract scheduled data REs from a frequency-domain grid.
 
         Args:
-            grid: Frequency-domain grid or channel estimate with shape
-                ``(num_subcarriers, num_symbols)`` or
-                ``(num_rx_ant, num_subcarriers, num_symbols)``.
-            data_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            grid: User-allocation frequency-domain grid or channel estimate with
+                shape ``(num_rx_ant, num_user_subcarriers, num_symbols)``.
+            data_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``.
             config: Full simulation configuration that defines waveform behavior.
             despread: Whether DFT-s-OFDM data should be de-spread during extraction.
 
         Returns:
-            Serialized extracted symbols, optionally stacked by receive antenna.
+            Serialized extracted symbols with shape ``(num_rx_ant, num_data_re)``.
         """
         raise NotImplementedError
 
@@ -238,19 +237,19 @@ class ChannelEstimator(ABC):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> ChannelEstimateResult:
-        """Estimate the channel response on the full slot grid.
+        """Estimate the channel response on the user-allocation slot grid.
 
         Args:
             rx_grid: Received frequency-domain grid with shape
-                ``(num_subcarriers, num_symbols)`` or
-                ``(num_rx_ant, num_subcarriers, num_symbols)``.
+                ``(num_rx_ant, num_user_subcarriers, num_symbols)``.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
-            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            dmrs_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``.
             config: Full simulation configuration that defines estimation context.
 
         Returns:
-            Structured channel-estimation result containing the full estimate and
+            Structured channel-estimation result containing the user-band estimate and
             pilot-only views used for plotting/debug.
         """
         raise NotImplementedError

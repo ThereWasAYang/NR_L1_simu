@@ -498,10 +498,14 @@ class MyReceiverProcessor(ReceiverProcessor):
         descrambled_llrs = receiver.scrambler.descramble_llrs(llrs, config)
         decoded_bits = receiver.decoder.decode(descrambled_llrs, config)
 
-        if rx_grid.ndim == 2:
-            rx_grid = rx_grid[np.newaxis, ...]
+        if rx_grid.ndim != 3:
+            raise ValueError("rx_grid must have shape (num_rx_ant, num_subcarriers, num_symbols)")
         return RxPayload(
-            rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
+            rx_waveform=(
+                np.empty((int(config.link.num_rx_ant), 0), dtype=np.complex128)
+                if rx_waveform is None
+                else rx_waveform
+            ),
             rx_grid=rx_grid,
             channel_estimation=ChannelEstimateResult(
                 channel_estimate=np.array([], dtype=np.complex128),
@@ -650,14 +654,15 @@ class MyLinkComponentFactory(DefaultSimulationComponentFactory):
 新链路最容易出错的地方通常不是类继承，而是数据维度。当前接收机内部约定如下：
 
 - `rx_grid`：`num_rx_ant x num_subcarrier x num_symbol`
-- `channel_estimate`：`num_rx_ant x num_subcarrier x num_symbol`
+- `channel_estimate`：`num_rx_ant x num_user_subcarrier x num_symbol`
 - `pilot_estimates`：`num_rx_ant x num_dmrs_re`
 - `dmrs_mask`：`num_subcarrier x num_symbol`
 - `data_mask`：`num_subcarrier x num_symbol`
+- `dmrs_mask_user / data_mask_user`：`num_user_subcarrier x num_symbol`
 - `dmrs_symbols`：按资源映射顺序序列化的一维复数数组
 - `equalized_symbols`：按数据 RE 抽取顺序排列的一维或多层符号数组
 
-即使只有一根接收天线，`rx_grid` 和 `channel_estimate` 也应保留天线维，长度为 `1`。如果某个新模块临时产生二维数据，建议在模块边界处恢复成统一三维格式。
+即使只有一根接收天线，`rx_grid` 和 `channel_estimate` 也应保留天线维，长度为 `1`。接收机主链路不应把单天线数据降成二维后再依赖兼容分支恢复。
 
 ## 8. 共享对象不要随意拆开
 

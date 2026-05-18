@@ -18,9 +18,8 @@ class AwgnChannel(ChannelModel):
         """Apply receive-branch expansion and AWGN impairment.
 
         Args:
-            waveform: Transmit waveform with shape ``(slot_samples,)`` for one TX
-                branch or ``(num_tx_ant, slot_samples)`` for multiple TX branches;
-                last axis is time-sample index.
+            waveform: Transmit waveform with shape ``(num_tx_ant, slot_samples)``;
+                axis 0 is TX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines receive antennas and SNR.
 
         Returns:
@@ -47,8 +46,8 @@ class AwgnChannel(ChannelModel):
         """Replicate a single received stream across configured receive branches.
 
         Args:
-            waveform: Input waveform with shape ``(slot_samples,)`` or
-                ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: Input waveform with shape ``(num_tx_ant, slot_samples)``;
+                axis 0 is TX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines ``num_rx_ant``.
 
         Returns:
@@ -56,10 +55,8 @@ class AwgnChannel(ChannelModel):
         """
         num_rx_ant = int(config.link.num_rx_ant)
         samples = np.asarray(waveform, dtype=np.complex128)
-        if samples.ndim == 1:
-            return np.repeat(samples[np.newaxis, :], num_rx_ant, axis=0)
         if samples.ndim != 2:
-            raise ValueError("AWGN channel expects waveform shape (slot_samples,) or (num_ant, slot_samples).")
+            raise ValueError("AWGN channel expects waveform shape (num_tx_ant, slot_samples).")
         if samples.shape[0] == num_rx_ant:
             return samples
         if samples.shape[0] == 1:

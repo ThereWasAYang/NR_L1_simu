@@ -302,21 +302,19 @@ class FadingChannelBase(ChannelModel, ABC):
         """Ensure the TX waveform has an explicit transmit-antenna axis.
 
         Args:
-            waveform: Input waveform with shape ``(slot_samples,)`` or
-                ``(num_tx_ant, slot_samples)``.
+            waveform: Input waveform with shape ``(num_tx_ant, slot_samples)``.
             config: Full simulation configuration that defines ``num_tx_ant``.
 
         Returns:
             TX waveform matrix with shape ``(num_tx_ant, slot_samples)``; axis 0 is
             TX antenna and axis 1 is time-sample index.
         """
-        if waveform.ndim == 2:
-            return waveform
-
-        num_tx_ant = int(config.link.num_tx_ant)
-        if num_tx_ant <= 1:
-            return waveform[np.newaxis, :]
-        return np.repeat(waveform[np.newaxis, :], num_tx_ant, axis=0) / np.sqrt(num_tx_ant)
+        if waveform.ndim != 2:
+            raise ValueError("Fading channel expects waveform shape (num_tx_ant, slot_samples).")
+        expected_tx_ant = int(config.link.num_tx_ant)
+        if waveform.shape[0] != expected_tx_ant:
+            raise ValueError(f"TX waveform antenna dimension must be {expected_tx_ant}, got {waveform.shape[0]}.")
+        return waveform
 
     @staticmethod
     def _array_response(

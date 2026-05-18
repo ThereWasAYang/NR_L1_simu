@@ -84,9 +84,9 @@ for artifact in artifacts:
 - `result.rx.rx_grid`
   OFDM 解调后的频域栅格
 - `result.rx.channel_estimation.channel_estimate`
-  完整信道估计结果
+  用户 PRB 抽取后的信道估计结果
 - `result.rx.channel_estimation.pilot_estimates`
-  从完整信道估计中抽取出的导频 RE 结果
+  从用户级信道估计中抽取出的导频 RE 结果
 - `result.rx.channel_estimation.pilot_symbol_indices`
   每个导频估计值对应的 DMRS symbol 编号
 - `result.rx.equalized_symbols`
@@ -270,11 +270,12 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 其中关键步骤是：
 
 1. `rx_waveform -> rx_grid`
-2. `rx_grid -> channel_estimate`
-3. `rx_grid -> rx_data_symbols`
-4. `rx_data_symbols + channel_estimate -> equalized_symbols`
-5. `equalized_symbols -> llrs`
-6. `llrs -> decoded_bits`
+2. `rx_grid -> rx_user_grid`
+3. `rx_user_grid -> channel_estimate`
+4. `rx_user_grid -> rx_data_symbols`
+5. `rx_data_symbols + channel_estimate -> equalized_symbols`
+6. `equalized_symbols -> llrs`
+7. `llrs -> decoded_bits`
 
 如果你想新增例如：
 

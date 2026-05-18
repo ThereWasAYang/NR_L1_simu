@@ -45,8 +45,11 @@ class DefaultReceiverProcessor(ReceiverProcessor):
         rx_waveform: np.ndarray | None = None,
     ) -> RxPayload:
         """Run data processing, descrambling and decoding from a frequency grid."""
-        if rx_grid.ndim == 2:
-            rx_grid = rx_grid[np.newaxis, ...]
+        if rx_grid.ndim != 3:
+            raise ValueError(
+                "DefaultReceiverProcessor.receive_from_grid expects rx_grid shape "
+                "(num_rx_ant, num_subcarriers, num_symbols)."
+            )
         processing = receiver.data_processor.process(
             rx_grid=rx_grid,
             dmrs_symbols=dmrs_symbols,
@@ -69,8 +72,11 @@ class DefaultReceiverProcessor(ReceiverProcessor):
             if rx_waveform is None
             else np.asarray(rx_waveform, dtype=np.complex128)
         )
-        if rx_waveform_out.ndim == 1:
-            rx_waveform_out = rx_waveform_out[np.newaxis, :]
+        if rx_waveform_out.ndim != 2:
+            raise ValueError(
+                "DefaultReceiverProcessor expects rx_waveform shape "
+                "(num_rx_ant, slot_samples) when waveform is provided."
+            )
         return RxPayload(
             rx_waveform=rx_waveform_out,
             rx_grid=rx_grid,

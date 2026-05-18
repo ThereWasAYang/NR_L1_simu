@@ -14,9 +14,8 @@ class OfdmProcessor(TimeDomainProcessor):
 
         Args:
             grid: Frequency-domain slot grid with shape
-                ``(num_subcarriers, num_symbols)`` for legacy single-branch input
-                or ``(num_tx_ant, num_subcarriers, num_symbols)``; axes are TX
-                antenna, cell subcarrier index, and OFDM symbol index.
+                ``(num_tx_ant, num_subcarriers, num_symbols)``; axes are TX antenna,
+                cell subcarrier index, and OFDM symbol index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
@@ -24,15 +23,12 @@ class OfdmProcessor(TimeDomainProcessor):
             axis 0 is TX antenna and axis 1 is time-sample index after CP insertion.
         """
         grid = np.asarray(grid, dtype=np.complex128)
-        if grid.ndim == 3:
-            return np.stack([self._modulate_single(antenna_grid, config) for antenna_grid in grid], axis=0)
-        if grid.ndim != 2:
+        if grid.ndim != 3:
             raise ValueError(
-                "OFDM modulation expects grid shape (num_subcarriers, num_symbols) "
-                "or (num_tx_ant, num_subcarriers, num_symbols)."
+                "OFDM modulation expects grid shape "
+                "(num_tx_ant, num_subcarriers, num_symbols)."
             )
-        single = self._modulate_single(grid, config)
-        return single[np.newaxis, :]
+        return np.stack([self._modulate_single(antenna_grid, config) for antenna_grid in grid], axis=0)
 
     def _modulate_single(self, grid: np.ndarray, config: SimulationConfig) -> np.ndarray:
         """Modulate one transmit branch.
@@ -67,9 +63,8 @@ class OfdmProcessor(TimeDomainProcessor):
         """Apply cyclic-prefix removal and FFT demodulation.
 
         Args:
-            waveform: Time-domain waveform with shape ``(slot_samples,)`` for
-                legacy single-branch input or ``(num_rx_ant, slot_samples)``; axis
-                0 is RX antenna and axis 1 is time-sample index.
+            waveform: Time-domain waveform with shape ``(num_rx_ant, slot_samples)``;
+                axis 0 is RX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines FFT size and CP lengths.
 
         Returns:
@@ -77,9 +72,9 @@ class OfdmProcessor(TimeDomainProcessor):
             ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX antenna,
             cell subcarrier index, and OFDM symbol index.
         """
-        if waveform.ndim == 2:
-            return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
-        return self._demodulate_single(waveform, config)[np.newaxis, ...]
+        if waveform.ndim != 2:
+            raise ValueError("OFDM demodulation expects waveform shape (num_rx_ant, slot_samples).")
+        return np.stack([self._demodulate_single(antenna_waveform, config) for antenna_waveform in waveform], axis=0)
 
     def _demodulate_single(self, waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
         """Demodulate a single-antenna waveform into one slot grid.

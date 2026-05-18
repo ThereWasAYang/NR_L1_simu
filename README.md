@@ -542,7 +542,7 @@ python examples/run_from_config.py configs/pusch_external_freqresp_fd.yaml
 接收机内部当前统一采用带天线维的数据组织方式：
 
 - `rx_grid` 统一为 `num_rx_ant x num_subcarrier x num_symbol`
-- `channel_estimate` 统一为 `num_rx_ant x num_subcarrier x num_symbol`
+- `channel_estimate` 统一为 `num_rx_ant x num_user_subcarrier x num_symbol`，信道估计发生在用户 PRB 频域抽取之后
 - 即使是单接收天线，天线维也会保留，长度为 `1`
 - `pilot_estimates` 统一为 `num_rx_ant x num_dmrs_re`
 

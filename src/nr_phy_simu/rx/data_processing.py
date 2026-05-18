@@ -55,6 +55,7 @@ class ReceiverDataProcessorPipeline(ReceiverDataProcessor):
             noise_variance=noise_variance,
             config=config,
         )
+        _ensure_user_allocation(context)
         for stage in self.stages:
             context = stage.process(context)
         if context.llrs.size == 0:
@@ -75,10 +76,11 @@ class ChannelEstimationStage(ReceiverProcessingStage):
         self.estimator = estimator
 
     def process(self, context: ReceiverProcessingContext) -> ReceiverProcessingContext:
+        _ensure_user_allocation(context)
         context.channel_estimation = self.estimator.estimate(
-            context.rx_grid,
+            context.rx_user_grid,
             context.dmrs_symbols,
-            context.dmrs_mask,
+            context.dmrs_mask_user,
             context.config,
         )
         context.plot_artifacts = context.plot_artifacts + context.channel_estimation.plot_artifacts
@@ -93,16 +95,17 @@ class DataExtractionStage(ReceiverProcessingStage):
         self.despread = despread
 
     def process(self, context: ReceiverProcessingContext) -> ReceiverProcessingContext:
+        _ensure_user_allocation(context)
         context.rx_data_symbols = self.extractor.extract(
-            context.rx_grid,
-            context.data_mask,
+            context.rx_user_grid,
+            context.data_mask_user,
             context.config,
             despread=self.despread,
         )
         if context.channel_estimation is not None:
             context.data_channel = self.extractor.extract(
                 context.channel_estimation.channel_estimate,
-                context.data_mask,
+                context.data_mask_user,
                 context.config,
                 despread=self.despread,
             )
@@ -131,9 +134,10 @@ class TransformPrecodingDespreadStage(ReceiverProcessingStage):
     def process(self, context: ReceiverProcessingContext) -> ReceiverProcessingContext:
         config = context.config
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
+            _ensure_user_allocation(context)
             context.equalized_symbols = ThreeStageReceiverDataProcessor._despread_equalized(
                 context.equalized_symbols,
-                context.data_mask,
+                context.data_mask_user,
                 config,
             )
         return context
@@ -211,9 +215,15 @@ class ThreeStageReceiverDataProcessor(ReceiverDataProcessor):
             Data-processing result whose LLRs are still scrambled and must be
             passed through the configured data descrambler.
         """
-        channel_estimation = self.estimator.estimate(rx_grid, dmrs_symbols, dmrs_mask, config)
-        rx_data_symbols = self.extractor.extract(rx_grid, data_mask, config, despread=False)
-        data_channel = self.extractor.extract(channel_estimation.channel_estimate, data_mask, config, despread=False)
+        rx_user_grid, dmrs_mask_user, data_mask_user, _user_subcarriers = extract_user_allocation(
+            rx_grid,
+            dmrs_mask,
+            data_mask,
+            config,
+        )
+        channel_estimation = self.estimator.estimate(rx_user_grid, dmrs_symbols, dmrs_mask_user, config)
+        rx_data_symbols = self.extractor.extract(rx_user_grid, data_mask_user, config, despread=False)
+        data_channel = self.extractor.extract(channel_estimation.channel_estimate, data_mask_user, config, despread=False)
         equalized_symbols = self.equalizer.equalize(
             rx_data_symbols,
             data_channel,
@@ -221,7 +231,7 @@ class ThreeStageReceiverDataProcessor(ReceiverDataProcessor):
             config=config,
         )
         if config.link.channel_type.upper() == "PUSCH" and config.link.waveform.upper() == "DFT-S-OFDM":
-            equalized_symbols = self._despread_equalized(equalized_symbols, data_mask, config)
+            equalized_symbols = self._despread_equalized(equalized_symbols, data_mask_user, config)
         layer_mapping = self.layer_mapper.unmap_symbols(equalized_symbols, config.link.num_layers)
         llrs = self.demodulator.demap_symbols(equalized_symbols, noise_variance, config)
         return ReceiverDataProcessingResult(
@@ -259,3 +269,69 @@ class ThreeStageReceiverDataProcessor(ReceiverDataProcessor):
             cursor += count
             despread.append(np.fft.ifft(symbol_values, n=count) * np.sqrt(count))
         return np.concatenate(despread) if despread else np.array([], dtype=np.complex128)
+
+
+def extract_user_allocation(
+    rx_grid: np.ndarray,
+    dmrs_mask: np.ndarray,
+    data_mask: np.ndarray,
+    config: SimulationConfig,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Crop full-cell RX data and masks to the scheduled user PRB allocation.
+
+    Args:
+        rx_grid: Full-cell received grid with shape
+            ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        dmrs_mask: Full-cell DMRS mask with shape ``(num_subcarriers, num_symbols)``.
+        data_mask: Full-cell data mask with shape ``(num_subcarriers, num_symbols)``.
+        config: Full simulation configuration that provides PRB start and width.
+
+    Returns:
+        Tuple ``(rx_user_grid, dmrs_mask_user, data_mask_user, user_subcarriers)``.
+        Shapes are ``(num_rx_ant, num_user_subcarriers, num_symbols)``,
+        ``(num_user_subcarriers, num_symbols)``,
+        ``(num_user_subcarriers, num_symbols)`` and ``(num_user_subcarriers,)``.
+    """
+    if rx_grid.ndim != 3:
+        raise ValueError(
+            "Receiver data processing expects rx_grid shape "
+            "(num_rx_ant, num_subcarriers, num_symbols)."
+        )
+    if dmrs_mask.ndim != 2 or data_mask.ndim != 2:
+        raise ValueError("DMRS and data masks must have shape (num_subcarriers, num_symbols).")
+
+    start = int(config.link.prb_start) * 12
+    stop = start + int(config.link.num_prbs) * 12
+    user_subcarriers = np.arange(start, stop, dtype=int)
+    return (
+        rx_grid[:, user_subcarriers, :],
+        dmrs_mask[user_subcarriers, :],
+        data_mask[user_subcarriers, :],
+        user_subcarriers,
+    )
+
+
+def _ensure_user_allocation(context: ReceiverProcessingContext) -> None:
+    """Populate user-allocation views in a receiver processing context.
+
+    Args:
+        context: Mutable receiver-processing context. On entry, ``rx_grid`` has
+            shape ``(num_rx_ant, num_subcarriers, num_symbols)`` and masks are
+            full-cell masks. On return, the user-allocation fields are populated.
+
+    Returns:
+        None. The context is mutated in place.
+    """
+    if context.rx_user_grid.size and context.dmrs_mask_user.size and context.data_mask_user.size:
+        return
+    (
+        context.rx_user_grid,
+        context.dmrs_mask_user,
+        context.data_mask_user,
+        context.user_subcarriers,
+    ) = extract_user_allocation(
+        context.rx_grid,
+        context.dmrs_mask,
+        context.data_mask,
+        context.config,
+    )

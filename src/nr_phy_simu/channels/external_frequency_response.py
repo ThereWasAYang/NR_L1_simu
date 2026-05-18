@@ -131,8 +131,7 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         """Convert external frequency response to FIR taps and filter the waveform.
 
         Args:
-            waveform: SISO TX waveform with shape ``(slot_samples,)`` for legacy
-                input or ``(1, slot_samples)`` with an explicit TX antenna axis.
+            waveform: SISO TX waveform with shape ``(1, slot_samples)``.
             config: Full simulation configuration with external frequency response.
 
         Returns:
@@ -140,10 +139,12 @@ class ExternalFrequencyResponseTimeDomainChannel(ExternalFrequencyResponseBase):
         """
         self.require_siso(config)
         tx_waveform = np.asarray(waveform, dtype=np.complex128)
-        if tx_waveform.ndim == 2 and tx_waveform.shape[0] == 1:
-            tx_waveform = tx_waveform[0]
-        if tx_waveform.ndim != 1:
-            raise ValueError("External frequency-response time-domain channel expects exactly one TX waveform branch.")
+        if tx_waveform.ndim != 2 or tx_waveform.shape[0] != 1:
+            raise ValueError(
+                "External frequency-response time-domain channel expects waveform shape "
+                "(1, slot_samples)."
+            )
+        tx_waveform = tx_waveform[0]
 
         frequency_response = self.load_frequency_response(config)
         fft_response = self.full_fft_response(frequency_response, config)
@@ -218,15 +219,11 @@ class ExternalFrequencyResponseFrequencyDomainChannel(ExternalFrequencyResponseB
         """Normalize TX grid to ``(Ntx, K, L)`` for frequency-domain MIMO."""
         num_tx_ant = int(config.link.num_tx_ant)
         tx_grid = np.asarray(grid, dtype=np.complex128)
-        if tx_grid.ndim == 2:
-            if num_tx_ant == 1:
-                return tx_grid[np.newaxis, ...]
-            return np.repeat(tx_grid[np.newaxis, ...], num_tx_ant, axis=0) / np.sqrt(num_tx_ant)
         if tx_grid.ndim == 3:
             if tx_grid.shape[0] != num_tx_ant:
                 raise ValueError(f"TX grid antenna dimension must be {num_tx_ant}, got {tx_grid.shape[0]}.")
             return tx_grid
         raise ValueError(
             "Frequency-domain direct channel expects grid shape "
-            "(num_subcarriers, num_symbols) or (num_tx_ant, num_subcarriers, num_symbols)."
+            "(num_tx_ant, num_subcarriers, num_symbols)."
         )

@@ -51,7 +51,7 @@ class ChannelEstimateResult:
     """Channel-estimation buffers for one TTI.
 
     Shape conventions:
-        ``channel_estimate``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        ``channel_estimate``: ``(num_rx_ant, num_user_subcarriers, num_symbols)``.
         ``pilot_estimates``: ``(num_rx_ant, num_dmrs_re)``.
         ``pilot_symbol_indices``: ``(num_dmrs_re,)``.
     """
@@ -87,8 +87,11 @@ class ReceiverProcessingContext:
 
     Shape conventions:
         ``rx_grid``: ``(num_rx_ant, num_subcarriers, num_symbols)``.
+        ``rx_user_grid``: ``(num_rx_ant, num_user_subcarriers, num_symbols)``.
         ``dmrs_symbols``: ``(num_dmrs_re,)``.
         ``dmrs_mask`` and ``data_mask``: ``(num_subcarriers, num_symbols)``.
+        ``dmrs_mask_user`` and ``data_mask_user``:
+        ``(num_user_subcarriers, num_symbols)``.
         ``rx_data_symbols`` and ``data_channel``: usually ``(num_rx_ant, num_data_re)``.
         ``equalized_symbols``: usually ``(num_data_symbols,)``.
         ``llrs``: ``(coded_bit_capacity,)`` before data descrambling.
@@ -99,6 +102,10 @@ class ReceiverProcessingContext:
     data_mask: np.ndarray
     noise_variance: float
     config: Any
+    rx_user_grid: ComplexArray = field(default_factory=lambda: np.empty((0, 0, 0), dtype=np.complex128))
+    dmrs_mask_user: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=bool))
+    data_mask_user: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=bool))
+    user_subcarriers: np.ndarray = field(default_factory=lambda: np.array([], dtype=int))
     channel_estimation: ChannelEstimateResult | None = None
     rx_data_symbols: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))
     data_channel: ComplexArray = field(default_factory=lambda: np.array([], dtype=np.complex128))

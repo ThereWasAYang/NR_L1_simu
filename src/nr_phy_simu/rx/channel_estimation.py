@@ -15,23 +15,27 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> ChannelEstimateResult:
-        """Estimate the full slot channel response from DMRS observations.
+        """Estimate the user-allocation channel response from DMRS observations.
 
         Args:
-            rx_grid: Received slot grid with shape ``(num_subcarriers, num_symbols)``
-                or ``(num_rx_ant, num_subcarriers, num_symbols)``; axes are RX
-                antenna when present, cell subcarrier index, and OFDM symbol index.
+            rx_grid: Received user-allocation grid with shape
+                ``(num_rx_ant, num_user_subcarriers, num_symbols)``; axes are RX
+                antenna, user-allocation subcarrier index, and OFDM symbol index.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
-            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``;
-                axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
+            dmrs_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``; axis 0 is user-allocation
+                subcarrier index and axis 1 is OFDM symbol index.
             config: Full simulation configuration for estimation context.
 
         Returns:
-            Structured channel-estimation result with full-grid and pilot-only views.
+            Structured channel-estimation result with user-grid and pilot-only views.
         """
-        if rx_grid.ndim == 2:
-            rx_grid = rx_grid[np.newaxis, ...]
+        if rx_grid.ndim != 3:
+            raise ValueError(
+                "LeastSquaresEstimator.estimate expects rx_grid shape "
+                "(num_rx_ant, num_user_subcarriers, num_symbols)."
+            )
         channel_estimate = np.stack(
             [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
             axis=0,
@@ -50,19 +54,20 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_mask: np.ndarray,
         config: SimulationConfig,
     ) -> np.ndarray:
-        """Estimate the channel for one receive antenna across the full slot.
+        """Estimate the channel for one receive antenna across the user allocation.
 
         Args:
             rx_grid: Single-antenna received slot grid with shape
-                ``(num_subcarriers, num_symbols)``; axis 0 is cell subcarrier index,
-                axis 1 is OFDM symbol index.
+                ``(num_user_subcarriers, num_symbols)``; axis 0 is user-allocation
+                subcarrier index and axis 1 is OFDM symbol index.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
-            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            dmrs_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``.
             config: Full simulation configuration, unused by this LS implementation.
 
         Returns:
-            Full-grid complex channel estimate for one receive antenna.
+            User-grid complex channel estimate for one receive antenna.
         """
         del config
         if dmrs_symbols.size == 0:
@@ -81,7 +86,7 @@ class LeastSquaresEstimator(ChannelEstimator):
 
         Args:
             rx_grid: Single-antenna received slot grid with shape
-                ``(num_subcarriers, num_symbols)``.
+                ``(num_user_subcarriers, num_symbols)``.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
             dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
@@ -89,7 +94,7 @@ class LeastSquaresEstimator(ChannelEstimator):
         Returns:
             Tuple of ``(dmrs_symbol_indices, dmrs_estimates)`` where:
             - ``dmrs_symbol_indices`` lists OFDM symbols carrying DMRS.
-            - ``dmrs_estimates`` stores one full-band estimate per DMRS symbol.
+            - ``dmrs_estimates`` stores one user-band estimate per DMRS symbol.
         """
         dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
         dmrs_estimates = np.zeros((dmrs_symbol_indices.size, rx_grid.shape[0]), dtype=np.complex128)
@@ -133,13 +138,14 @@ class LeastSquaresEstimator(ChannelEstimator):
 
         Args:
             pilot_subcarriers: One-dimensional integer array with shape
-                ``(num_pilot_re_in_symbol,)``; values are cell subcarrier indices.
+                ``(num_pilot_re_in_symbol,)``; values are user-allocation
+                subcarrier indices.
             pilot_values: One-dimensional complex LS estimates with the same shape
                 and ordering as ``pilot_subcarriers``.
-            num_subcarriers: Full subcarrier count of the slot grid.
+            num_subcarriers: User-allocation subcarrier count of the slot grid.
 
         Returns:
-            Full-band estimate for one OFDM symbol after frequency interpolation.
+            User-band estimate for one OFDM symbol after frequency interpolation.
         """
         full_subcarriers = np.arange(num_subcarriers, dtype=np.float64)
         real = np.interp(full_subcarriers, pilot_subcarriers, pilot_values.real)
@@ -152,14 +158,14 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_estimates: np.ndarray,
         num_symbols: int,
     ) -> np.ndarray:
-        """Interpolate full-band DMRS estimates across OFDM symbols.
+        """Interpolate user-band DMRS estimates across OFDM symbols.
 
         Args:
             dmrs_symbol_indices: One-dimensional integer array with shape
                 ``(num_dmrs_symbols,)``; values are OFDM symbol indices.
             dmrs_estimates: Complex array with shape
                 ``(num_dmrs_symbols, num_subcarriers)``; axis 0 is DMRS symbol,
-                axis 1 is cell subcarrier index.
+                axis 1 is user-allocation subcarrier index.
             num_symbols: Total OFDM symbol count in the slot.
 
         Returns:
@@ -187,17 +193,20 @@ class LeastSquaresEstimator(ChannelEstimator):
 
         Args:
             channel_estimate: Complex estimate with shape
-                ``(num_subcarriers, num_symbols)`` or
-                ``(num_rx_ant, num_subcarriers, num_symbols)``.
-            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+                ``(num_rx_ant, num_user_subcarriers, num_symbols)``.
+            dmrs_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``.
 
         Returns:
             Tuple of ``(pilot_estimates, pilot_symbol_indices)`` where:
             - ``pilot_estimates`` is grouped by receive antenna.
             - ``pilot_symbol_indices`` identifies which OFDM symbol each pilot came from.
         """
-        if channel_estimate.ndim == 2:
-            channel_estimate = channel_estimate[np.newaxis, ...]
+        if channel_estimate.ndim != 3:
+            raise ValueError(
+                "LeastSquaresEstimator._extract_pilot_estimates expects channel_estimate "
+                "shape (num_rx_ant, num_user_subcarriers, num_symbols)."
+            )
 
         pilot_symbol_indices: list[np.ndarray] = []
         estimates_per_ant = []

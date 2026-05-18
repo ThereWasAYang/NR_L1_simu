@@ -159,14 +159,16 @@ def _collect_plot_artifacts(
             )
         )
     if result.rx.channel_estimation.channel_estimate.size:
+        user_subcarriers = _allocated_subcarriers(config)
         artifacts.append(
             PlotArtifact(
                 name="pilot_estimates",
                 values={
                     "channel_estimation": result.rx.channel_estimation,
-                    "dmrs_mask": result.tx.dmrs_mask,
+                    "dmrs_mask": result.tx.dmrs_mask[user_subcarriers, :],
                 },
                 plot_type="pilot_estimates",
+                metadata={"user_subcarriers": user_subcarriers},
             )
         )
     if result.rx.rx_waveform.size:
@@ -230,8 +232,8 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
     Args:
         artifact: Plot artifact containing ``channel_estimation`` and ``dmrs_mask``.
             The channel estimate has shape
-            ``(num_rx_ant, num_subcarriers, num_symbols)`` and ``dmrs_mask`` has
-            shape ``(num_subcarriers, num_symbols)``.
+            ``(num_rx_ant, num_user_subcarriers, num_symbols)`` and ``dmrs_mask``
+            has shape ``(num_user_subcarriers, num_symbols)``.
 
     Returns:
         Matplotlib figure object.
@@ -239,8 +241,11 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
     values = artifact.values
     channel_estimation = values["channel_estimation"]
     channel_estimate = _as_plot_array(channel_estimation.channel_estimate)
-    if channel_estimate.ndim == 2:
-        channel_estimate = channel_estimate[np.newaxis, ...]
+    if channel_estimate.ndim != 3:
+        raise ValueError(
+            "Pilot-estimate plotting expects channel_estimate shape "
+            "(num_rx_ant, num_user_subcarriers, num_symbols)."
+        )
     num_ant = channel_estimate.shape[0]
     dmrs_mask = _as_plot_array(values["dmrs_mask"])
     dmrs_symbols = np.where(np.any(dmrs_mask, axis=0))[0]
@@ -306,7 +311,7 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
         axes[row_idx * 2, col_idx].set_visible(False)
         axes[row_idx * 2 + 1, col_idx].set_visible(False)
 
-    fig.supxlabel("DMRS Subcarrier Index")
+    fig.supxlabel("DMRS Subcarrier Index within User Allocation")
     fig.tight_layout()
     return fig
 
@@ -315,15 +320,15 @@ def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
     """Build received time-domain magnitude plots.
 
     Args:
-        artifact: Plot artifact whose ``values`` have shape ``(slot_samples,)`` or
+        artifact: Plot artifact whose ``values`` have shape
             ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
 
     Returns:
         Matplotlib figure object with one subplot per RX antenna.
     """
     waveform = _as_plot_array(artifact.values)
-    if waveform.ndim == 1:
-        waveform = waveform[np.newaxis, :]
+    if waveform.ndim != 2:
+        raise ValueError("RX time-domain plotting expects waveform shape (num_rx_ant, slot_samples).")
     metadata = artifact.metadata or {}
     cp_lengths = metadata["cp_lengths"]
     fft_size = int(metadata["fft_size"])
@@ -361,15 +366,17 @@ def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
 
     Args:
         artifact: Plot artifact whose ``values`` have shape
-            ``(num_subcarriers, num_symbols)`` or
             ``(num_rx_ant, num_subcarriers, num_symbols)``.
 
     Returns:
         Matplotlib figure object with one subplot per RX antenna.
     """
     rx_grid = _as_plot_array(artifact.values)
-    if rx_grid.ndim == 2:
-        rx_grid = rx_grid[np.newaxis, ...]
+    if rx_grid.ndim != 3:
+        raise ValueError(
+            "RX frequency-domain plotting expects grid shape "
+            "(num_rx_ant, num_subcarriers, num_symbols)."
+        )
     metadata = artifact.metadata or {}
     n_sc = int(metadata["n_subcarriers"])
     symbols_per_slot = int(metadata["symbols_per_slot"])
@@ -477,6 +484,21 @@ def _artifact_y_values(values: np.ndarray, plot_type: str) -> np.ndarray:
     if plot_type in {"imag", "q"}:
         return values.imag
     return np.abs(values)
+
+
+def _allocated_subcarriers(config: SimulationConfig) -> np.ndarray:
+    """Build absolute subcarrier indices for the scheduled user allocation.
+
+    Args:
+        config: Full simulation configuration that provides PRB start and width.
+
+    Returns:
+        One-dimensional integer array with shape ``(num_prbs * 12,)`` containing
+        absolute cell subcarrier indices.
+    """
+    start = int(config.link.prb_start) * 12
+    stop = start + int(config.link.num_prbs) * 12
+    return np.arange(start, stop, dtype=int)
 
 
 def _artifact_default_ylabel(plot_type: str) -> str:

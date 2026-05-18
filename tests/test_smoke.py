@@ -45,6 +45,7 @@ from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
 from nr_phy_simu.rx.frequency_extraction import FrequencyDomainExtractor
 from nr_phy_simu.rx.data_processing import ReceiverDataProcessorPipeline
+from nr_phy_simu.rx.channel_estimation import LeastSquaresEstimator
 from nr_phy_simu.visualization import save_simulation_plots
 from nr_phy_simu.common.sequences.dmrs import DmrsGenerator
 from nr_phy_simu.common.mcs import resolve_mcs
@@ -97,6 +98,8 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_grid.ndim, 3)
         self.assertEqual(result.rx.channel_estimation.channel_estimate.ndim, 3)
         self.assertEqual(result.rx.rx_grid.shape[0], config.link.num_rx_ant)
+        self.assertEqual(result.rx.rx_grid.shape[1], config.carrier.n_subcarriers)
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.shape[1], config.link.num_prbs * 12)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], config.link.num_rx_ant)
         self.assertIsNotNone(config.link.transport_block_size)
@@ -111,6 +114,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertGreater(result.rx.channel_estimation.pilot_estimates.size, 0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.shape[1], config.link.num_prbs * 12)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
 
@@ -123,7 +127,21 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.rx_waveform.shape[0], 4)
         self.assertEqual(result.rx.rx_grid.shape[0], 4)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], 4)
+        self.assertEqual(result.rx.channel_estimation.channel_estimate.shape, (4, config.link.num_prbs * 12, config.carrier.symbols_per_slot))
         self.assertIs(result.crc_ok, True)
+
+    def test_channel_estimator_requires_explicit_rx_antenna_axis(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        user_sc = config.link.num_prbs * 12
+        rx_grid_2d = np.ones((user_sc, config.carrier.symbols_per_slot), dtype=np.complex128)
+        dmrs_mask = np.zeros((user_sc, config.carrier.symbols_per_slot), dtype=bool)
+        with self.assertRaisesRegex(ValueError, "num_rx_ant"):
+            LeastSquaresEstimator().estimate(
+                rx_grid_2d,
+                np.array([], dtype=np.complex128),
+                dmrs_mask,
+                config,
+            )
 
     def test_pusch_awgn_with_interference_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
@@ -722,12 +740,16 @@ class ComponentAbstractionTest(unittest.TestCase):
                 )
 
             def receive_from_grid(self, receiver, rx_grid, dmrs_symbols, dmrs_mask, data_mask, noise_variance, config, rx_waveform=None):
-                if rx_grid.ndim == 2:
-                    rx_grid = rx_grid[np.newaxis, ...]
+                if rx_grid.ndim != 3:
+                    raise ValueError("Custom receiver processor expects rx_grid shape (num_rx_ant, num_subcarriers, num_symbols).")
                 llrs = np.ones(int(config.link.coded_bit_capacity or 0), dtype=np.float64)
                 decoded_bits = receiver.decoder.decode(llrs, config)
                 return RxPayload(
-                    rx_waveform=np.asarray([], dtype=np.complex128) if rx_waveform is None else rx_waveform,
+                    rx_waveform=(
+                        np.empty((int(config.link.num_rx_ant), 0), dtype=np.complex128)
+                        if rx_waveform is None
+                        else rx_waveform
+                    ),
                     rx_grid=rx_grid,
                     channel_estimation=ChannelEstimateResult(
                         channel_estimate=np.array([], dtype=np.complex128),
@@ -773,11 +795,11 @@ class ComponentAbstractionTest(unittest.TestCase):
 class FadingChannelSmokeTest(unittest.TestCase):
     def test_tdl_channel_propagates(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl.yaml")
-        waveform = np.ones(2048, dtype=np.complex128)
+        waveform = np.ones((cfg.link.num_tx_ant, 2048), dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         self.assertIsInstance(channel, TdlChannel)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (1, waveform.size))
+        self.assertEqual(rx_waveform.shape, (1, waveform.shape[1]))
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
 
@@ -787,10 +809,10 @@ class FadingChannelSmokeTest(unittest.TestCase):
         cfg.link.num_rx_ant = 4
         cfg.channel.params["path_delays_ns"] = [0.0, 70.0, 190.0]
         cfg.channel.params["path_powers_db"] = [0.0, -2.5, -7.0]
-        waveform = np.ones(2048, dtype=np.complex128)
+        waveform = np.ones((cfg.link.num_tx_ant, 2048), dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(rx_waveform.shape, (4, waveform.shape[1]))
         self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
         self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
 
@@ -804,7 +826,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
                 cfg.plotting.enabled = False
                 cfg.channel.model = model
                 cfg.channel.params = {"profile": profile, "delay_spread_ns": 300.0, "add_noise": False}
-                waveform = np.ones(1024, dtype=np.complex128)
+                waveform = np.ones((cfg.link.num_tx_ant, 1024), dtype=np.complex128)
                 rx_waveform, info = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
                 self.assertGreater(np.asarray(info["path_delays_s"]).size, 0, msg=f"{model}/{profile}")
                 self.assertGreater(np.mean(np.abs(rx_waveform)), 0.0, msg=f"{model}/{profile}")
@@ -865,11 +887,11 @@ class SweepSmokeTest(unittest.TestCase):
 
     def test_cdl_channel_propagates(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
-        waveform = np.ones(2048, dtype=np.complex128)
+        waveform = np.ones((cfg.link.num_tx_ant, 2048), dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         self.assertIsInstance(channel, CdlChannel)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (1, waveform.size))
+        self.assertEqual(rx_waveform.shape, (1, waveform.shape[1]))
         self.assertGreater(info["path_delays_s"].size, 0)
         self.assertGreaterEqual(info["noise_variance"], 0.0)
 
@@ -877,10 +899,10 @@ class SweepSmokeTest(unittest.TestCase):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
         cfg.link.num_tx_ant = 2
         cfg.link.num_rx_ant = 4
-        waveform = np.ones(2048, dtype=np.complex128)
+        waveform = np.ones((cfg.link.num_tx_ant, 2048), dtype=np.complex128)
         channel = DefaultChannelFactory().create(cfg)
         rx_waveform, info = channel.propagate(waveform, cfg)
-        self.assertEqual(rx_waveform.shape, (4, waveform.size))
+        self.assertEqual(rx_waveform.shape, (4, waveform.shape[1]))
         self.assertEqual(info["path_coefficients"].shape[0], 4)
         self.assertEqual(info["path_coefficients"].shape[1], 2)
 

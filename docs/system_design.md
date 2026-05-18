@@ -35,7 +35,7 @@
 - `RxPayload.rx_waveform`: `(num_rx_ant, slot_samples)`。
 - `RxPayload.rx_grid`: `(num_rx_ant, num_subcarriers, num_symbols)`。
 - 外部频域 MIMO 信道: `(num_subcarriers, num_rx_ant, num_tx_ant)`。
-- 信道估计结果: `(num_rx_ant, num_subcarriers, num_symbols)`。
+- 信道估计结果: `(num_rx_ant, num_user_subcarriers, num_symbols)`。
 - MIMO 合并前的数据 RE: `(num_rx_ant, num_data_re)`。
 - 均衡后数据符号: `(num_data_symbols,)`。
 - LLR: `(coded_bit_capacity,)`。
@@ -771,20 +771,21 @@ self.receiver_processor.receive(...)
 
 默认中段处理流程：
 
-1. `estimator.estimate` 得到完整信道估计。
-2. `extractor.extract(rx_grid, data_mask, despread=False)` 抽取数据 RE。
-3. `extractor.extract(channel_estimate, data_mask, despread=False)` 抽取对应信道。
-4. `equalizer.equalize` 做 MMSE 合并。
-5. DFT-s-OFDM 时调用 `_despread_equalized`。
-6. `layer_mapper.unmap_symbols` 构造 per-layer 视图。
-7. `demodulator.demap_symbols` 得到 LLR。
-8. 返回 `ReceiverDataProcessingResult`。
+1. `extract_user_allocation` 先把全小区 `rx_grid/dmrs_mask/data_mask` 裁剪到用户 PRB 分配。
+2. `estimator.estimate` 在用户带宽上得到用户级信道估计。
+3. `extractor.extract(rx_user_grid, data_mask_user, despread=False)` 抽取数据 RE。
+4. `extractor.extract(channel_estimate, data_mask_user, despread=False)` 抽取对应信道。
+5. `equalizer.equalize` 做 MMSE 合并。
+6. DFT-s-OFDM 时调用 `_despread_equalized`。
+7. `layer_mapper.unmap_symbols` 构造 per-layer 视图。
+8. `demodulator.demap_symbols` 得到 LLR。
+9. 返回 `ReceiverDataProcessingResult`。
 
 ### `_despread_equalized`
 
 对每个调度 OFDM symbol：
 
-- 根据 `data_mask` 统计该 symbol 的数据 RE 数。
+- 根据 `data_mask_user` 统计该 symbol 的数据 RE 数。
 - 从均衡后串行符号中切出对应段。
 - 做 IFFT 并乘 `sqrt(N)`，撤销发射端 DFT spreading。
 
@@ -793,6 +794,10 @@ self.receiver_processor.receive(...)
 这是更灵活的组合机制。它维护一个 `ReceiverProcessingContext`，每个 stage 可以读写：
 
 - `rx_grid`
+- `rx_user_grid`
+- `dmrs_mask_user`
+- `data_mask_user`
+- `user_subcarriers`
 - `channel_estimation`
 - `rx_data_symbols`
 - `data_channel`
@@ -823,15 +828,15 @@ self.receiver_processor.receive(...)
 
 输入：
 
-- `rx_grid`: `(Nrx, K, L)`。
+- `rx_grid`: `(Nrx, K_user, L)`，其中 `K_user = num_prbs * 12`，频率轴是用户分配内的子载波索引。
 - `dmrs_symbols`: 本地 DMRS 串行序列。
-- `dmrs_mask`: DMRS RE mask。
+- `dmrs_mask`: 用户带宽内的 DMRS RE mask。
 
 执行：
 
-1. 若输入是 2D，兼容性扩成 3D。
+1. 检查输入必须是三维 `(Nrx, K_user, L)`，单天线也必须保留天线维。
 2. 对每根 RX antenna 调用 `_estimate_single`。
-3. 堆叠成 `(Nrx, K, L)`。
+3. 堆叠成 `(Nrx, K_user, L)`。
 4. `_extract_pilot_estimates` 抽取导频 RE 上的估计结果，用于绘图。
 5. 返回 `ChannelEstimateResult`。
 
@@ -853,7 +858,7 @@ H_ls = Y_dmrs / X_dmrs
 
 ### `_interpolate_frequency`
 
-对一个 DMRS symbol，已知 comb 导频处的 H，用 `np.interp` 对实部和虚部分别做线性插值，得到全带宽 H。
+对一个 DMRS symbol，已知 comb 导频处的 H，用 `np.interp` 对实部和虚部分别做线性插值，得到用户带宽内的 H。
 
 ### `_interpolate_time`
 
@@ -869,8 +874,7 @@ H_ls = Y_dmrs / X_dmrs
 
 `FrequencyDomainExtractor.extract`：
 
-- 若输入是 `(Nrx, K, L)`，对每根 RX antenna 单独抽取并 stack。
-- 若输入是 `(K, L)`，按单天线处理。
+- 输入必须是 `(Nrx, K_user, L)`，对每根 RX antenna 单独抽取并 stack。
 - `_extract_single` 按调度 symbol 顺序读取 `data_mask=True` 的 RE。
 - 若 `despread=True` 且是 PUSCH DFT-s-OFDM，则对每个 symbol 做 IFFT despreading。
 
@@ -1268,4 +1272,3 @@ MultiTtiSimulationRunner.run
 7. 是否有 `tests/test_smoke.py` 中的测试覆盖这一行为？
 
 按这个方式阅读，绝大多数代码都可以归入清晰的信号链条中，而不是孤立理解。
-
