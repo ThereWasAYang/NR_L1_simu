@@ -37,10 +37,16 @@ class LeastSquaresEstimator(ChannelEstimator):
                 "(num_rx_ant, num_user_subcarriers, num_symbols)."
             )
         channel_estimate = np.stack(
-            [self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config) for antenna_idx in range(rx_grid.shape[0])],
+            [
+                self._estimate_single(rx_grid[antenna_idx], dmrs_symbols, dmrs_mask, config)
+                for antenna_idx in range(rx_grid.shape[0])
+            ],
             axis=0,
         )
-        pilot_estimates, pilot_symbol_indices = self._extract_pilot_estimates(channel_estimate, dmrs_mask)
+        pilot_estimates, pilot_symbol_indices = self._extract_pilot_estimates(
+            channel_estimate,
+            dmrs_mask,
+        )
         return ChannelEstimateResult(
             channel_estimate=channel_estimate,
             pilot_estimates=pilot_estimates,
@@ -71,10 +77,137 @@ class LeastSquaresEstimator(ChannelEstimator):
         """
         del config
         if dmrs_symbols.size == 0:
+            if np.any(dmrs_mask):
+                raise ValueError("dmrs_symbols is empty but dmrs_mask contains DMRS REs.")
             return np.ones_like(rx_grid, dtype=np.complex128)
 
-        dmrs_symbol_indices, dmrs_estimates = self._estimate_dmrs_symbols(rx_grid, dmrs_symbols, dmrs_mask)
-        return self._interpolate_time(dmrs_symbol_indices, dmrs_estimates, rx_grid.shape[1])
+        (
+            dmrs_symbol_indices,
+            pilot_subcarriers_by_symbol,
+            pilot_ls_by_symbol,
+        ) = self.estimate_pilot_re_ls(rx_grid, dmrs_symbols, dmrs_mask)
+        dmrs_estimates = self.interpolate_frequency(
+            dmrs_symbol_indices,
+            pilot_subcarriers_by_symbol,
+            pilot_ls_by_symbol,
+            rx_grid.shape[0],
+        )
+        return self.interpolate_time(dmrs_symbol_indices, dmrs_estimates, rx_grid.shape[1])
+
+    def estimate_pilot_re_ls(
+        self,
+        rx_grid: np.ndarray,
+        dmrs_symbols: np.ndarray,
+        dmrs_mask: np.ndarray,
+    ) -> tuple[np.ndarray, tuple[np.ndarray, ...], tuple[np.ndarray, ...]]:
+        """Compute LS channel estimates only on DMRS RE locations.
+
+        Args:
+            rx_grid: Single-antenna received slot grid with shape
+                ``(num_user_subcarriers, num_symbols)``; axis 0 is user-allocation
+                subcarrier index and axis 1 is OFDM symbol index.
+            dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
+                ``(num_dmrs_re,)`` in mapper RE order.
+            dmrs_mask: Boolean mask with shape
+                ``(num_user_subcarriers, num_symbols)``; ``True`` marks a DMRS RE.
+
+        Returns:
+            Tuple of ``(dmrs_symbol_indices, pilot_subcarriers_by_symbol,
+            pilot_ls_by_symbol)``. ``dmrs_symbol_indices`` has shape
+            ``(num_dmrs_symbols,)``. Each tuple entry in ``pilot_subcarriers_by_symbol``
+            and ``pilot_ls_by_symbol`` is one-dimensional and corresponds to the
+            same DMRS symbol.
+        """
+        expected_dmrs_re = int(np.count_nonzero(dmrs_mask))
+        if dmrs_symbols.size != expected_dmrs_re:
+            raise ValueError(
+                "dmrs_symbols length must match the number of True entries in dmrs_mask "
+                f"({dmrs_symbols.size} != {expected_dmrs_re})."
+            )
+
+        dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
+        pilot_subcarriers_by_symbol: list[np.ndarray] = []
+        pilot_ls_by_symbol: list[np.ndarray] = []
+        dmrs_cursor = 0
+        for symbol_idx in dmrs_symbol_indices:
+            pilot_subcarriers = np.flatnonzero(dmrs_mask[:, symbol_idx])
+            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_subcarriers.size]
+            dmrs_cursor += pilot_subcarriers.size
+            pilot_subcarriers_by_symbol.append(pilot_subcarriers)
+            pilot_ls_by_symbol.append(
+                self._ls_estimate(
+                    rx_grid[pilot_subcarriers, symbol_idx],
+                    symbol_dmrs,
+                )
+            )
+        return (
+            dmrs_symbol_indices,
+            tuple(pilot_subcarriers_by_symbol),
+            tuple(pilot_ls_by_symbol),
+        )
+
+    def interpolate_frequency(
+        self,
+        dmrs_symbol_indices: np.ndarray,
+        pilot_subcarriers_by_symbol: tuple[np.ndarray, ...],
+        pilot_ls_by_symbol: tuple[np.ndarray, ...],
+        num_subcarriers: int,
+    ) -> np.ndarray:
+        """Interpolate pilot-RE LS estimates across frequency for each DMRS symbol.
+
+        Args:
+            dmrs_symbol_indices: One-dimensional integer array with shape
+                ``(num_dmrs_symbols,)``; values are OFDM symbol indices carrying DMRS.
+                This argument is used for shape validation and step readability.
+            pilot_subcarriers_by_symbol: Tuple with ``num_dmrs_symbols`` entries.
+                Each entry has shape ``(num_pilot_re_in_symbol,)`` and stores
+                user-allocation subcarrier indices.
+            pilot_ls_by_symbol: Tuple with ``num_dmrs_symbols`` entries. Each entry
+                has shape ``(num_pilot_re_in_symbol,)`` and stores LS estimates on
+                the corresponding pilot REs.
+            num_subcarriers: User-allocation subcarrier count.
+
+        Returns:
+            Complex array with shape ``(num_dmrs_symbols, num_subcarriers)``; axis 0
+            is DMRS symbol index order and axis 1 is user-allocation subcarrier.
+        """
+        if len(pilot_subcarriers_by_symbol) != dmrs_symbol_indices.size:
+            raise ValueError("pilot_subcarriers_by_symbol length must match dmrs_symbol_indices.")
+        if len(pilot_ls_by_symbol) != dmrs_symbol_indices.size:
+            raise ValueError("pilot_ls_by_symbol length must match dmrs_symbol_indices.")
+
+        dmrs_estimates = np.zeros((dmrs_symbol_indices.size, num_subcarriers), dtype=np.complex128)
+        for dmrs_idx, (pilot_subcarriers, pilot_values) in enumerate(
+            zip(pilot_subcarriers_by_symbol, pilot_ls_by_symbol, strict=True)
+        ):
+            dmrs_estimates[dmrs_idx] = self._interpolate_frequency(
+                pilot_subcarriers,
+                pilot_values,
+                num_subcarriers,
+            )
+        return dmrs_estimates
+
+    def interpolate_time(
+        self,
+        dmrs_symbol_indices: np.ndarray,
+        dmrs_estimates: np.ndarray,
+        num_symbols: int,
+    ) -> np.ndarray:
+        """Interpolate frequency-complete DMRS estimates across OFDM symbols.
+
+        Args:
+            dmrs_symbol_indices: One-dimensional integer array with shape
+                ``(num_dmrs_symbols,)``; values are OFDM symbol indices carrying DMRS.
+            dmrs_estimates: Complex array with shape
+                ``(num_dmrs_symbols, num_user_subcarriers)`` after frequency
+                interpolation.
+            num_symbols: Total OFDM symbol count in the slot.
+
+        Returns:
+            Full user-grid channel estimate with shape
+            ``(num_user_subcarriers, num_symbols)``.
+        """
+        return self._interpolate_time(dmrs_symbol_indices, dmrs_estimates, num_symbols)
 
     def _estimate_dmrs_symbols(
         self,
@@ -82,36 +215,30 @@ class LeastSquaresEstimator(ChannelEstimator):
         dmrs_symbols: np.ndarray,
         dmrs_mask: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Estimate channel values on all DMRS symbols after frequency interpolation.
+        """Backward-compatible helper returning frequency-interpolated DMRS estimates.
 
         Args:
             rx_grid: Single-antenna received slot grid with shape
                 ``(num_user_subcarriers, num_symbols)``.
             dmrs_symbols: One-dimensional transmitted DMRS sequence with shape
                 ``(num_dmrs_re,)`` in mapper RE order.
-            dmrs_mask: Boolean mask with shape ``(num_subcarriers, num_symbols)``.
+            dmrs_mask: Boolean mask with shape ``(num_user_subcarriers, num_symbols)``.
 
         Returns:
-            Tuple of ``(dmrs_symbol_indices, dmrs_estimates)`` where:
-            - ``dmrs_symbol_indices`` lists OFDM symbols carrying DMRS.
-            - ``dmrs_estimates`` stores one user-band estimate per DMRS symbol.
+            Tuple of ``(dmrs_symbol_indices, dmrs_estimates)`` where
+            ``dmrs_estimates`` has shape ``(num_dmrs_symbols, num_user_subcarriers)``.
         """
-        dmrs_symbol_indices = np.where(np.any(dmrs_mask, axis=0))[0]
-        dmrs_estimates = np.zeros((dmrs_symbol_indices.size, rx_grid.shape[0]), dtype=np.complex128)
-        dmrs_cursor = 0
-        for dmrs_idx, symbol_idx in enumerate(dmrs_symbol_indices):
-            pilot_subcarriers = np.flatnonzero(dmrs_mask[:, symbol_idx])
-            symbol_dmrs = dmrs_symbols[dmrs_cursor : dmrs_cursor + pilot_subcarriers.size]
-            dmrs_cursor += pilot_subcarriers.size
-            pilot_values = self._ls_estimate(
-                rx_grid[pilot_subcarriers, symbol_idx],
-                symbol_dmrs,
-            )
-            dmrs_estimates[dmrs_idx] = self._interpolate_frequency(
-                pilot_subcarriers,
-                pilot_values,
-                rx_grid.shape[0],
-            )
+        (
+            dmrs_symbol_indices,
+            pilot_subcarriers_by_symbol,
+            pilot_ls_by_symbol,
+        ) = self.estimate_pilot_re_ls(rx_grid, dmrs_symbols, dmrs_mask)
+        dmrs_estimates = self.interpolate_frequency(
+            dmrs_symbol_indices,
+            pilot_subcarriers_by_symbol,
+            pilot_ls_by_symbol,
+            rx_grid.shape[0],
+        )
         return dmrs_symbol_indices, dmrs_estimates
 
     def _ls_estimate(self, rx_pilots: np.ndarray, reference_pilots: np.ndarray) -> np.ndarray:

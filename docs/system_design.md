@@ -859,8 +859,29 @@ self.receiver_processor.receive(...)
 对单根天线：
 
 1. 如果没有 DMRS，则返回全 1 信道。
-2. `_estimate_dmrs_symbols` 先在每个 DMRS symbol 上做 LS 和频域插值。
-3. `_interpolate_time` 将 DMRS symbol 的估计插值到全 slot。
+2. `estimate_pilot_re_ls` 只在导频 RE 上做 LS，得到每个 DMRS symbol 的导频子载波索引和 LS 结果。
+3. `interpolate_frequency` 对每个 DMRS symbol 沿频率轴插值，得到用户带宽内完整频域估计。
+4. `interpolate_time` 沿 OFDM symbol 轴插值，得到完整用户资源网格信道估计。
+
+### `estimate_pilot_re_ls`
+
+导频 RE 级 LS 估计。输入单天线 `rx_grid`、本地 `dmrs_symbols` 和 `dmrs_mask`，输出：
+
+- `dmrs_symbol_indices`: 发生 DMRS 的 OFDM symbol index。
+- `pilot_subcarriers_by_symbol`: 每个 DMRS symbol 内的导频子载波索引。
+- `pilot_ls_by_symbol`: 每个导频 RE 上的 LS 估计。
+
+该函数不做频域插值，也不做时域插值。
+
+### `interpolate_frequency`
+
+频域插值。输入 `estimate_pilot_re_ls` 的输出和用户带宽子载波数，输出 `(N_dmrs_symbol, K_user)`。
+
+内部逐 DMRS symbol 调用 `_interpolate_frequency`，因此已有派生类如果只重载 `_interpolate_frequency`，仍能替换单符号频域插值算法。
+
+### `interpolate_time`
+
+时域插值。输入频域插值后的 `(N_dmrs_symbol, K_user)`，输出 `(K_user, L)`。
 
 ### `_ls_estimate`
 
@@ -872,11 +893,11 @@ H_ls = Y_dmrs / X_dmrs
 
 ### `_interpolate_frequency`
 
-对一个 DMRS symbol，已知 comb 导频处的 H，用 `np.interp` 对实部和虚部分别做线性插值，得到用户带宽内的 H。
+对一个 DMRS symbol，已知 comb 导频处的 H，用 `np.interp` 对实部和虚部分别做线性插值，得到用户带宽内的 H。它是单符号频域插值 hook。
 
 ### `_interpolate_time`
 
-跨 OFDM symbol 做线性插值。若只有一个 DMRS symbol，则直接复制到所有 symbol。
+跨 OFDM symbol 做线性插值。若只有一个 DMRS symbol，则直接复制到所有 symbol。它是时域插值 hook。
 
 ### `_extract_pilot_estimates`
 
