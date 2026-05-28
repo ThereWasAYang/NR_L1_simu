@@ -477,6 +477,103 @@ class ConfigLoaderTest(unittest.TestCase):
             )
             cfg = load_simulation_config(config_path)
             self.assertEqual(cfg.link.channel_type, "PUSCH")
+
+    def test_dynamic_config_fields_in_known_sections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "dynamic_known_sections.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 16",
+                        "  n_subcarriers: 999",
+                        "  custom_carrier:",
+                        "    nested_value: 123",
+                        "dmrs:",
+                        "  symbol_positions: [2]",
+                        "  custom_dmrs_value: enabled",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "  num_prbs: 16",
+                        "  mcs:",
+                        "    table: qam256",
+                        "    index: 0",
+                        "    custom_mcs_flag: true",
+                        "channel:",
+                        "  model: AWGN",
+                        "  params:",
+                        "    snr_db: 12.5",
+                        "    nested:",
+                        "      points:",
+                        "        - 1",
+                        "        - name: two",
+                        "    items: method-name-collision",
+                        "interference:",
+                        "  monitor_label: monitor-a",
+                        "  sources:",
+                        "    - label: i0",
+                        "      inr_db: 0",
+                        "      custom_source:",
+                        "        gain: 3",
+                        "      channel_params:",
+                        "        custom_param:",
+                        "          delay: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = load_simulation_config(config_path)
+
+            self.assertEqual(cfg.carrier.n_subcarriers, 16 * 12)
+            self.assertEqual(cfg.carrier.extras.n_subcarriers, 999)
+            self.assertEqual(cfg.carrier.custom_carrier.nested_value, 123)
+            self.assertEqual(cfg.dmrs.custom_dmrs_value, "enabled")
+            self.assertTrue(cfg.link.mcs.custom_mcs_flag)
+            self.assertEqual(cfg.channel.params.snr_db, 12.5)
+            self.assertEqual(cfg.channel.params["nested"].points[1].name, "two")
+            self.assertEqual(cfg.channel.params["items"], "method-name-collision")
+            self.assertEqual(cfg.interference.monitor_label, "monitor-a")
+            self.assertEqual(cfg.interference.sources[0].custom_source.gain, 3)
+            self.assertEqual(cfg.interference.sources[0].channel_params.custom_param.delay, 4)
+
+    def test_dynamic_config_top_level_sections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "dynamic_top_level.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "my_receiver:",
+                        "  algorithm: neural_mmse",
+                        "  hidden_size: 128",
+                        "  debug:",
+                        "    dump_llr: true",
+                        "  stages:",
+                        "    - name: front",
+                        "      enabled: true",
+                        "my-receiver:",
+                        "  algorithm: invalid_identifier_name",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "channel:",
+                        "  model: AWGN",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = load_simulation_config(config_path)
+
+            self.assertEqual(cfg.my_receiver.algorithm, "neural_mmse")
+            self.assertEqual(cfg.my_receiver.hidden_size, 128)
+            self.assertTrue(cfg.my_receiver.debug.dump_llr)
+            self.assertEqual(cfg.my_receiver.stages[0].name, "front")
+            self.assertEqual(cfg.extras.my_receiver.algorithm, "neural_mmse")
+            self.assertEqual(cfg.extras["my-receiver"].algorithm, "invalid_identifier_name")
+            with self.assertRaises(AttributeError):
+                getattr(cfg, "my-receiver")
             self.assertEqual(cfg.channel.model, "AWGN")
 
 

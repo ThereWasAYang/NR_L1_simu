@@ -3,6 +3,7 @@
 from .config import (
     CarrierConfig,
     ChannelConfig,
+    ConfigNode,
     DmrsConfig,
     LinkConfig,
     McsConfig,
@@ -14,6 +15,7 @@ from .scenarios.component_factory import DefaultSimulationComponentFactory, Simu
 __all__ = [
     "CarrierConfig",
     "ChannelConfig",
+    "ConfigNode",
     "DefaultSimulationComponentFactory",
     "DmrsConfig",
     "LinkConfig",

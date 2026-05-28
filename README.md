@@ -223,6 +223,33 @@ context.add_plot_artifact(
 - `waveform_input.num_samples_per_tti`
 - `waveform_input.noise_variance`
 
+### 动态配置字段
+
+配置文件支持自适应扩展。新增字段不需要同步修改 `config.py`，加载后会递归转换成可属性访问的配置节点：
+
+```yaml
+my_receiver:
+  algorithm: neural_mmse
+  debug:
+    dump_llr: true
+```
+
+代码中可以读取为：
+
+```python
+config.my_receiver.algorithm
+config.my_receiver.debug.dump_llr
+```
+
+已有配置段也支持新增字段，例如 `channel.params.snr_db` 既可以继续用 `config.channel.params["snr_db"]` 访问，也可以用 `config.channel.params.snr_db` 访问。
+
+需要注意：
+
+- 已有强类型字段仍优先解析，例如 `dmrs`、`link`、`channel` 的标准字段不会被动态字段覆盖。
+- 与已有属性或方法重名的字段不会挂成属性，但会保存在 `extras` 或字典里，例如 `config.carrier.extras["n_subcarriers"]`。
+- 非法 Python 标识符字段不能用点号访问，例如 `my-receiver` 只能通过 `config.extras["my-receiver"]` 访问。
+- 只有既有路径字段会自动解析相对路径；新增动态字符串字段不会自动当作路径处理。
+
 ### 外部频域信道系数
 
 工程支持从配置或文本文件输入每子载波频域信道系数。对应信道类型为：

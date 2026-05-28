@@ -60,6 +60,7 @@
 - `WaveformInputConfig`: 灌数仿真文件路径、样点数、噪声方差。
 - `LinkConfig`: PUSCH/PDSCH、波形、层数、天线数、RB 分配、时域符号分配。
 - `SimulationConfig`: 总配置对象。
+- `ConfigNode`: 字典兼容的动态配置节点，用于承载新增字段并支持 `config.xxx.yyy` 属性访问。
 
 关键函数和属性：
 
@@ -67,14 +68,17 @@
 - `CarrierConfig.fft_size_effective`: 若配置未提供 FFT 点数，则自动选择不小于小区带宽的最小 2 的整数次幂。
 - `CarrierConfig.sample_rate_effective_hz`: 若配置未提供采样率，则用 `fft_size * SCS` 自动计算。
 - `CarrierConfig.cyclic_prefix_lengths`: 根据 CP 类型、SCS 和采样率推导每个 OFDM 符号 CP 长度。
-- `SimulationConfig.from_mapping`: 把配置文件中的字典转成强类型 dataclass。
+- `SimulationConfig.from_mapping`: 把配置文件中的字典转成强类型 dataclass，同时把未知字段递归保存到动态配置节点。
 - `SimulationConfig.__post_init__`: 创建配置后立即执行协议约束检查。
 - `_validate_protocol_constraints`: 检查 DFT-s-OFDM 只能使用 type1 DMRS、不支持数据/DMRS 共符号、需要 `num_cdm_groups_without_data = 2` 等约束。
 
 设计意图：
 
 - CP 长度不暴露为手工配置，避免不符合协议的配置进入链路。
-- `ChannelConfig.params` 保持字典形式，是为了允许不同信道模型拥有不同参数。
+- `ChannelConfig.params` 使用 `ConfigNode`，保留字典兼容性，同时允许 `config.channel.params.snr_db` 形式访问。
+- 所有配置 dataclass 都带有 `extras`，未知字段保存在对应配置段的 `extras` 中；字段名合法且不冲突时，也会挂成对象属性。
+- 和已有字段、属性或方法重名的未知字段不会覆盖原属性，只能通过 `extras` 或字典方式访问。
+- 新增顶层配置段同样会进入 `SimulationConfig.extras`，例如 `my_receiver.algorithm` 可读取为 `config.my_receiver.algorithm`。
 - `SimulationConfig` 在构造时做协议约束，避免错误配置延迟到中间模块才报错。
 
 ### `io/config_loader.py`
