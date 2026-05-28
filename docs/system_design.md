@@ -849,39 +849,35 @@ self.receiver_processor.receive(...)
 执行：
 
 1. 检查输入必须是三维 `(Nrx, K_user, L)`，单天线也必须保留天线维。
-2. 对每根 RX antenna 调用 `_estimate_single`。
-3. 堆叠成 `(Nrx, K_user, L)`。
-4. `_extract_pilot_estimates` 抽取导频 RE 上的估计结果，用于绘图。
-5. 返回 `ChannelEstimateResult`。
-
-### `_estimate_single`
-
-对单根天线：
-
-1. 如果没有 DMRS，则返回全 1 信道。
-2. `estimate_pilot_re_ls` 只在导频 RE 上做 LS，得到每个 DMRS symbol 的导频子载波索引和 LS 结果。
-3. `interpolate_frequency` 对每个 DMRS symbol 沿频率轴插值，得到用户带宽内完整频域估计。
-4. `interpolate_time` 沿 OFDM symbol 轴插值，得到完整用户资源网格信道估计。
+2. 如果没有 DMRS，则直接生成 `(Nrx, K_user, L)` 全 1 信道。
+3. `estimate_pilot_re_ls` 一次性处理所有 RX antenna 和所有 DMRS symbol，返回完整 LS 中间结果。
+4. `interpolate_frequency` 一次性处理所有 RX antenna 和所有 DMRS symbol，返回完整频域插值中间结果。
+5. `interpolate_time` 一次性处理所有 RX antenna，返回最终 `(Nrx, K_user, L)` 信道估计。
+6. `_extract_pilot_estimates` 抽取导频 RE 上的估计结果，用于绘图。
+7. 返回 `ChannelEstimateResult`。
 
 ### `estimate_pilot_re_ls`
 
-导频 RE 级 LS 估计。输入单天线 `rx_grid`、本地 `dmrs_symbols` 和 `dmrs_mask`，输出：
+导频 RE 级 LS 估计。输入三维 `rx_grid`、本地 `dmrs_symbols` 和 `dmrs_mask`，输出 `PilotLeastSquaresResult`：
 
 - `dmrs_symbol_indices`: 发生 DMRS 的 OFDM symbol index。
 - `pilot_subcarriers_by_symbol`: 每个 DMRS symbol 内的导频子载波索引。
-- `pilot_ls_by_symbol`: 每个导频 RE 上的 LS 估计。
+- `pilot_estimates_by_symbol`: 每个 DMRS symbol 上的 LS 估计，每个元素维度为 `(Nrx, Npilot_symbol)`。
+- `num_rx_ant`: 接收天线数。
 
 该函数不做频域插值，也不做时域插值。
 
 ### `interpolate_frequency`
 
-频域插值。输入 `estimate_pilot_re_ls` 的输出和用户带宽子载波数，输出 `(N_dmrs_symbol, K_user)`。
+频域插值。输入 `PilotLeastSquaresResult` 和用户带宽子载波数，输出 `FrequencyInterpolatedChannelResult`，其中 `channel_estimates` 维度为 `(Nrx, N_dmrs_symbol, K_user)`。
 
-内部逐 DMRS symbol 调用 `_interpolate_frequency`，因此已有派生类如果只重载 `_interpolate_frequency`，仍能替换单符号频域插值算法。
+天线循环和 DMRS symbol 循环都在该函数内部。内部逐天线、逐 DMRS symbol 调用 `_interpolate_frequency`，因此已有派生类如果只重载 `_interpolate_frequency`，仍能替换单符号频域插值算法。
 
 ### `interpolate_time`
 
-时域插值。输入频域插值后的 `(N_dmrs_symbol, K_user)`，输出 `(K_user, L)`。
+时域插值。输入 `FrequencyInterpolatedChannelResult`，输出 `(Nrx, K_user, L)`。
+
+天线循环在该函数内部。内部逐天线调用 `_interpolate_time`，因此已有派生类如果只重载 `_interpolate_time`，仍能替换单天线时域插值算法。
 
 ### `_ls_estimate`
 

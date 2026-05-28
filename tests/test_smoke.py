@@ -146,42 +146,50 @@ class PuschAwgnSmokeTest(unittest.TestCase):
 
     def test_channel_estimator_runs_ls_frequency_and_time_steps_separately(self):
         estimator = LeastSquaresEstimator()
-        rx_grid = np.zeros((4, 3), dtype=np.complex128)
+        rx_grid = np.zeros((2, 4, 3), dtype=np.complex128)
         dmrs_mask = np.zeros((4, 3), dtype=bool)
         dmrs_mask[[0, 2], 1] = True
         reference_dmrs = np.array([1.0 + 0.0j, 0.0 + 1.0j], dtype=np.complex128)
-        expected_pilot_ls = np.array([2.0 + 1.0j, 4.0 + 3.0j], dtype=np.complex128)
-        rx_grid[[0, 2], 1] = reference_dmrs * expected_pilot_ls
+        expected_pilot_ls = np.array(
+            [
+                [2.0 + 1.0j, 4.0 + 3.0j],
+                [-1.0 + 2.0j, 1.0 - 2.0j],
+            ],
+            dtype=np.complex128,
+        )
+        rx_grid[:, [0, 2], 1] = reference_dmrs[np.newaxis, :] * expected_pilot_ls
 
-        (
-            dmrs_symbol_indices,
-            pilot_subcarriers_by_symbol,
-            pilot_ls_by_symbol,
-        ) = estimator.estimate_pilot_re_ls(rx_grid, reference_dmrs, dmrs_mask)
-        frequency_estimates = estimator.interpolate_frequency(
-            dmrs_symbol_indices,
-            pilot_subcarriers_by_symbol,
-            pilot_ls_by_symbol,
-            num_subcarriers=rx_grid.shape[0],
+        pilot_ls_result = estimator.estimate_pilot_re_ls(rx_grid, reference_dmrs, dmrs_mask)
+        frequency_result = estimator.interpolate_frequency(
+            pilot_ls_result,
+            num_subcarriers=rx_grid.shape[1],
         )
         channel_estimate = estimator.interpolate_time(
-            dmrs_symbol_indices,
-            frequency_estimates,
-            num_symbols=rx_grid.shape[1],
+            frequency_result,
+            num_symbols=rx_grid.shape[2],
         )
 
-        self.assertTrue(np.array_equal(dmrs_symbol_indices, np.array([1])))
-        self.assertTrue(np.array_equal(pilot_subcarriers_by_symbol[0], np.array([0, 2])))
-        self.assertTrue(np.allclose(pilot_ls_by_symbol[0], expected_pilot_ls))
+        self.assertTrue(np.array_equal(pilot_ls_result.dmrs_symbol_indices, np.array([1])))
+        self.assertTrue(
+            np.array_equal(pilot_ls_result.pilot_subcarriers_by_symbol[0], np.array([0, 2]))
+        )
+        self.assertTrue(
+            np.allclose(pilot_ls_result.pilot_estimates_by_symbol[0], expected_pilot_ls)
+        )
+        self.assertEqual(frequency_result.channel_estimates.shape, (2, 1, 4))
         self.assertTrue(
             np.allclose(
-                frequency_estimates[0],
+                frequency_result.channel_estimates[0, 0],
                 np.array([2.0 + 1.0j, 3.0 + 2.0j, 4.0 + 3.0j, 4.0 + 3.0j]),
             )
         )
         self.assertEqual(channel_estimate.shape, rx_grid.shape)
-        self.assertTrue(np.allclose(channel_estimate[:, 0], frequency_estimates[0]))
-        self.assertTrue(np.allclose(channel_estimate[:, 2], frequency_estimates[0]))
+        self.assertTrue(
+            np.allclose(channel_estimate[0, :, 0], frequency_result.channel_estimates[0, 0])
+        )
+        self.assertTrue(
+            np.allclose(channel_estimate[1, :, 2], frequency_result.channel_estimates[1, 0])
+        )
 
     def test_pusch_awgn_with_interference_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
