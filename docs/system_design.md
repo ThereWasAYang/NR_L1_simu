@@ -583,6 +583,7 @@ TDL/CDL 共享的时变多径 MIMO 基类。
 核心函数：
 
 - `propagate`: 总入口，扩展 TX 分支，生成路径系数，卷积信道，加噪声。
+- `_validate_link_level_limits`: 检查 38.901 link-level TDL/CDL 的载频和带宽范围。
 - `_generate_path_coefficients`: 抽象函数，由 TDL/CDL 子类实现。
 - `_apply_time_varying_channel`: 对每个 RX、TX、path 做延迟和时变系数相乘累加。
 - `_fractional_delay`: 用 sinc 插值实现分数采样延迟。
@@ -591,7 +592,11 @@ TDL/CDL 共享的时变多径 MIMO 基类。
 - `_normalize_powers_db`: dB path power 转线性归一化功率。
 - `_resolve_path_parameters`: 支持用户覆盖每径时延和功率。
 - `_expand_tx_branches`: 保证 TX 波形有显式天线轴。
-- `_array_response`: 生成简化 ULA 空间响应。
+- `_antenna_array`: 从 `tx_array/rx_array` 或默认半波长 ULA 解析天线端口位置和极化 slant。
+- `_field_pattern`: 生成 isotropic theta/phi 场型分量。
+- `_array_phase`: 按阵列位置和入射/出射方向生成相位。
+- `_apply_mimo_correlation`: 对 TDL IID MIMO 过程施加可分离 TX/RX 相关矩阵。
+- `_angle_scale_values`: 对 CDL cluster 角度做目标均值和目标扩展缩放。
 
 数学形式近似：
 
@@ -605,19 +610,24 @@ r_rx[n] = sum_tx sum_path h[rx,tx,path,n] * x_tx[n-delay_path] + noise[n]
 
 1. 从 `profile_tables.py` 读取 TDL-A/B/C/D/E 的默认 normalized delays 和 powers。
 2. 调用 `_resolve_path_parameters` 应用 delay spread 或用户显式路径覆盖。
-3. 对每条 path 生成 Rayleigh/Rician 时变过程。
-4. 叠加简化的 TX/RX 空间响应，形成 `(num_rx_ant, num_tx_ant, num_paths, num_samples)`。
+3. 默认按 `tdl_mimo_method = iid` 为每个 RX/TX/path 生成独立 Rayleigh/Rician 过程，对应 38.901 TDL zero-correlation link-level 模式。
+4. 若配置 `tdl_mimo_method = correlated`，则对 IID 过程施加 `tdl_rx_correlation` 与 `tdl_tx_correlation` 的 Hermitian PSD 矩阵平方根。
+5. 若配置 `tdl_mimo_method = spatial_filter`，则按阵列响应生成空间滤波过程。
+6. 输出 `(num_rx_ant, num_tx_ant, num_paths, num_samples)`。
 
 ### `cdl.py`
 
 `CdlChannel._generate_path_coefficients`：
 
-1. 从 profile table 读取 CDL cluster。
-2. 根据 cluster 角度、UE 速度、载频计算简化 Doppler。
-3. 对 cluster 内 rays 叠加空间响应。
-4. 对 CDL-D/E 等 LOS profile 叠加 Rician/specular 分量。
+1. 从 profile table 读取 CDL cluster 的 delay、power、AOD/AOA/ZOD/ZOA、cluster spread 和 XPR。
+2. 可选对 cluster 角度执行 `angle_scaling_enabled` 指定的目标均值/扩展缩放。
+3. 每个 cluster 生成 20 条 ray，并对 AOD/AOA/ZOD/ZOA offset 做随机 coupling。
+4. 每条 ray 生成 per-ray XPR、四极化随机初相、双极化场型矩阵、阵列相位和 Doppler 相位。
+5. 对 cluster 内 rays 做功率归一化叠加。
+6. 对 CDL-D/E 等 LOS profile 按 `k_factor_db` 做 LOS deterministic 分量与 NLOS cluster 分量合成。
+7. 输出 `(num_rx_ant, num_tx_ant, num_clusters, num_samples)`。
 
-当前 CDL 是基础 MIMO profile 实现，尚未覆盖完整 38.901 阵列、极化、XPR 和空间一致性。
+当前 TDL/CDL 实现范围是 38.901 R18 Clause 7.7 link-level 模型，不包含系统级路径损耗、阴影衰落、空间一致性、阻塞、氧吸收或地图模型。
 
 ### `external_frequency_response.py`
 

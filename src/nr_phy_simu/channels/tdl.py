@@ -8,7 +8,7 @@ from nr_phy_simu.config import SimulationConfig
 
 
 class TdlChannel(FadingChannelBase):
-    """3GPP TR 38.901 TDL channel model with multi-TX multi-RX support."""
+    """3GPP TR 38.901 link-level TDL channel model."""
 
     def _generate_path_coefficients(
         self,
@@ -43,8 +43,10 @@ class TdlChannel(FadingChannelBase):
         max_doppler_hz = self._max_doppler_hz(config)
         num_sinusoids = int(config.channel.params.get("num_sinusoids", 32))
         k_factor_db = float(config.channel.params.get("k_factor_db", TDL_LOS_K_DB.get(profile_name, 0.0)))
-        tx_spacing = float(config.channel.params.get("tx_antenna_spacing_lambda", 0.5))
-        rx_spacing = float(config.channel.params.get("rx_antenna_spacing_lambda", 0.5))
+        method = str(config.channel.params.get("tdl_mimo_method", "iid")).lower()
+        rx_correlation = config.channel.params.get("tdl_rx_correlation")
+        tx_correlation = config.channel.params.get("tdl_tx_correlation")
+        spatial_filter = self._resolve_spatial_filter(config, delays_s.size)
 
         coeff = np.zeros((num_rx_ant, num_tx_ant, delays_s.size, num_samples), dtype=np.complex128)
         tap_fading = list(config.channel.params.get("path_fading", [tap.fading for tap in taps]))
@@ -56,25 +58,198 @@ class TdlChannel(FadingChannelBase):
 
         for path_idx in range(delays_s.size):
             fading = str(tap_fading[path_idx]).upper()
-            if fading == "LOS":
-                process = self._rician_process(
+            if spatial_filter is not None:
+                process = self._scalar_process(
                     num_samples=num_samples,
                     sample_rate_hz=sample_rate_hz,
                     max_doppler_hz=max_doppler_hz,
+                    fading=fading,
                     k_factor_linear=10 ** (k_factor_db / 10.0),
                     num_sinusoids=num_sinusoids,
-                    specular_doppler_hz=0.7 * max_doppler_hz,
+                )
+                process_matrix = spatial_filter[path_idx, :, :, np.newaxis] * process[np.newaxis, np.newaxis, :]
+            elif method in {"spatial_filter", "spatial_filter_from_cdl"}:
+                process_matrix = self._spatial_filter_process(
+                    num_samples=num_samples,
+                    sample_rate_hz=sample_rate_hz,
+                    max_doppler_hz=max_doppler_hz,
+                    fading=fading,
+                    k_factor_linear=10 ** (k_factor_db / 10.0),
+                    num_sinusoids=num_sinusoids,
+                    config=config,
                 )
             else:
-                process = self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
+                process_matrix = self._iid_mimo_process(
+                    num_rx_ant=num_rx_ant,
+                    num_tx_ant=num_tx_ant,
+                    num_samples=num_samples,
+                    sample_rate_hz=sample_rate_hz,
+                    max_doppler_hz=max_doppler_hz,
+                    fading=fading,
+                    k_factor_linear=10 ** (k_factor_db / 10.0),
+                    num_sinusoids=num_sinusoids,
+                )
+                if method in {"correlated", "correlation", "kronecker"} or rx_correlation is not None or tx_correlation is not None:
+                    process_matrix = self._apply_mimo_correlation(
+                        process_matrix,
+                        None if rx_correlation is None else np.asarray(rx_correlation, dtype=np.complex128),
+                        None if tx_correlation is None else np.asarray(tx_correlation, dtype=np.complex128),
+                    )
+                elif method not in {"iid", "zero_correlation", "zero-correlation"}:
+                    raise ValueError(
+                        "Unsupported tdl_mimo_method. Use 'iid', 'correlated', or 'spatial_filter'."
+                    )
 
-            tx_spatial_freq = self.rng.uniform(-1.0, 1.0)
-            rx_spatial_freq = self.rng.uniform(-1.0, 1.0)
-            tx_response = self._array_response(num_tx_ant, tx_spatial_freq, tx_spacing)
-            rx_response = self._array_response(num_rx_ant, rx_spatial_freq, rx_spacing)
-            spatial = np.outer(rx_response, np.conj(tx_response))
-            coeff[:, :, path_idx, :] = (
-                np.sqrt(path_powers[path_idx]) * spatial[:, :, np.newaxis] * process[np.newaxis, np.newaxis, :]
-            )
+            coeff[:, :, path_idx, :] = np.sqrt(path_powers[path_idx]) * process_matrix
 
         return delays_s, coeff
+
+    def _scalar_process(
+        self,
+        num_samples: int,
+        sample_rate_hz: float,
+        max_doppler_hz: float,
+        fading: str,
+        k_factor_linear: float,
+        num_sinusoids: int,
+    ) -> np.ndarray:
+        """Generate one scalar TDL tap process.
+
+        Args:
+            num_samples: Number of generated samples.
+            sample_rate_hz: Baseband sample rate in Hz.
+            max_doppler_hz: Maximum Doppler frequency in Hz.
+            fading: Tap fading type.
+            k_factor_linear: Linear K-factor for LOS taps.
+            num_sinusoids: Number of sinusoids for diffuse fading.
+
+        Returns:
+            Complex process with shape ``(num_samples,)``.
+        """
+        if fading == "LOS":
+            return self._rician_process(
+                num_samples=num_samples,
+                sample_rate_hz=sample_rate_hz,
+                max_doppler_hz=max_doppler_hz,
+                k_factor_linear=k_factor_linear,
+                num_sinusoids=num_sinusoids,
+                specular_doppler_hz=0.7 * max_doppler_hz,
+            )
+        return self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
+
+    def _iid_mimo_process(
+        self,
+        num_rx_ant: int,
+        num_tx_ant: int,
+        num_samples: int,
+        sample_rate_hz: float,
+        max_doppler_hz: float,
+        fading: str,
+        k_factor_linear: float,
+        num_sinusoids: int,
+    ) -> np.ndarray:
+        """Generate zero-correlation IID TDL MIMO branch processes.
+
+        Args:
+            num_rx_ant: Number of receive antennas.
+            num_tx_ant: Number of transmit antennas.
+            num_samples: Number of generated samples.
+            sample_rate_hz: Baseband sample rate in Hz.
+            max_doppler_hz: Maximum Doppler frequency in Hz.
+            fading: Tap fading type, ``"LOS"`` or Rayleigh-like.
+            k_factor_linear: Linear K-factor for LOS taps.
+            num_sinusoids: Number of sinusoids for diffuse fading.
+
+        Returns:
+            MIMO process with shape ``(num_rx_ant, num_tx_ant, num_samples)``.
+        """
+        process = np.zeros((num_rx_ant, num_tx_ant, num_samples), dtype=np.complex128)
+        for rx_idx in range(num_rx_ant):
+            for tx_idx in range(num_tx_ant):
+                if fading == "LOS":
+                    process[rx_idx, tx_idx] = self._rician_process(
+                        num_samples=num_samples,
+                        sample_rate_hz=sample_rate_hz,
+                        max_doppler_hz=max_doppler_hz,
+                        k_factor_linear=k_factor_linear,
+                        num_sinusoids=num_sinusoids,
+                        specular_doppler_hz=0.7 * max_doppler_hz,
+                    )
+                else:
+                    process[rx_idx, tx_idx] = self._rayleigh_process(
+                        num_samples,
+                        sample_rate_hz,
+                        max_doppler_hz,
+                        num_sinusoids,
+                    )
+        return process
+
+    def _spatial_filter_process(
+        self,
+        num_samples: int,
+        sample_rate_hz: float,
+        max_doppler_hz: float,
+        fading: str,
+        k_factor_linear: float,
+        num_sinusoids: int,
+        config: SimulationConfig,
+    ) -> np.ndarray:
+        """Generate a spatially filtered TDL branch process from array responses.
+
+        Args:
+            num_samples: Number of generated samples.
+            sample_rate_hz: Baseband sample rate in Hz.
+            max_doppler_hz: Maximum Doppler frequency in Hz.
+            fading: Tap fading type.
+            k_factor_linear: Linear K-factor for LOS taps.
+            num_sinusoids: Number of sinusoids for diffuse fading.
+            config: Full simulation configuration.
+
+        Returns:
+            MIMO process with shape ``(num_rx_ant, num_tx_ant, num_samples)``.
+        """
+        num_rx_ant = int(config.link.num_rx_ant)
+        num_tx_ant = int(config.link.num_tx_ant)
+        rx_array = self._antenna_array(config, "rx", num_rx_ant)
+        tx_array = self._antenna_array(config, "tx", num_tx_ant)
+        arrival = self._unit_vector(self.rng.uniform(-180.0, 180.0), self.rng.uniform(45.0, 135.0))
+        departure = self._unit_vector(self.rng.uniform(-180.0, 180.0), self.rng.uniform(45.0, 135.0))
+        rx_response = self._array_phase(rx_array, arrival)
+        tx_response = self._array_phase(tx_array, departure)
+        spatial = rx_response[:, np.newaxis] * tx_response[np.newaxis, :]
+        if fading == "LOS":
+            process = self._rician_process(
+                num_samples=num_samples,
+                sample_rate_hz=sample_rate_hz,
+                max_doppler_hz=max_doppler_hz,
+                k_factor_linear=k_factor_linear,
+                num_sinusoids=num_sinusoids,
+                specular_doppler_hz=0.7 * max_doppler_hz,
+            )
+        else:
+            process = self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
+        return spatial[:, :, np.newaxis] * process[np.newaxis, np.newaxis, :]
+
+    def _resolve_spatial_filter(self, config: SimulationConfig, num_paths: int) -> np.ndarray | None:
+        """Resolve an optional explicit TDL spatial filter.
+
+        Args:
+            config: Full simulation configuration.
+            num_paths: Number of TDL paths.
+
+        Returns:
+            Spatial filter with shape ``(num_paths, num_rx_ant, num_tx_ant)``, or
+            ``None`` when no explicit filter is configured.
+        """
+        value = config.channel.params.get("spatial_filter")
+        if value is None:
+            return None
+        num_rx_ant = int(config.link.num_rx_ant)
+        num_tx_ant = int(config.link.num_tx_ant)
+        spatial_filter = np.asarray(value, dtype=np.complex128)
+        if spatial_filter.shape == (num_rx_ant, num_tx_ant):
+            return np.repeat(spatial_filter[np.newaxis, :, :], num_paths, axis=0)
+        expected = (num_paths, num_rx_ant, num_tx_ant)
+        if spatial_filter.shape != expected:
+            raise ValueError(f"spatial_filter must have shape ({num_rx_ant}, {num_tx_ant}) or {expected}.")
+        return spatial_filter

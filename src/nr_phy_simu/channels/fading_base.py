@@ -1,13 +1,31 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import math
+from typing import Any
 
 import numpy as np
 from scipy.signal import fftconvolve
 
 from nr_phy_simu.common.interfaces import ChannelModel
 from nr_phy_simu.config import SimulationConfig
+
+
+@dataclass(frozen=True)
+class AntennaArrayDescription:
+    """Resolved antenna-array geometry used by link-level TDL/CDL models.
+
+    Shape conventions:
+        ``positions_lambda``: ``(num_ports, 3)`` element positions measured in
+        wavelengths along x/y/z.
+        ``polarization_slants_deg``: ``(num_ports,)`` polarization slant angles
+        used by the isotropic dual-polarized field model.
+    """
+
+    positions_lambda: np.ndarray
+    polarization_slants_deg: np.ndarray
+    polarization: str
 
 
 class FadingChannelBase(ChannelModel, ABC):
@@ -22,8 +40,8 @@ class FadingChannelBase(ChannelModel, ABC):
         """Propagate a time-domain waveform through a time-varying tapped channel.
 
         Args:
-            waveform: Transmit waveform with shape ``(slot_samples,)`` or
-                ``(num_tx_ant, slot_samples)``; last axis is time-sample index.
+            waveform: Transmit waveform with shape ``(num_tx_ant, slot_samples)``;
+                axis 0 is TX antenna and axis 1 is time-sample index.
             config: Full simulation configuration that defines antennas, channel
                 profile parameters, sample rate, and SNR.
 
@@ -33,6 +51,7 @@ class FadingChannelBase(ChannelModel, ABC):
             ``channel_info["path_coefficients"]`` has
             shape ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
         """
+        self._validate_link_level_limits(config)
         tx_waveform = self._expand_tx_branches(waveform, config)
         sample_rate = config.carrier.sample_rate_effective_hz
         delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
@@ -43,6 +62,8 @@ class FadingChannelBase(ChannelModel, ABC):
                 "snr_db": float("inf"),
                 "path_delays_s": delays_s,
                 "path_coefficients": coeff,
+                "carrier_frequency_hz": self._carrier_frequency_hz(config),
+                "max_doppler_hz": self._max_doppler_hz(config),
             }
         noisy_waveform, noise_variance, snr_db = self._add_awgn(rx_waveform, config)
         return noisy_waveform, {
@@ -50,6 +71,8 @@ class FadingChannelBase(ChannelModel, ABC):
             "snr_db": snr_db,
             "path_delays_s": delays_s,
             "path_coefficients": coeff,
+            "carrier_frequency_hz": self._carrier_frequency_hz(config),
+            "max_doppler_hz": self._max_doppler_hz(config),
         }
 
     @abstractmethod
@@ -238,7 +261,33 @@ class FadingChannelBase(ChannelModel, ABC):
 
     @staticmethod
     def _carrier_frequency_hz(config: SimulationConfig) -> float:
-        return float(config.channel.params.get("carrier_frequency_hz", 3.5e9))
+        carrier_frequency_hz = float(config.channel.params.get("carrier_frequency_hz", 3.5e9))
+        if not 0.5e9 <= carrier_frequency_hz <= 100.0e9:
+            raise ValueError(
+                "TDL/CDL link-level models are specified for carrier_frequency_hz "
+                "between 0.5 GHz and 100 GHz."
+            )
+        return carrier_frequency_hz
+
+    @classmethod
+    def _validate_link_level_limits(cls, config: SimulationConfig) -> None:
+        """Validate link-level 38.901 operating limits common to TDL/CDL.
+
+        Args:
+            config: Full simulation configuration containing carrier/channel params.
+
+        Returns:
+            None. A ``ValueError`` is raised when the configuration is outside the
+            link-level TDL/CDL applicability range.
+        """
+        cls._carrier_frequency_hz(config)
+        active_bandwidth_hz = (
+            int(config.carrier.n_subcarriers)
+            * float(config.carrier.subcarrier_spacing_khz)
+            * 1e3
+        )
+        if active_bandwidth_hz > 2.0e9:
+            raise ValueError("TDL/CDL link-level models support bandwidths up to 2 GHz.")
 
     @classmethod
     def _wavelength_m(cls, config: SimulationConfig) -> float:
@@ -251,6 +300,19 @@ class FadingChannelBase(ChannelModel, ABC):
             return float(params["max_doppler_hz"])
         ue_speed_mps = float(params.get("ue_speed_mps", 0.0))
         return ue_speed_mps / cls._wavelength_m(config)
+
+    @staticmethod
+    def _time_axis(num_samples: int, sample_rate_hz: float) -> np.ndarray:
+        """Build a sample-time vector.
+
+        Args:
+            num_samples: Number of time samples.
+            sample_rate_hz: Sampling rate in Hz.
+
+        Returns:
+            One-dimensional time array with shape ``(num_samples,)`` in seconds.
+        """
+        return np.arange(num_samples, dtype=np.float64) / sample_rate_hz
 
     @staticmethod
     def _resolve_path_parameters(
@@ -294,8 +356,34 @@ class FadingChannelBase(ChannelModel, ABC):
                 )
             return custom_delays_ns * 1e-9, custom_powers_db
 
-        desired_ds_s = float(params.get(delay_spread_key, 300.0)) * 1e-9
+        desired_ds_s = FadingChannelBase._resolve_delay_spread_ns(params, delay_spread_key) * 1e-9
         return normalized_delays * desired_ds_s, power_db
+
+    @staticmethod
+    def _resolve_delay_spread_ns(params: dict[str, Any], delay_spread_key: str) -> float:
+        """Resolve delay spread from explicit value or named lookup profile.
+
+        Args:
+            params: Channel parameter dictionary.
+            delay_spread_key: Primary key, normally ``"delay_spread_ns"``.
+
+        Returns:
+            Delay spread in ns.
+        """
+        if params.get(delay_spread_key) is not None:
+            return float(params[delay_spread_key])
+        profile_name = str(params.get("delay_spread_profile", "nominal"))
+        lookup = params.get("scenario_delay_spread_lookup")
+        if isinstance(lookup, dict) and profile_name in lookup:
+            return float(lookup[profile_name])
+        defaults = {
+            "very_short": 10.0,
+            "short": 30.0,
+            "nominal": 300.0,
+            "long": 1000.0,
+            "very_long": 3000.0,
+        }
+        return defaults.get(profile_name, defaults["nominal"])
 
     @staticmethod
     def _expand_tx_branches(waveform: np.ndarray, config: SimulationConfig) -> np.ndarray:
@@ -335,3 +423,219 @@ class FadingChannelBase(ChannelModel, ABC):
         """
         antenna_index = np.arange(num_ant, dtype=np.float64)
         return np.exp(1j * 2.0 * np.pi * spacing_lambda * spatial_frequency * antenna_index)
+
+    @staticmethod
+    def _antenna_array(
+        config: SimulationConfig,
+        side: str,
+        num_ports: int,
+    ) -> AntennaArrayDescription:
+        """Resolve antenna-array geometry from channel params.
+
+        Args:
+            config: Full simulation configuration containing channel params.
+            side: ``"tx"`` or ``"rx"``.
+            num_ports: Number of TX/RX antenna ports.
+
+        Returns:
+            Resolved antenna array with one row per port.
+        """
+        params = config.channel.params
+        array_cfg = params.get(f"{side}_array")
+        spacing_key = f"{side}_antenna_spacing_lambda"
+        if array_cfg is None:
+            array_cfg = {}
+        if not isinstance(array_cfg, dict):
+            raise ValueError(f"{side}_array must be a mapping when provided.")
+
+        polarization = str(array_cfg.get("polarization", "single")).lower()
+        spacing = float(array_cfg.get("element_spacing_lambda", params.get(spacing_key, 0.5)))
+        positions_value = array_cfg.get("positions_lambda")
+        if positions_value is not None:
+            positions = np.asarray(positions_value, dtype=np.float64)
+            if positions.shape != (num_ports, 3):
+                raise ValueError(f"{side}_array.positions_lambda must have shape ({num_ports}, 3).")
+        elif polarization in {"dual", "dual_slant", "cross"}:
+            if num_ports % 2 != 0:
+                raise ValueError(f"{side}_array dual polarization requires an even number of ports.")
+            num_elements = num_ports // 2
+            base_positions = np.zeros((num_elements, 3), dtype=np.float64)
+            base_positions[:, 0] = np.arange(num_elements, dtype=np.float64) * spacing
+            positions = np.repeat(base_positions, 2, axis=0)
+        else:
+            positions = np.zeros((num_ports, 3), dtype=np.float64)
+            positions[:, 0] = np.arange(num_ports, dtype=np.float64) * spacing
+
+        slants_value = array_cfg.get("polarization_slants_deg")
+        if slants_value is not None:
+            slants = np.asarray(slants_value, dtype=np.float64)
+            if slants.shape != (num_ports,):
+                raise ValueError(f"{side}_array.polarization_slants_deg must have shape ({num_ports},).")
+        elif polarization in {"dual", "dual_slant", "cross"}:
+            slants = np.tile(np.array([45.0, -45.0], dtype=np.float64), num_ports // 2)
+        else:
+            slants = np.zeros(num_ports, dtype=np.float64)
+
+        return AntennaArrayDescription(
+            positions_lambda=positions,
+            polarization_slants_deg=slants,
+            polarization=polarization,
+        )
+
+    @staticmethod
+    def _array_phase(array: AntennaArrayDescription, direction: np.ndarray) -> np.ndarray:
+        """Compute array phase for one propagation direction.
+
+        Args:
+            array: Resolved antenna array.
+            direction: Cartesian unit vector with shape ``(3,)``.
+
+        Returns:
+            Complex phase vector with shape ``(num_ports,)``.
+        """
+        return np.exp(1j * 2.0 * np.pi * (array.positions_lambda @ direction))
+
+    @staticmethod
+    def _field_pattern(array: AntennaArrayDescription, _direction: np.ndarray) -> np.ndarray:
+        """Return isotropic theta/phi field components for all ports.
+
+        Args:
+            array: Resolved antenna array.
+            _direction: Cartesian unit vector with shape ``(3,)``. The current
+                isotropic element model is direction independent.
+
+        Returns:
+            Field array with shape ``(num_ports, 2)`` where axis 1 is
+            ``[theta, phi]`` polarization component.
+        """
+        slant_rad = np.deg2rad(array.polarization_slants_deg)
+        return np.stack([np.cos(slant_rad), np.sin(slant_rad)], axis=1).astype(np.complex128)
+
+    @staticmethod
+    def _matrix_sqrt_hermitian(matrix: np.ndarray, expected_size: int, label: str) -> np.ndarray:
+        """Compute a Hermitian matrix square root with validation.
+
+        Args:
+            matrix: Correlation matrix with shape ``(expected_size, expected_size)``.
+            expected_size: Required matrix dimension.
+            label: User-facing label for validation errors.
+
+        Returns:
+            Hermitian square root matrix with the same shape.
+        """
+        value = np.asarray(matrix, dtype=np.complex128)
+        if value.shape != (expected_size, expected_size):
+            raise ValueError(f"{label} must have shape ({expected_size}, {expected_size}).")
+        if not np.allclose(value, value.conj().T, atol=1e-10):
+            raise ValueError(f"{label} must be Hermitian.")
+        eigvals, eigvecs = np.linalg.eigh(value)
+        if np.min(eigvals) < -1e-10:
+            raise ValueError(f"{label} must be positive semidefinite.")
+        eigvals = np.maximum(eigvals, 0.0)
+        return (eigvecs * np.sqrt(eigvals)) @ eigvecs.conj().T
+
+    @classmethod
+    def _apply_mimo_correlation(
+        cls,
+        matrix: np.ndarray,
+        rx_correlation: np.ndarray | None,
+        tx_correlation: np.ndarray | None,
+    ) -> np.ndarray:
+        """Apply separable RX/TX spatial correlation to MIMO coefficients.
+
+        Args:
+            matrix: IID MIMO process with shape ``(num_rx_ant, num_tx_ant, num_samples)``.
+            rx_correlation: Optional RX correlation matrix.
+            tx_correlation: Optional TX correlation matrix.
+
+        Returns:
+            Correlated process with the same shape as ``matrix``.
+        """
+        num_rx_ant, num_tx_ant, _ = matrix.shape
+        rx_sqrt = (
+            np.eye(num_rx_ant, dtype=np.complex128)
+            if rx_correlation is None
+            else cls._matrix_sqrt_hermitian(rx_correlation, num_rx_ant, "tdl_rx_correlation")
+        )
+        tx_sqrt = (
+            np.eye(num_tx_ant, dtype=np.complex128)
+            if tx_correlation is None
+            else cls._matrix_sqrt_hermitian(tx_correlation, num_tx_ant, "tdl_tx_correlation")
+        )
+        return np.einsum("ab,bct,dc->adt", rx_sqrt, matrix, tx_sqrt.conj())
+
+    @staticmethod
+    def _angle_scale_values(
+        values_deg: np.ndarray,
+        power_weights: np.ndarray,
+        desired_spread_deg: float | None,
+        desired_mean_deg: float | None,
+        *,
+        circular: bool,
+    ) -> np.ndarray:
+        """Scale and shift cluster angles to requested mean/spread.
+
+        Args:
+            values_deg: Angle values with shape ``(num_clusters,)``.
+            power_weights: Linear cluster power weights with the same shape.
+            desired_spread_deg: Optional target RMS angular spread.
+            desired_mean_deg: Optional target mean angle.
+            circular: Whether angles wrap around at +/-180 degrees.
+
+        Returns:
+            Scaled angle values with shape ``(num_clusters,)``.
+        """
+        values = np.asarray(values_deg, dtype=np.float64)
+        weights = np.asarray(power_weights, dtype=np.float64)
+        weights = weights / np.sum(weights)
+        if circular:
+            radians = np.deg2rad(values)
+            mean_rad = np.angle(np.sum(weights * np.exp(1j * radians)))
+            centered = np.rad2deg(np.angle(np.exp(1j * (radians - mean_rad))))
+            current_mean = np.rad2deg(mean_rad)
+        else:
+            current_mean = float(np.sum(weights * values))
+            centered = values - current_mean
+
+        current_spread = float(np.sqrt(np.sum(weights * centered**2)))
+        target_center = current_mean if desired_mean_deg is None else float(desired_mean_deg)
+        if desired_spread_deg is not None and current_spread > 1e-12:
+            centered = centered * (float(desired_spread_deg) / current_spread)
+        result = target_center + centered
+        if circular:
+            for _ in range(4):
+                result_rad = np.deg2rad(result)
+                actual_mean = np.rad2deg(np.angle(np.sum(weights * np.exp(1j * result_rad))))
+                result += float(target_center) - actual_mean
+                centered_result = np.rad2deg(
+                    np.angle(np.exp(1j * np.deg2rad(result - float(target_center))))
+                )
+                if desired_spread_deg is not None:
+                    spread = float(np.sqrt(np.sum(weights * centered_result**2)))
+                    if spread > 1e-12:
+                        result = float(target_center) + centered_result * (float(desired_spread_deg) / spread)
+            result = ((result + 180.0) % 360.0) - 180.0
+        return result
+
+    @staticmethod
+    def _unit_vector(azimuth_deg: float, zenith_deg: float) -> np.ndarray:
+        """Convert spherical angles to a Cartesian unit vector.
+
+        Args:
+            azimuth_deg: Azimuth angle in degrees.
+            zenith_deg: Zenith angle in degrees.
+
+        Returns:
+            One-dimensional real vector with shape ``(3,)``; axes are x, y, z.
+        """
+        az = np.deg2rad(azimuth_deg)
+        ze = np.deg2rad(zenith_deg)
+        sin_ze = np.sin(ze)
+        return np.array(
+            [
+                sin_ze * np.cos(az),
+                sin_ze * np.sin(az),
+                np.cos(ze),
+            ],
+            dtype=np.float64,
+        )

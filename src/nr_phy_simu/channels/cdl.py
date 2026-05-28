@@ -8,7 +8,7 @@ from nr_phy_simu.config import SimulationConfig
 
 
 class CdlChannel(FadingChannelBase):
-    """3GPP TR 38.901 CDL channel model with multi-TX multi-RX support."""
+    """3GPP TR 38.901 link-level CDL channel model."""
 
     def _generate_path_coefficients(
         self,
@@ -53,78 +53,244 @@ class CdlChannel(FadingChannelBase):
         velocity_az_deg = float(config.channel.params.get("ue_azimuth_deg", 0.0))
         velocity_ze_deg = float(config.channel.params.get("ue_zenith_deg", 90.0))
         velocity_vec = self._unit_vector(velocity_az_deg, velocity_ze_deg)
-        wavelength = self._wavelength_m(config)
         max_doppler_hz = self._max_doppler_hz(config)
-        num_sinusoids = int(config.channel.params.get("num_sinusoids", 32))
-        tx_spacing = float(config.channel.params.get("tx_antenna_spacing_lambda", 0.5))
-        rx_spacing = float(config.channel.params.get("rx_antenna_spacing_lambda", 0.5))
+        time = self._time_axis(num_samples, sample_rate_hz)
+        rx_array = self._antenna_array(config, "rx", num_rx_ant)
+        tx_array = self._antenna_array(config, "tx", num_tx_ant)
+        xpr_param = config.channel.params.get("xpr_db")
+        xpr_db = profile.xpr_db if xpr_param is None else float(xpr_param)
+        xpr_sigma_db = float(config.channel.params.get("xpr_sigma_db", 0.0))
+        scaled_angles = self._resolve_cluster_angles(config, profile, path_powers)
 
         for cluster_idx, cluster in enumerate(profile.clusters):
             cluster_matrix = np.zeros((num_rx_ant, num_tx_ant, num_samples), dtype=np.complex128)
-            for ray_offset in RAY_OFFSETS:
-                ray_aod = cluster.aod_deg + ray_offset * profile.c_asd_deg
-                ray_aoa = cluster.aoa_deg + ray_offset * profile.c_asa_deg
-                ray_zod = cluster.zod_deg + ray_offset * profile.c_zsd_deg
-                ray_zoa = cluster.zoa_deg + ray_offset * profile.c_zsa_deg
+            ray_angles = self._ray_angles_for_cluster(
+                cluster_idx=cluster_idx,
+                scaled_angles=scaled_angles,
+                profile=profile,
+            )
 
+            for ray_aod, ray_aoa, ray_zod, ray_zoa in ray_angles:
                 arrival_vec = self._unit_vector(ray_aoa, ray_zoa)
                 departure_vec = self._unit_vector(ray_aod, ray_zod)
-                ray_doppler = np.dot(arrival_vec, velocity_vec) / wavelength
-
-                time = np.arange(num_samples, dtype=np.float64) / sample_rate_hz
-                phase = self.rng.uniform(0.0, 2 * np.pi)
-                ray_process = np.exp(1j * (2 * np.pi * ray_doppler * time + phase))
-                rx_response = self._array_response(num_rx_ant, arrival_vec[0], rx_spacing)
-                tx_response = self._array_response(num_tx_ant, departure_vec[0], tx_spacing)
-                cluster_matrix += (
-                    rx_response[:, np.newaxis, np.newaxis]
-                    * np.conj(tx_response)[np.newaxis, :, np.newaxis]
-                    * ray_process[np.newaxis, np.newaxis, :]
+                ray_doppler = max_doppler_hz * float(np.dot(arrival_vec, velocity_vec))
+                ray_process = np.exp(1j * 2.0 * np.pi * ray_doppler * time)
+                ray_xpr_db = xpr_db
+                if xpr_sigma_db > 0.0:
+                    ray_xpr_db += float(self.rng.normal(0.0, xpr_sigma_db))
+                spatial = self._polarized_spatial_matrix(
+                    rx_array=rx_array,
+                    tx_array=tx_array,
+                    arrival_vec=arrival_vec,
+                    departure_vec=departure_vec,
+                    xpr_linear=10 ** (ray_xpr_db / 10.0),
                 )
+                cluster_matrix += spatial[:, :, np.newaxis] * ray_process[np.newaxis, np.newaxis, :]
 
             cluster_matrix /= np.sqrt(len(RAY_OFFSETS))
             if cluster.fading.upper() == "LOS":
                 k_factor_db = float(config.channel.params.get("k_factor_db", CDL_LOS_K_DB.get(profile_name, 0.0)))
-                los_process = self._rician_process(
-                    num_samples=num_samples,
-                    sample_rate_hz=sample_rate_hz,
-                    max_doppler_hz=max_doppler_hz,
-                    k_factor_linear=10 ** (k_factor_db / 10.0),
-                    num_sinusoids=num_sinusoids,
-                    specular_doppler_hz=np.dot(self._unit_vector(cluster.aoa_deg, cluster.zoa_deg), velocity_vec)
-                    / wavelength,
+                k_factor_linear = 10 ** (k_factor_db / 10.0)
+                los_arrival = self._unit_vector(scaled_angles["aoa"][cluster_idx], scaled_angles["zoa"][cluster_idx])
+                los_departure = self._unit_vector(scaled_angles["aod"][cluster_idx], scaled_angles["zod"][cluster_idx])
+                los_doppler = max_doppler_hz * float(np.dot(los_arrival, velocity_vec))
+                los_process = np.exp(
+                    1j
+                    * (
+                        2.0 * np.pi * los_doppler * time
+                        + self.rng.uniform(0.0, 2.0 * np.pi)
+                    )
                 )
-                rx_response = self._array_response(num_rx_ant, self._unit_vector(cluster.aoa_deg, cluster.zoa_deg)[0], rx_spacing)
-                tx_response = self._array_response(num_tx_ant, self._unit_vector(cluster.aod_deg, cluster.zod_deg)[0], tx_spacing)
+                los_spatial = self._los_spatial_matrix(
+                    rx_array=rx_array,
+                    tx_array=tx_array,
+                    arrival_vec=los_arrival,
+                    departure_vec=los_departure,
+                )
+                los_matrix = los_spatial[:, :, np.newaxis] * los_process[np.newaxis, np.newaxis, :]
                 cluster_matrix = (
-                    rx_response[:, np.newaxis, np.newaxis]
-                    * np.conj(tx_response)[np.newaxis, :, np.newaxis]
-                    * los_process[np.newaxis, np.newaxis, :]
+                    np.sqrt(1.0 / (k_factor_linear + 1.0)) * cluster_matrix
+                    + np.sqrt(k_factor_linear / (k_factor_linear + 1.0)) * los_matrix
                 )
 
             coeff[:, :, cluster_idx, :] = np.sqrt(path_powers[cluster_idx]) * cluster_matrix
 
         return delays_s, coeff
 
-    @staticmethod
-    def _unit_vector(azimuth_deg: float, zenith_deg: float) -> np.ndarray:
-        """Convert spherical angles to a Cartesian unit vector.
+    def _resolve_cluster_angles(
+        self,
+        config: SimulationConfig,
+        profile,
+        path_powers: np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        """Resolve optional CDL angle scaling targets.
 
         Args:
-            azimuth_deg: Azimuth angle in degrees.
-            zenith_deg: Zenith angle in degrees.
+            config: Full simulation configuration.
+            profile: Selected CDL profile table.
+            path_powers: Linear cluster powers with shape ``(num_clusters,)``.
 
         Returns:
-            One-dimensional real vector with shape ``(3,)``; axes are x, y, z.
+            Mapping with ``aod/aoa/zod/zoa`` arrays, each shape
+            ``(num_clusters,)``.
         """
-        az = np.deg2rad(azimuth_deg)
-        ze = np.deg2rad(zenith_deg)
-        sin_ze = np.sin(ze)
-        return np.array(
+        params = config.channel.params
+        angles = {
+            "aod": np.array([cluster.aod_deg for cluster in profile.clusters], dtype=np.float64),
+            "aoa": np.array([cluster.aoa_deg for cluster in profile.clusters], dtype=np.float64),
+            "zod": np.array([cluster.zod_deg for cluster in profile.clusters], dtype=np.float64),
+            "zoa": np.array([cluster.zoa_deg for cluster in profile.clusters], dtype=np.float64),
+        }
+        if not bool(params.get("angle_scaling_enabled", False)):
+            return angles
+        return {
+            "aod": self._angle_scale_values(
+                angles["aod"],
+                path_powers,
+                params.get("desired_asd_deg"),
+                params.get("desired_mean_aod_deg"),
+                circular=True,
+            ),
+            "aoa": self._angle_scale_values(
+                angles["aoa"],
+                path_powers,
+                params.get("desired_asa_deg"),
+                params.get("desired_mean_aoa_deg"),
+                circular=True,
+            ),
+            "zod": self._angle_scale_values(
+                angles["zod"],
+                path_powers,
+                params.get("desired_zsd_deg"),
+                params.get("desired_mean_zod_deg"),
+                circular=False,
+            ),
+            "zoa": self._angle_scale_values(
+                angles["zoa"],
+                path_powers,
+                params.get("desired_zsa_deg"),
+                params.get("desired_mean_zoa_deg"),
+                circular=False,
+            ),
+        }
+
+    def _ray_angles_for_cluster(
+        self,
+        cluster_idx: int,
+        scaled_angles: dict[str, np.ndarray],
+        profile,
+    ) -> list[tuple[float, float, float, float]]:
+        """Generate randomly coupled ray angles for one CDL cluster.
+
+        Args:
+            cluster_idx: Cluster index.
+            scaled_angles: Mapping returned by ``_resolve_cluster_angles``.
+            profile: Selected CDL profile table.
+
+        Returns:
+            List of ``(AOD, AOA, ZOD, ZOA)`` tuples, one per ray.
+        """
+        offsets = np.asarray(RAY_OFFSETS, dtype=np.float64)
+        aod_offsets = offsets
+        aoa_offsets = self.rng.permutation(offsets)
+        zod_offsets = self.rng.permutation(offsets)
+        zoa_offsets = self.rng.permutation(offsets)
+        return [
+            (
+                float(scaled_angles["aod"][cluster_idx] + aod_offsets[ray_idx] * profile.c_asd_deg),
+                float(scaled_angles["aoa"][cluster_idx] + aoa_offsets[ray_idx] * profile.c_asa_deg),
+                float(scaled_angles["zod"][cluster_idx] + zod_offsets[ray_idx] * profile.c_zsd_deg),
+                float(scaled_angles["zoa"][cluster_idx] + zoa_offsets[ray_idx] * profile.c_zsa_deg),
+            )
+            for ray_idx in range(offsets.size)
+        ]
+
+    def _polarized_spatial_matrix(
+        self,
+        rx_array,
+        tx_array,
+        arrival_vec: np.ndarray,
+        departure_vec: np.ndarray,
+        xpr_linear: float,
+    ) -> np.ndarray:
+        """Build one CDL ray MIMO matrix including polarization coupling.
+
+        Args:
+            rx_array: Resolved RX antenna array.
+            tx_array: Resolved TX antenna array.
+            arrival_vec: Arrival unit vector with shape ``(3,)``.
+            departure_vec: Departure unit vector with shape ``(3,)``.
+            xpr_linear: Cross-polarization ratio in linear scale.
+
+        Returns:
+            Complex MIMO matrix with shape ``(num_rx_ant, num_tx_ant)``.
+        """
+        phase = self.rng.uniform(0.0, 2.0 * np.pi, size=4)
+        cross = np.sqrt(1.0 / max(xpr_linear, 1e-12))
+        polarization = np.array(
             [
-                sin_ze * np.cos(az),
-                sin_ze * np.sin(az),
-                np.cos(ze),
+                [np.exp(1j * phase[0]), cross * np.exp(1j * phase[1])],
+                [cross * np.exp(1j * phase[2]), np.exp(1j * phase[3])],
             ],
-            dtype=np.float64,
+            dtype=np.complex128,
         )
+        return self._field_spatial_matrix(
+            rx_array=rx_array,
+            tx_array=tx_array,
+            arrival_vec=arrival_vec,
+            departure_vec=departure_vec,
+            polarization=polarization,
+        )
+
+    def _los_spatial_matrix(
+        self,
+        rx_array,
+        tx_array,
+        arrival_vec: np.ndarray,
+        departure_vec: np.ndarray,
+    ) -> np.ndarray:
+        """Build deterministic LOS spatial matrix for a CDL LOS cluster.
+
+        Args:
+            rx_array: Resolved RX antenna array.
+            tx_array: Resolved TX antenna array.
+            arrival_vec: Arrival unit vector with shape ``(3,)``.
+            departure_vec: Departure unit vector with shape ``(3,)``.
+
+        Returns:
+            Complex MIMO matrix with shape ``(num_rx_ant, num_tx_ant)``.
+        """
+        return self._field_spatial_matrix(
+            rx_array=rx_array,
+            tx_array=tx_array,
+            arrival_vec=arrival_vec,
+            departure_vec=departure_vec,
+            polarization=np.eye(2, dtype=np.complex128),
+        )
+
+    def _field_spatial_matrix(
+        self,
+        rx_array,
+        tx_array,
+        arrival_vec: np.ndarray,
+        departure_vec: np.ndarray,
+        polarization: np.ndarray,
+    ) -> np.ndarray:
+        """Combine element fields, polarization matrix, and array phases.
+
+        Args:
+            rx_array: Resolved RX antenna array.
+            tx_array: Resolved TX antenna array.
+            arrival_vec: Arrival unit vector with shape ``(3,)``.
+            departure_vec: Departure unit vector with shape ``(3,)``.
+            polarization: Polarization coupling matrix with shape ``(2, 2)``.
+
+        Returns:
+            Complex MIMO spatial matrix with shape ``(num_rx_ant, num_tx_ant)``.
+        """
+        rx_field = self._field_pattern(rx_array, arrival_vec)
+        tx_field = self._field_pattern(tx_array, departure_vec)
+        polarization_gain = np.einsum("ri,ij,tj->rt", rx_field, polarization, tx_field)
+        rx_phase = self._array_phase(rx_array, arrival_vec)
+        tx_phase = self._array_phase(tx_array, departure_vec)
+        return polarization_gain * rx_phase[:, np.newaxis] * tx_phase[np.newaxis, :]

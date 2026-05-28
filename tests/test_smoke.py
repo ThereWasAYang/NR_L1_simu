@@ -52,6 +52,7 @@ from nr_phy_simu.common.mcs import resolve_mcs
 from nr_phy_simu.channels.channel_factory import DefaultChannelFactory
 from nr_phy_simu.channels.tdl import TdlChannel
 from nr_phy_simu.channels.cdl import CdlChannel
+from nr_phy_simu.channels.profile_tables import CDL_LOS_K_DB, CDL_PROFILES, TDL_LOS_K_DB, TDL_PROFILES
 from nr_phy_simu.channels.external_frequency_response import ExternalFrequencyResponseFrequencyDomainChannel
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
@@ -793,6 +794,33 @@ class ComponentAbstractionTest(unittest.TestCase):
 
 
 class FadingChannelSmokeTest(unittest.TestCase):
+    def test_tdl_cdl_profile_tables_match_38901_sanity_points(self):
+        self.assertEqual({name: len(taps) for name, taps in TDL_PROFILES.items()}, {
+            "TDL-A": 23,
+            "TDL-B": 23,
+            "TDL-C": 24,
+            "TDL-D": 14,
+            "TDL-E": 15,
+        })
+        self.assertEqual({name: len(profile.clusters) for name, profile in CDL_PROFILES.items()}, {
+            "CDL-A": 23,
+            "CDL-B": 23,
+            "CDL-C": 24,
+            "CDL-D": 14,
+            "CDL-E": 15,
+        })
+        self.assertAlmostEqual(TDL_PROFILES["TDL-A"][0].normalized_delay, 0.0)
+        self.assertAlmostEqual(TDL_PROFILES["TDL-A"][-1].normalized_delay, 9.6586)
+        self.assertAlmostEqual(TDL_PROFILES["TDL-C"][5].power_db, 0.0)
+        self.assertEqual(TDL_PROFILES["TDL-D"][0].fading, "LOS")
+        self.assertEqual(TDL_PROFILES["TDL-E"][0].fading, "LOS")
+        self.assertEqual(TDL_LOS_K_DB, {"TDL-D": 13.3, "TDL-E": 22.0})
+        self.assertAlmostEqual(CDL_PROFILES["CDL-A"].xpr_db, 10.0)
+        self.assertAlmostEqual(CDL_PROFILES["CDL-B"].c_asa_deg, 22.0)
+        self.assertEqual(CDL_PROFILES["CDL-D"].clusters[0].fading, "LOS")
+        self.assertEqual(CDL_PROFILES["CDL-E"].clusters[0].fading, "LOS")
+        self.assertEqual(CDL_LOS_K_DB, {"CDL-D": 13.3, "CDL-E": 22.0})
+
     def test_tdl_channel_propagates(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl.yaml")
         waveform = np.ones((cfg.link.num_tx_ant, 2048), dtype=np.complex128)
@@ -815,6 +843,107 @@ class FadingChannelSmokeTest(unittest.TestCase):
         self.assertEqual(rx_waveform.shape, (4, waveform.shape[1]))
         self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
         self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
+
+    def test_tdl_iid_mimo_is_not_single_outer_product(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 2
+        cfg.channel.params["add_noise"] = False
+        cfg.channel.params["ue_speed_mps"] = 0.0
+        cfg.channel.params["tdl_mimo_method"] = "iid"
+        waveform = np.ones((2, 512), dtype=np.complex128)
+        _rx_waveform, info = TdlChannel(rng=np.random.default_rng(1)).propagate(waveform, cfg)
+        first_path_matrix = info["path_coefficients"][:, :, 0, 0]
+        self.assertGreater(abs(np.linalg.det(first_path_matrix)), 1e-6)
+
+    def test_tdl_correlation_matrices_are_applied(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 2
+        cfg.channel.params["add_noise"] = False
+        cfg.channel.params["tdl_mimo_method"] = "correlated"
+        cfg.channel.params["tdl_rx_correlation"] = [[1.0, 0.7], [0.7, 1.0]]
+        cfg.channel.params["tdl_tx_correlation"] = [[1.0, 0.3], [0.3, 1.0]]
+        waveform = np.ones((2, 256), dtype=np.complex128)
+        _rx_waveform, info = TdlChannel(rng=np.random.default_rng(2)).propagate(waveform, cfg)
+        self.assertEqual(info["path_coefficients"].shape[:2], (2, 2))
+
+    def test_tdl_explicit_spatial_filter_is_applied(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 2
+        cfg.channel.params["add_noise"] = False
+        cfg.channel.params["spatial_filter"] = [[1.0, 0.0], [0.0, 1.0]]
+        waveform = np.ones((2, 256), dtype=np.complex128)
+        _rx_waveform, info = TdlChannel(rng=np.random.default_rng(7)).propagate(waveform, cfg)
+        self.assertTrue(np.allclose(info["path_coefficients"][0, 1], 0.0))
+        self.assertTrue(np.allclose(info["path_coefficients"][1, 0], 0.0))
+
+    def test_cdl_dual_polarized_xpr_controls_cross_polar_leakage(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        cfg.link.num_tx_ant = 2
+        cfg.link.num_rx_ant = 2
+        cfg.channel.params["add_noise"] = False
+        cfg.channel.params["profile"] = "CDL-A"
+        cfg.channel.params["tx_array"] = {"polarization": "dual"}
+        cfg.channel.params["rx_array"] = {"polarization": "dual"}
+        waveform = np.ones((2, 256), dtype=np.complex128)
+
+        high_xpr_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        high_xpr_cfg.link.num_tx_ant = 2
+        high_xpr_cfg.link.num_rx_ant = 2
+        high_xpr_cfg.channel.params.update(cfg.channel.params)
+        high_xpr_cfg.channel.params["xpr_db"] = 100.0
+        _rx_high, high_info = CdlChannel(rng=np.random.default_rng(3)).propagate(waveform, high_xpr_cfg)
+
+        low_xpr_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        low_xpr_cfg.link.num_tx_ant = 2
+        low_xpr_cfg.link.num_rx_ant = 2
+        low_xpr_cfg.channel.params.update(cfg.channel.params)
+        low_xpr_cfg.channel.params["xpr_db"] = 0.0
+        _rx_low, low_info = CdlChannel(rng=np.random.default_rng(3)).propagate(waveform, low_xpr_cfg)
+
+        high_cross = np.mean(np.abs(high_info["path_coefficients"][0, 1]))
+        low_cross = np.mean(np.abs(low_info["path_coefficients"][0, 1]))
+        self.assertLess(high_cross, low_cross)
+
+    def test_cdl_doppler_scales_with_carrier_frequency(self):
+        waveform = np.ones((1, 256), dtype=np.complex128)
+        low_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        low_cfg.channel.params["add_noise"] = False
+        low_cfg.channel.params["ue_speed_mps"] = 10.0
+        low_cfg.channel.params["carrier_frequency_hz"] = 1.0e9
+        _rx_low, low_info = CdlChannel(rng=np.random.default_rng(4)).propagate(waveform, low_cfg)
+
+        high_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        high_cfg.channel.params["add_noise"] = False
+        high_cfg.channel.params["ue_speed_mps"] = 10.0
+        high_cfg.channel.params["carrier_frequency_hz"] = 10.0e9
+        _rx_high, high_info = CdlChannel(rng=np.random.default_rng(4)).propagate(waveform, high_cfg)
+
+        self.assertAlmostEqual(high_info["max_doppler_hz"] / low_info["max_doppler_hz"], 10.0)
+
+    def test_cdl_angle_scaling_applies_requested_mean_and_spread(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
+        cfg.channel.params["angle_scaling_enabled"] = True
+        cfg.channel.params["desired_mean_aoa_deg"] = 15.0
+        cfg.channel.params["desired_asa_deg"] = 5.0
+        profile = CDL_PROFILES["CDL-A"]
+        powers = CdlChannel._normalize_powers_db(np.array([cluster.power_db for cluster in profile.clusters]))
+        angles = CdlChannel(rng=np.random.default_rng(5))._resolve_cluster_angles(cfg, profile, powers)
+        radians = np.deg2rad(angles["aoa"])
+        mean_aoa = np.rad2deg(np.angle(np.sum(powers * np.exp(1j * radians))))
+        centered = np.rad2deg(np.angle(np.exp(1j * (radians - np.deg2rad(mean_aoa)))))
+        spread = np.sqrt(np.sum(powers * centered**2))
+        self.assertAlmostEqual(mean_aoa, 15.0, places=6)
+        self.assertAlmostEqual(spread, 5.0, places=6)
+
+    def test_tdl_cdl_reject_out_of_range_carrier_frequency(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl.yaml")
+        cfg.channel.params["carrier_frequency_hz"] = 200.0e9
+        waveform = np.ones((cfg.link.num_tx_ant, 128), dtype=np.complex128)
+        with self.assertRaisesRegex(ValueError, "0.5 GHz and 100 GHz"):
+            TdlChannel(rng=np.random.default_rng(6)).propagate(waveform, cfg)
 
     def test_all_tdl_and_cdl_profiles_can_be_instantiated(self):
         for model, profiles in (
