@@ -471,6 +471,36 @@ params:
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。
 
+### 干扰源配置文件
+
+干扰源可以直接引用另一个仿真配置文件，把干扰用户的 `link / dmrs / scrambling / channel / random_seed` 独立出来：
+
+```yaml
+interference:
+  sources:
+    - label: jammer_tdl_c
+      enabled: true
+      config_path: interferers/pusch_interferer_tdl_c.yaml
+      inr_db: -3.0
+      prb_start: 12
+      num_prbs: 8
+```
+
+被引用的干扰配置文件可以像普通仿真 YAML 一样配置自己的 DMRS、小区扰码、RNTI、MCS、波形和信道。仓库示例位于：
+
+- [configs/interferers/pusch_interferer_awgn.yaml](configs/interferers/pusch_interferer_awgn.yaml)
+- [configs/interferers/pusch_interferer_tdl_c.yaml](configs/interferers/pusch_interferer_tdl_c.yaml)
+
+合并和约束规则：
+
+- `config_path` 文件作为干扰用户基础配置；`interference.sources[]` 中显式写出的 `prb_start / num_prbs / waveform / mcs / channel_params` 等字段会覆盖它。
+- `label / enabled / inr_db` 只控制干扰注入，不从被引用文件读取。
+- 主链路的 `carrier`、`slot_index` 和 `link.num_rx_ant` 会强制覆盖干扰用户配置，保证目标信号和干扰信号能逐样点相加。
+- 被引用文件中的 `interference` 字段会被忽略，避免循环引用或嵌套干扰。
+- 干扰信号强制使用 `simulation.bypass_channel_coding = true`，即不做 `CRC/LDPC/rate matching`，而是生成随机 coded bits 后进入扰码、调制、资源映射、DMRS 和时域处理。
+- 干扰信道内部噪声会关闭，最终只按 `inr_db` 相对主链路底噪做功率缩放并叠加。
+- 干扰信道与目标信道的相关性当前通过各自 `channel.seed` 和 `channel.geometry` 间接控制；暂不做联合多用户信道生成。
+
 当 `simulation.num_ttis > 1` 时，系统会连续运行多个 TTI，并统计最终 `BLER`。这里的误包定义为：`CRC` 错误的 TTI。
 如果同时配置了 `simulation.result_output_path`，系统还会把多 TTI 结果按 CSV 风格追加写入文本文件；文件不存在时会自动创建，空文件会先写标题行。
 结果文件当前列顺序为：`信噪比, BLER, EVM, EVM_SNR, RB位置, MCS阶数, 总TTI数, 误包数, 码率, 调制阶数, TBsize`。

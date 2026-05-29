@@ -1,0 +1,70 @@
+# 干扰用户示例：TDL-C 信道
+carrier:
+  cell_bandwidth_rbs: 52        # 小区带宽，单位 PRB；作为干扰源时会被主仿真 carrier 覆盖
+  subcarrier_spacing_khz: 30    # 子载波间隔，单位 kHz；作为干扰源时会被主仿真 carrier 覆盖
+  cyclic_prefix: NormalCP       # 循环前缀类型：NormalCP / ECP
+  fft_size: null                # FFT 点数；null 表示自动计算
+  sample_rate_hz: null          # 采样率；null 表示自动计算
+
+channel:
+  config_path: ../channels/tdl_c.yaml  # 干扰用户独立 TDL-C 信道配置
+  seed: 3101                           # 干扰用户信道随机种子
+  geometry:
+    tx_position_m: [0.0, 30.0, 25.0]   # 干扰发射端坐标，单位 m
+    rx_position_m: [100.0, 0.0, 1.5]   # 接收端坐标，单位 m
+    ue_velocity_vector_mps: [2.0, 1.0, 0.0]  # UE 速度向量，单位 m/s
+  params:
+    snr_db: 30.0                       # 单独运行该文件时使用；作为干扰源时信道噪声会被关闭
+    delay_spread_ns: 300.0             # RMS delay spread，单位 ns
+
+scrambling:
+  rnti: 18002                   # 干扰用户 RNTI
+  n_id: 202                     # 干扰用户数据扰码 N_ID
+  data_scrambling_id: null      # null 表示回退到 n_id
+  codeword_index: 0             # 码字索引 q
+
+link:
+  channel_type: PUSCH           # 干扰共享信道类型
+  waveform: DFT-s-OFDM          # 干扰波形
+  num_layers: 1                 # 干扰用户层数
+  num_tx_ant: 1                 # 干扰用户发射天线数
+  num_rx_ant: 4                 # 作为干扰源时会被主仿真接收天线数覆盖
+  prb_start: 12                 # 干扰 RB 起始位置
+  num_prbs: 8                   # 干扰 RB 数
+  start_symbol: 0               # 干扰时域起始 OFDM symbol
+  num_symbols: 14               # 干扰时域持续 symbol 数
+  mcs:
+    table: tp64qam              # DFT-s-OFDM PUSCH MCS 表
+    index: 6                    # 干扰用户 MCS index
+    tp_pi2bpsk: false           # transform-precoded PUSCH 低索引 pi/2-BPSK 开关
+    rv: 0                       # 冗余版本号 RV；干扰源 bypass 编码时不使用 LDPC RV
+    x_overhead: 0               # TBS 计算 overhead
+
+dmrs:
+  config_type: 1                # DFT-s-OFDM PUSCH 仅支持 type1
+  data_mux_enabled: false       # DFT-s-OFDM 下不允许数据与 DMRS 共符号
+  mapping_type: A               # DMRS mapping type
+  type_a_position: 2            # Type A DMRS 首符号位置
+  additional_positions: 1       # additionalPosition
+  max_length: 1                 # DMRS length
+  symbol_positions: []          # 空表示自动推导
+  scrambling_id0: 202           # 干扰用户 DMRS scrambling ID 0
+  scrambling_id1: null          # 干扰用户 DMRS scrambling ID 1
+  nid_nscid: null               # NIDNSCID；null 表示回退默认扰码 ID
+  n_scid: 0                     # NSCID
+  n_pusch_identity: 202         # PUSCH-specific sequence identity
+  num_cdm_groups_without_data: null  # DFT-s-OFDM 下 null 等效按协议约束取 2
+  sequence_hopping: false       # sequence hopping 开关
+  group_hopping: false          # group hopping 开关
+  port_set: [0]                 # DMRS 端口集合
+
+simulation:
+  num_ttis: 1                   # 作为干扰源时固定只生成当前 TTI
+  result_output_path: null      # 作为干扰源时忽略
+  bypass_channel_coding: true   # 干扰源强制 bypass 编码；这里显式写出便于单独阅读
+
+plotting:
+  enabled: false                # 干扰源内部不绘图
+
+random_seed: 3101               # 干扰用户随机种子
+slot_index: 0                   # 作为干扰源时会被主仿真 slot_index 覆盖

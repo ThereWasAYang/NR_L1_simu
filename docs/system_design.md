@@ -55,7 +55,7 @@
 - `ScramblingConfig`: 数据扰码的 RNTI、N_id、codeword index。
 - `McsConfig`: MCS table、MCS index、调制方式、目标码率、RV。
 - `ChannelConfig`: 信道模型名、独立信道配置文件路径、信道随机种子、几何信息和信道参数字典。
-- `InterferenceConfig` / `InterferenceSourceConfig`: 干扰源列表和每个干扰源的 INR、RB、信道类型等。
+- `InterferenceConfig` / `InterferenceSourceConfig`: 干扰源列表、INR、独立干扰用户配置路径、RB、MCS 和信道覆盖项。
 - `SimulationControlConfig`: TTI 数、结果文件路径、是否跳过编译码。
 - `WaveformInputConfig`: 灌数仿真文件路径、样点数、噪声方差。
 - `LinkConfig`: PUSCH/PDSCH、波形、层数、天线数、RB 分配、时域符号分配。
@@ -91,7 +91,7 @@
 关键函数：
 
 - `load_simulation_config(path)`: 根据文件后缀选择 YAML/JSON/XML 解析，然后调用 `SimulationConfig.from_mapping`。
-- `_resolve_relative_paths`: 将 `waveform_input.waveform_path`、`channel.config_path` 和 `channel.params.frequency_response_path` 从相对配置文件路径转换成绝对路径。
+- `_resolve_relative_paths`: 将 `waveform_input.waveform_path`、`channel.config_path`、`channel.params.frequency_response_path`、`interference.sources[].config_path` 和 inline 干扰 `channel_params.frequency_response_path` 从相对配置文件路径转换成绝对路径。
 - `_merge_channel_config`: 加载独立信道配置文件后，将系统 YAML 中的 `channel.model/seed/geometry/params` 作为覆盖合并进去。
 - `_read_text`: 使用 `utf-8-sig` 读取文本，兼容 Windows 下带 BOM 的 UTF-8 文件。
 
@@ -695,10 +695,27 @@ rx_grid = np.einsum("krt,tks->rks", channel_matrix, tx_grid)
 
 1. 若未配置干扰源，直接返回原波形。
 2. 遍历每个 enabled source。
-3. `_build_interferer_config` 基于主配置复制出干扰源配置。
+3. `_build_interferer_config` 构造当前干扰用户配置。
 4. `_generate_interferer_waveform` 为干扰源独立跑发射机和信道。
 5. `_scale_to_inr` 根据噪声方差和目标 INR 缩放干扰源功率。
 6. 将干扰波形加到主波形。
+
+### `_build_interferer_config`
+
+支持两种模式：
+
+- 旧式 inline 模式：没有 `config_path` 时，复制主配置，再用 `channel_model / channel_params / RB / MCS / waveform` 等字段覆盖。为避免多个用户完全相同，旧模式仍会对 `RNTI / N_id / DMRS identity` 做简单偏移。
+- 独立配置文件模式：有 `config_path` 时，先加载另一个仿真 YAML 作为干扰用户配置，再应用主链路全局约束和 inline 显式覆盖。该模式不会自动偏移 `RNTI / N_id / DMRS identity`，这些参数由干扰配置文件自己决定。
+
+独立配置文件模式的强制约束：
+
+- 主链路的 `carrier`、`slot_index`、`link.num_rx_ant` 覆盖干扰用户配置。
+- 被引用配置中的 `interference` 会清空，防止循环引用。
+- `simulation.bypass_channel_coding` 强制为 `true`，干扰源不做 `CRC/LDPC/rate matching`。
+- `waveform_input`、`plotting`、`simulation.result_output_path` 对干扰源无效。
+- 干扰源信道参数会强制 `add_noise = false`，最终只通过 `INR` 做统一功率缩放。
+
+`channel.seed` 和 `channel.geometry` 用于控制不同干扰用户信道的可复现性与几何差异。当前不做联合多用户信道生成，因此不会显式构造目标用户和干扰用户之间的空间相关矩阵。
 
 ### `_scale_to_inr`
 

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
 from nr_phy_simu.config import InterferenceSourceConfig, SimulationConfig
+from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory, build_transmitter
 
 
@@ -15,6 +18,7 @@ class InterferenceReport:
     label: str
     inr_db: float
     channel_model: str
+    config_path: str | None
     prb_start: int
     num_prbs: int
     rx_power: float
@@ -57,6 +61,7 @@ class InterferenceMixer:
                 interferer_waveform,
                 noise_variance=noise_variance,
                 source=source,
+                config=interferer_cfg,
                 index=index,
             )
             composite = composite + scaled_waveform
@@ -99,6 +104,44 @@ class InterferenceMixer:
         source: InterferenceSourceConfig,
         index: int,
     ) -> SimulationConfig:
+        if source.config_path:
+            config = load_simulation_config(Path(source.config_path))
+            self._sanitize_file_based_interferer_config(config, base_config)
+            self._apply_file_based_inline_overrides(config, source)
+        else:
+            config = self._build_legacy_inline_interferer_config(base_config, source, index)
+
+        self._finalize_interferer_config(config)
+        self._validate_interferer_allocation(config)
+        return config
+
+    @staticmethod
+    def _sanitize_file_based_interferer_config(
+        config: SimulationConfig,
+        base_config: SimulationConfig,
+    ) -> None:
+        """Keep only the referenced config parts needed for interferer generation.
+
+        Args:
+            config: Interferer config loaded from ``interference.sources[].config_path``.
+            base_config: Main-link config providing global timing and receiver dimensions.
+        """
+        config.carrier = deepcopy(base_config.carrier)
+        config.slot_index = int(base_config.slot_index)
+        config.link.num_rx_ant = int(base_config.link.num_rx_ant)
+        config.waveform_input.waveform_path = None
+        config.interference.sources = ()
+        config.plotting.enabled = False
+        config.simulation.result_output_path = None
+        config.simulation.num_ttis = 1
+        config.simulation.bypass_channel_coding = True
+
+    def _build_legacy_inline_interferer_config(
+        self,
+        base_config: SimulationConfig,
+        source: InterferenceSourceConfig,
+        index: int,
+    ) -> SimulationConfig:
         config = deepcopy(base_config)
         config.waveform_input.waveform_path = None
         config.channel.model = source.channel_model
@@ -136,13 +179,88 @@ class InterferenceMixer:
         if config.dmrs.n_pusch_identity is not None:
             config.dmrs.n_pusch_identity = int((config.dmrs.n_pusch_identity + index + 1) % 1008)
         config.interference.sources = ()
+        config.plotting.enabled = False
+        config.simulation.result_output_path = None
+        config.simulation.num_ttis = 1
+        config.simulation.bypass_channel_coding = True
         return config
+
+    @staticmethod
+    def _apply_file_based_inline_overrides(
+        config: SimulationConfig,
+        source: InterferenceSourceConfig,
+    ) -> None:
+        """Apply only user-written source fields over a file-based interferer config.
+
+        Args:
+            config: Interferer config loaded from ``config_path`` and already sanitized.
+            source: Interference source row from the main config.
+        """
+        explicit = source.explicit_fields
+        if "channel_model" in explicit:
+            config.channel.model = source.channel_model
+        if "channel_params" in explicit:
+            params = dict(config.channel.params)
+            params.update(dict(source.channel_params))
+            config.channel.params = params
+        if "channel_type" in explicit and source.channel_type is not None:
+            config.link.channel_type = source.channel_type
+        if "waveform" in explicit and source.waveform is not None:
+            config.link.waveform = source.waveform
+        if "num_tx_ant" in explicit and source.num_tx_ant is not None:
+            config.link.num_tx_ant = int(source.num_tx_ant)
+        if "prb_start" in explicit and source.prb_start is not None:
+            config.link.prb_start = int(source.prb_start)
+        if "num_prbs" in explicit and source.num_prbs is not None:
+            config.link.num_prbs = int(source.num_prbs)
+        if "start_symbol" in explicit and source.start_symbol is not None:
+            config.link.start_symbol = int(source.start_symbol)
+        if "num_symbols" in explicit and source.num_symbols is not None:
+            config.link.num_symbols = int(source.num_symbols)
+
+        if "mcs" in explicit:
+            _apply_mcs_overrides(config, source)
+        if "dmrs" in explicit and hasattr(source, "dmrs"):
+            _apply_section_overrides(config.dmrs, source.dmrs)
+        if "scrambling" in explicit and hasattr(source, "scrambling"):
+            _apply_section_overrides(config.scrambling, source.scrambling)
+
+    @staticmethod
+    def _finalize_interferer_config(config: SimulationConfig) -> None:
+        config.channel.params["add_noise"] = False
+        config.link.transport_block_size = None
+        config.link.coded_bit_capacity = None
+        config.interference.sources = ()
+        config.simulation.bypass_channel_coding = True
+        config._validate_protocol_constraints()
+
+    @staticmethod
+    def _validate_interferer_allocation(config: SimulationConfig) -> None:
+        prb_start = int(config.link.prb_start)
+        num_prbs = int(config.link.num_prbs)
+        start_symbol = int(config.link.start_symbol)
+        num_symbols = int(config.link.num_symbols)
+        if prb_start < 0 or num_prbs <= 0:
+            raise ValueError("Interferer PRB allocation must use non-negative prb_start and positive num_prbs.")
+        if prb_start + num_prbs > int(config.carrier.cell_bandwidth_rbs):
+            raise ValueError(
+                "Interferer PRB allocation exceeds the main carrier bandwidth: "
+                f"prb_start={prb_start}, num_prbs={num_prbs}, cell_bandwidth_rbs={config.carrier.cell_bandwidth_rbs}."
+            )
+        if start_symbol < 0 or num_symbols <= 0:
+            raise ValueError("Interferer symbol allocation must use non-negative start_symbol and positive num_symbols.")
+        if start_symbol + num_symbols > int(config.carrier.symbols_per_slot):
+            raise ValueError(
+                "Interferer symbol allocation exceeds the slot: "
+                f"start_symbol={start_symbol}, num_symbols={num_symbols}, symbols_per_slot={config.carrier.symbols_per_slot}."
+            )
 
     @staticmethod
     def _scale_to_inr(
         waveform: np.ndarray,
         noise_variance: float,
         source: InterferenceSourceConfig,
+        config: SimulationConfig,
         index: int,
     ) -> tuple[np.ndarray, InterferenceReport]:
         """Scale one interferer waveform to its target INR.
@@ -152,6 +270,7 @@ class InterferenceMixer:
                 ``(num_rx_ant, slot_samples)``.
             noise_variance: Scalar receiver noise variance.
             source: Interference source configuration containing target INR.
+            config: Effective interferer config after file loading and inline overrides.
             index: Scalar source index used for default labels.
 
         Returns:
@@ -165,9 +284,10 @@ class InterferenceMixer:
         return waveform * scale, InterferenceReport(
             label=label,
             inr_db=float(source.inr_db),
-            channel_model=source.channel_model,
-            prb_start=int(source.prb_start) if source.prb_start is not None else -1,
-            num_prbs=int(source.num_prbs) if source.num_prbs is not None else -1,
+            channel_model=config.channel.model,
+            config_path=source.config_path,
+            prb_start=int(config.link.prb_start),
+            num_prbs=int(config.link.num_prbs),
             rx_power=rx_power,
             scale=float(scale),
         )
@@ -185,3 +305,21 @@ def _bits_per_symbol(config: SimulationConfig) -> int:
         "1024QAM": 10,
     }
     return mapping[modulation]
+
+
+def _apply_mcs_overrides(config: SimulationConfig, source: InterferenceSourceConfig) -> None:
+    for field_name in source.explicit_mcs_fields:
+        if hasattr(config.link.mcs, field_name):
+            setattr(config.link.mcs, field_name, getattr(source.mcs, field_name))
+
+
+def _apply_section_overrides(target: Any, values: Any) -> None:
+    if not isinstance(values, dict):
+        return
+    for key, value in values.items():
+        if not hasattr(target, key):
+            continue
+        current_value = getattr(target, key)
+        if isinstance(current_value, tuple) and isinstance(value, list):
+            value = tuple(value)
+        setattr(target, key, value)

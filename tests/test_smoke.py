@@ -58,6 +58,8 @@ from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_si
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
 from nr_phy_simu.scenarios.sweep import run_snr_sweep, write_snr_sweep_csv
 from nr_phy_simu.scenarios.component_factory import build_transmitter
+from nr_phy_simu.scenarios.interference import InterferenceMixer
+from nr_phy_simu.tx.codec import RandomBitCoder
 
 
 class PuschAwgnSmokeTest(unittest.TestCase):
@@ -197,7 +199,51 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertEqual(len(result.interference_reports), 2)
         self.assertTrue(all(report.scale >= 0.0 for report in result.interference_reports))
+        self.assertEqual(result.interference_reports[0].channel_model, "AWGN")
+        self.assertEqual(result.interference_reports[1].channel_model, "TDL")
+        self.assertIsNotNone(result.interference_reports[1].config_path)
         self.assertIs(result.crc_ok, True)
+
+    def test_file_based_interference_uses_referenced_user_config(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
+        source = config.interference.sources[1]
+        self.assertNotIn("channel_model", source.explicit_fields)
+
+        interferer_cfg = InterferenceMixer(DefaultSimulationComponentFactory())._build_interferer_config(
+            config,
+            source,
+            index=1,
+        )
+
+        self.assertEqual(interferer_cfg.channel.model, "TDL")
+        self.assertEqual(interferer_cfg.scrambling.rnti, 18002)
+        self.assertEqual(interferer_cfg.scrambling.n_id, 202)
+        self.assertEqual(interferer_cfg.dmrs.scrambling_id0, 202)
+        self.assertEqual(interferer_cfg.dmrs.n_pusch_identity, 202)
+        self.assertEqual(interferer_cfg.link.num_rx_ant, config.link.num_rx_ant)
+        self.assertEqual(interferer_cfg.carrier.cell_bandwidth_rbs, config.carrier.cell_bandwidth_rbs)
+        self.assertEqual(interferer_cfg.slot_index, config.slot_index)
+        self.assertEqual(interferer_cfg.link.prb_start, 12)
+        self.assertEqual(interferer_cfg.link.num_prbs, 8)
+        self.assertEqual(interferer_cfg.interference.sources, ())
+        self.assertTrue(interferer_cfg.simulation.bypass_channel_coding)
+        self.assertFalse(interferer_cfg.plotting.enabled)
+        self.assertFalse(interferer_cfg.channel.params["add_noise"])
+        components = DefaultSimulationComponentFactory().create_components(interferer_cfg)
+        self.assertIsInstance(components.transmitter.coder, RandomBitCoder)
+
+    def test_interference_prb_allocation_must_fit_main_carrier(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn_with_interference.yaml")
+        source = config.interference.sources[0]
+        source.prb_start = config.carrier.cell_bandwidth_rbs - 1
+        source.num_prbs = 2
+        source.explicit_fields = frozenset(set(source.explicit_fields) | {"prb_start", "num_prbs"})
+        with self.assertRaisesRegex(ValueError, "exceeds the main carrier bandwidth"):
+            InterferenceMixer(DefaultSimulationComponentFactory())._build_interferer_config(
+                config,
+                source,
+                index=0,
+            )
 
     def test_pusch_cp_ofdm_low_mcs_with_dmrs_no_data_symbol(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
@@ -459,6 +505,10 @@ class ConfigLoaderTest(unittest.TestCase):
         self.assertEqual(yaml_pdsch_cfg.scrambling.effective_data_scrambling_id, 1)
         self.assertEqual(len(yaml_interference_cfg.interference.sources), 2)
         self.assertEqual(yaml_interference_cfg.interference.sources[0].channel_model, "AWGN")
+        self.assertEqual(
+            Path(yaml_interference_cfg.interference.sources[0].config_path),
+            (ROOT / "configs" / "interferers" / "pusch_interferer_awgn.yaml").resolve(),
+        )
         self.assertFalse(yaml_cfg.harq.enabled)
         self.assertEqual(yaml_cfg.decoder.ldpc_max_iterations, 25)
         self.assertEqual(
@@ -649,6 +699,99 @@ class ConfigLoaderTest(unittest.TestCase):
             self.assertEqual(cfg.interference.monitor_label, "monitor-a")
             self.assertEqual(cfg.interference.sources[0].custom_source.gain, 3)
             self.assertEqual(cfg.interference.sources[0].channel_params.custom_param.delay, 4)
+            self.assertEqual(cfg.interference.sources[0].explicit_fields, frozenset({"label", "inr_db", "custom_source", "channel_params"}))
+
+    def test_file_based_interference_ignores_nested_interference_and_supports_inline_dmrs_override(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            interferer_path = tmpdir_path / "interferer.yaml"
+            interferer_path.write_text(
+                "\n".join(
+                    [
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 52",
+                        "  subcarrier_spacing_khz: 30",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "  num_rx_ant: 1",
+                        "  prb_start: 3",
+                        "  num_prbs: 4",
+                        "  mcs:",
+                        "    table: qam256",
+                        "    index: 2",
+                        "channel:",
+                        "  model: TDL",
+                        "  params:",
+                        "    profile: TDL-C",
+                        "    delay_spread_ns: 300",
+                        "    snr_db: 9",
+                        "scrambling:",
+                        "  rnti: 200",
+                        "  n_id: 201",
+                        "dmrs:",
+                        "  config_type: 1",
+                        "  data_mux_enabled: false",
+                        "  scrambling_id0: 201",
+                        "  n_pusch_identity: 201",
+                        "interference:",
+                        "  sources:",
+                        "    - label: nested",
+                        "      enabled: true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            main_path = tmpdir_path / "main.yaml"
+            main_path.write_text(
+                "\n".join(
+                    [
+                        "carrier:",
+                        "  cell_bandwidth_rbs: 52",
+                        "  subcarrier_spacing_khz: 30",
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "  num_rx_ant: 4",
+                        "channel:",
+                        "  model: AWGN",
+                        "interference:",
+                        "  sources:",
+                        "    - label: file-user",
+                        "      config_path: ./interferer.yaml",
+                        "      inr_db: -3",
+                        "      prb_start: 5",
+                        "      mcs:",
+                        "        index: 7",
+                        "      dmrs:",
+                        "        scrambling_id0: 301",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = load_simulation_config(main_path)
+            source = cfg.interference.sources[0]
+            interferer_cfg = InterferenceMixer(DefaultSimulationComponentFactory())._build_interferer_config(
+                cfg,
+                source,
+                index=0,
+            )
+
+            self.assertEqual(Path(source.config_path), interferer_path.resolve())
+            self.assertEqual(interferer_cfg.channel.model, "TDL")
+            self.assertEqual(interferer_cfg.channel.params.profile, "TDL-C")
+            self.assertEqual(interferer_cfg.link.num_rx_ant, 4)
+            self.assertEqual(interferer_cfg.link.prb_start, 5)
+            self.assertEqual(interferer_cfg.link.num_prbs, 4)
+            self.assertEqual(interferer_cfg.link.mcs.table, "qam256")
+            self.assertEqual(interferer_cfg.link.mcs.index, 7)
+            self.assertEqual(interferer_cfg.scrambling.rnti, 200)
+            self.assertEqual(interferer_cfg.scrambling.n_id, 201)
+            self.assertEqual(interferer_cfg.dmrs.scrambling_id0, 301)
+            self.assertEqual(interferer_cfg.dmrs.n_pusch_identity, 201)
+            self.assertEqual(interferer_cfg.interference.sources, ())
+            self.assertTrue(interferer_cfg.simulation.bypass_channel_coding)
 
     def test_dynamic_config_top_level_sections(self):
         with tempfile.TemporaryDirectory() as tmpdir:

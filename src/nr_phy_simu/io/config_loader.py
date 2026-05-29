@@ -69,16 +69,39 @@ def _resolve_relative_paths(data: dict, base_dir: Path) -> None:
             _resolve_channel_relative_paths(inline_channel, base_dir)
             channel.clear()
             channel.update(_merge_channel_config(external_channel, inline_channel))
-            return
-        _resolve_channel_relative_paths(channel, base_dir)
+        else:
+            _resolve_channel_relative_paths(channel, base_dir)
+
+    interference = data.get("interference")
+    if isinstance(interference, dict):
+        _resolve_interference_relative_paths(interference, base_dir)
 
 
 def _resolve_channel_relative_paths(channel: dict, base_dir: Path) -> None:
     params = channel.get("params")
     if isinstance(params, dict):
-        frequency_response_path = params.get("frequency_response_path")
-        if isinstance(frequency_response_path, str) and frequency_response_path.strip() != "":
-            params["frequency_response_path"] = str(_resolve_path_string(frequency_response_path, base_dir))
+        _resolve_channel_params_relative_paths(params, base_dir)
+
+
+def _resolve_interference_relative_paths(interference: dict, base_dir: Path) -> None:
+    sources = interference.get("sources", []) or []
+    if not isinstance(sources, list):
+        return
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        config_path_value = source.get("config_path")
+        if isinstance(config_path_value, str) and config_path_value.strip() != "":
+            source["config_path"] = str(_resolve_path_string(config_path_value, base_dir))
+        channel_params = source.get("channel_params")
+        if isinstance(channel_params, dict):
+            _resolve_channel_params_relative_paths(channel_params, base_dir)
+
+
+def _resolve_channel_params_relative_paths(params: dict, base_dir: Path) -> None:
+    frequency_response_path = params.get("frequency_response_path")
+    if isinstance(frequency_response_path, str) and frequency_response_path.strip() != "":
+        params["frequency_response_path"] = str(_resolve_path_string(frequency_response_path, base_dir))
 
 
 def _merge_channel_config(external: dict, inline: dict) -> dict:

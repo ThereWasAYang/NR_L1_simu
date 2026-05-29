@@ -214,6 +214,7 @@ class ChannelConfig:
 class InterferenceSourceConfig:
     label: str | None = None
     enabled: bool = True
+    config_path: str | None = None
     inr_db: float = 0.0
     channel_model: str = "AWGN"
     channel_params: dict[str, Any] = field(default_factory=ConfigNode)
@@ -226,6 +227,8 @@ class InterferenceSourceConfig:
     num_tx_ant: int | None = None
     mcs: McsConfig = field(default_factory=McsConfig)
     extras: ConfigNode = field(default_factory=ConfigNode)
+    explicit_fields: frozenset[str] = field(default_factory=frozenset, init=False, repr=False)
+    explicit_mcs_fields: frozenset[str] = field(default_factory=frozenset, init=False, repr=False)
 
 
 @dataclass
@@ -484,16 +487,19 @@ def _parse_interference_config(data: dict[str, Any]) -> InterferenceConfig:
     source_rows = normalized_data.pop("sources", []) or []
     for source_data in source_rows:
         normalized = _ensure_mapping(source_data, "interference.sources[]")
+        explicit_fields = frozenset(normalized.keys())
         mcs_data = normalized.pop("mcs", {})
+        explicit_mcs_fields = frozenset(_ensure_mapping(mcs_data, "interference.sources[].mcs").keys())
         source_mcs = _build_config_dataclass(McsConfig, mcs_data)
-        sources.append(
-            _build_config_dataclass(
-                InterferenceSourceConfig,
-                normalized,
-                field_transforms={"channel_params": ConfigNode},
-                overrides={"mcs": source_mcs},
-            )
+        source = _build_config_dataclass(
+            InterferenceSourceConfig,
+            normalized,
+            field_transforms={"channel_params": ConfigNode},
+            overrides={"mcs": source_mcs},
         )
+        source.explicit_fields = explicit_fields
+        source.explicit_mcs_fields = explicit_mcs_fields
+        sources.append(source)
     normalized_data["sources"] = tuple(sources)
     return _build_config_dataclass(InterferenceConfig, normalized_data)
 
