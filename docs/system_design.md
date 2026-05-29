@@ -54,7 +54,7 @@
 - `DmrsConfig`: DMRS config type、符号位置、扰码 ID、transform-precoded 相关字段。
 - `ScramblingConfig`: 数据扰码的 RNTI、N_id、codeword index。
 - `McsConfig`: MCS table、MCS index、调制方式、目标码率、RV。
-- `ChannelConfig`: 信道模型名和信道参数字典。
+- `ChannelConfig`: 信道模型名、独立信道配置文件路径、信道随机种子、几何信息和信道参数字典。
 - `InterferenceConfig` / `InterferenceSourceConfig`: 干扰源列表和每个干扰源的 INR、RB、信道类型等。
 - `SimulationControlConfig`: TTI 数、结果文件路径、是否跳过编译码。
 - `WaveformInputConfig`: 灌数仿真文件路径、样点数、噪声方差。
@@ -76,6 +76,9 @@
 
 - CP 长度不暴露为手工配置，避免不符合协议的配置进入链路。
 - `ChannelConfig.params` 使用 `ConfigNode`，保留字典兼容性，同时允许 `config.channel.params.snr_db` 形式访问。
+- `ChannelConfig.config_path` 可引用独立信道 YAML/JSON/XML；外部文件是基础配置，系统 YAML 中的同名字段作为覆盖。
+- `ChannelConfig.seed` 独立控制信道随机性；`null` 回退到系统 `random_seed`，`auto` 表示每次运行使用非确定随机源。
+- `ChannelConfig.geometry` 保存 link-level 辅助几何信息，包括 TX/RX 三维坐标和 UE 速度向量。
 - 所有配置 dataclass 都带有 `extras`，未知字段保存在对应配置段的 `extras` 中；字段名合法且不冲突时，也会挂成对象属性。
 - 和已有字段、属性或方法重名的未知字段不会覆盖原属性，只能通过 `extras` 或字典方式访问。
 - 新增顶层配置段同样会进入 `SimulationConfig.extras`，例如 `my_receiver.algorithm` 可读取为 `config.my_receiver.algorithm`。
@@ -88,7 +91,8 @@
 关键函数：
 
 - `load_simulation_config(path)`: 根据文件后缀选择 YAML/JSON/XML 解析，然后调用 `SimulationConfig.from_mapping`。
-- `_resolve_relative_paths`: 将 `waveform_input.waveform_path` 和 `channel.params.frequency_response_path` 从相对配置文件路径转换成绝对路径。
+- `_resolve_relative_paths`: 将 `waveform_input.waveform_path`、`channel.config_path` 和 `channel.params.frequency_response_path` 从相对配置文件路径转换成绝对路径。
+- `_merge_channel_config`: 加载独立信道配置文件后，将系统 YAML 中的 `channel.model/seed/geometry/params` 作为覆盖合并进去。
 - `_read_text`: 使用 `utf-8-sig` 读取文本，兼容 Windows 下带 BOM 的 UTF-8 文件。
 
 设计意图：
@@ -566,6 +570,12 @@ DFT-s-OFDM 波形下：
 - `EXTERNAL_FREQRESP_TD`
 - `EXTERNAL_FREQRESP_FD`
 
+AWGN/TDL/CDL 创建时使用 `channel.seed` 初始化随机数发生器：
+
+- `channel.seed = null`: 使用系统级 `random_seed`。
+- `channel.seed = 整数`: 固定信道随机种子。
+- `channel.seed = auto`: 每次运行使用非确定随机源。
+
 ### `awgn.py`
 
 `AwgnChannel.propagate`：
@@ -588,6 +598,8 @@ TDL/CDL 共享的时变多径 MIMO 基类。
 
 - `propagate`: 总入口，扩展 TX 分支，生成路径系数，卷积信道，加噪声。
 - `_validate_link_level_limits`: 检查 38.901 link-level TDL/CDL 的载频和带宽范围。
+- `_channel_geometry_info`: 校验 `channel.geometry.tx_position_m/rx_position_m`，计算距离和 LOS 单位方向，并解析 UE 速度/运动方向。
+- `_ue_velocity_vector_mps` / `_ue_speed_mps` / `_ue_motion_angles_deg`: 统一解析 UE 运动参数；速度向量优先于 `ue_speed_mps + ue_azimuth_deg + ue_zenith_deg`。
 - `_generate_path_coefficients`: 抽象函数，由 TDL/CDL 子类实现。
 - `_apply_time_varying_channel`: 对每个 RX、TX、path 做延迟和时变系数相乘累加。
 - `_fractional_delay`: 用 sinc 插值实现分数采样延迟。
@@ -631,7 +643,7 @@ r_rx[n] = sum_tx sum_path h[rx,tx,path,n] * x_tx[n-delay_path] + noise[n]
 6. 对 CDL-D/E 等 LOS profile 按 `k_factor_db` 做 LOS deterministic 分量与 NLOS cluster 分量合成。
 7. 输出 `(num_rx_ant, num_tx_ant, num_clusters, num_samples)`。
 
-当前 TDL/CDL 实现范围是 38.901 R18 Clause 7.7 link-level 模型，不包含系统级路径损耗、阴影衰落、空间一致性、阻塞、氧吸收或地图模型。
+当前 TDL/CDL 实现范围是 38.901 R18 Clause 7.7 link-level 模型。TX/RX 坐标只用于辅助几何信息、距离记录和速度方向推导，不用于生成路径损耗、阴影衰落、LOS 概率、空间一致性、阻塞、氧吸收或地图模型。
 
 ### `external_frequency_response.py`
 

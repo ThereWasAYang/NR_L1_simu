@@ -1,0 +1,31 @@
+model: CDL                     # 信道模型：CDL
+seed: null                     # 信道随机种子；null 表示回退到系统 random_seed，auto 表示每次运行随机生成
+geometry:
+  tx_position_m: [0.0, 0.0, 25.0]      # 发射机三维坐标，单位 m
+  rx_position_m: [100.0, 0.0, 1.5]     # 接收机三维坐标，单位 m
+  ue_velocity_vector_mps: [1.0, 0.0, 0.0]  # UE 速度向量，优先用于推导速度大小和运动方向，单位 m/s
+params:
+  profile: CDL-C               # 38.901 CDL profile
+  delay_spread_ns: 30.0        # RMS delay spread，单位 ns
+  delay_spread_profile: nominal  # delay_spread_ns 为 null 时使用的档位
+  scenario_delay_spread_lookup: null  # 可选：自定义 delay spread 档位映射
+  carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
+  ue_speed_mps: 1.0            # UE 速度大小；未配置速度向量时生效，单位 m/s
+  ue_azimuth_deg: 0.0          # UE 运动方位角；未配置速度向量时生效，单位度
+  ue_zenith_deg: 90.0          # UE 运动天顶角；未配置速度向量时生效，单位度
+  num_sinusoids: 32            # 近似正弦数
+  xpr_db: null                 # CDL XPR；null 表示使用 profile 默认值，单位 dB
+  xpr_sigma_db: 0.0            # per-ray XPR 扰动标准差，单位 dB
+  angle_scaling_enabled: false # 是否启用角度均值/扩展缩放
+  desired_asd_deg: null        # 目标 departure azimuth spread
+  desired_asa_deg: null        # 目标 arrival azimuth spread
+  desired_zsd_deg: null        # 目标 departure zenith spread
+  desired_zsa_deg: null        # 目标 arrival zenith spread
+  desired_mean_aod_deg: null   # 目标 departure azimuth 均值
+  desired_mean_aoa_deg: null   # 目标 arrival azimuth 均值
+  desired_mean_zod_deg: null   # 目标 departure zenith 均值
+  desired_mean_zoa_deg: null   # 目标 arrival zenith 均值
+  tx_array: null               # 可选：TX 阵列配置
+  rx_array: null               # 可选：RX 阵列配置
+  add_noise: true              # 是否添加噪声
+  snr_db: 20.0                 # 接收信噪比，单位 dB

@@ -52,28 +52,22 @@ class FadingChannelBase(ChannelModel, ABC):
             shape ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
         """
         self._validate_link_level_limits(config)
+        geometry_info = self._channel_geometry_info(config)
         tx_waveform = self._expand_tx_branches(waveform, config)
         sample_rate = config.carrier.sample_rate_effective_hz
         delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
         rx_waveform = self._apply_time_varying_channel(tx_waveform, delays_s, coeff, sample_rate)
-        if not bool(config.channel.params.get("add_noise", True)):
-            return rx_waveform, {
-                "noise_variance": 0.0,
-                "snr_db": float("inf"),
-                "path_delays_s": delays_s,
-                "path_coefficients": coeff,
-                "carrier_frequency_hz": self._carrier_frequency_hz(config),
-                "max_doppler_hz": self._max_doppler_hz(config),
-            }
-        noisy_waveform, noise_variance, snr_db = self._add_awgn(rx_waveform, config)
-        return noisy_waveform, {
-            "noise_variance": noise_variance,
-            "snr_db": snr_db,
+        base_info = {
             "path_delays_s": delays_s,
             "path_coefficients": coeff,
             "carrier_frequency_hz": self._carrier_frequency_hz(config),
             "max_doppler_hz": self._max_doppler_hz(config),
+            **geometry_info,
         }
+        if not bool(config.channel.params.get("add_noise", True)):
+            return rx_waveform, {"noise_variance": 0.0, "snr_db": float("inf"), **base_info}
+        noisy_waveform, noise_variance, snr_db = self._add_awgn(rx_waveform, config)
+        return noisy_waveform, {"noise_variance": noise_variance, "snr_db": snr_db, **base_info}
 
     @abstractmethod
     def _generate_path_coefficients(
@@ -298,8 +292,102 @@ class FadingChannelBase(ChannelModel, ABC):
         params = config.channel.params
         if "max_doppler_hz" in params:
             return float(params["max_doppler_hz"])
-        ue_speed_mps = float(params.get("ue_speed_mps", 0.0))
+        ue_speed_mps = cls._ue_speed_mps(config)
         return ue_speed_mps / cls._wavelength_m(config)
+
+    @classmethod
+    def _ue_speed_mps(cls, config: SimulationConfig) -> float:
+        velocity = cls._ue_velocity_vector_mps(config)
+        if velocity is not None:
+            return float(np.linalg.norm(velocity))
+        return float(config.channel.params.get("ue_speed_mps", 0.0))
+
+    @classmethod
+    def _ue_motion_angles_deg(cls, config: SimulationConfig) -> tuple[float, float]:
+        velocity = cls._ue_velocity_vector_mps(config)
+        if velocity is not None and np.linalg.norm(velocity) > 1e-12:
+            return cls._vector_to_azimuth_zenith_deg(velocity)
+        return (
+            float(config.channel.params.get("ue_azimuth_deg", 0.0)),
+            float(config.channel.params.get("ue_zenith_deg", 90.0)),
+        )
+
+    @classmethod
+    def _ue_motion_unit_vector(cls, config: SimulationConfig) -> np.ndarray:
+        velocity = cls._ue_velocity_vector_mps(config)
+        if velocity is not None:
+            speed = float(np.linalg.norm(velocity))
+            if speed > 1e-12:
+                return velocity / speed
+        azimuth_deg, zenith_deg = cls._ue_motion_angles_deg(config)
+        return cls._unit_vector(azimuth_deg, zenith_deg)
+
+    @staticmethod
+    def _ue_velocity_vector_mps(config: SimulationConfig) -> np.ndarray | None:
+        geometry = config.channel.geometry
+        value = geometry.get("ue_velocity_vector_mps")
+        if value is None:
+            value = config.channel.params.get("ue_velocity_vector_mps")
+        if value is None:
+            return None
+        vector = np.asarray(value, dtype=np.float64)
+        if vector.shape != (3,):
+            raise ValueError("channel.geometry.ue_velocity_vector_mps must be a 3-element vector.")
+        return vector
+
+    @classmethod
+    def _channel_geometry_info(cls, config: SimulationConfig) -> dict[str, Any]:
+        geometry = config.channel.geometry
+        tx_position = cls._optional_position_m(geometry.get("tx_position_m"), "tx_position_m")
+        rx_position = cls._optional_position_m(geometry.get("rx_position_m"), "rx_position_m")
+        if (tx_position is None) != (rx_position is None):
+            raise ValueError("channel.geometry.tx_position_m and rx_position_m must be configured together.")
+
+        info: dict[str, Any] = {
+            "ue_speed_mps": cls._ue_speed_mps(config),
+        }
+        azimuth_deg, zenith_deg = cls._ue_motion_angles_deg(config)
+        info["ue_azimuth_deg"] = azimuth_deg
+        info["ue_zenith_deg"] = zenith_deg
+        velocity = cls._ue_velocity_vector_mps(config)
+        if velocity is not None:
+            info["ue_velocity_vector_mps"] = velocity
+
+        if tx_position is None or rx_position is None:
+            return info
+
+        vector = rx_position - tx_position
+        distance = float(np.linalg.norm(vector))
+        if distance <= 0.0:
+            raise ValueError("channel.geometry.tx_position_m and rx_position_m must not be identical.")
+        info.update(
+            {
+                "tx_position_m": tx_position,
+                "rx_position_m": rx_position,
+                "tx_rx_distance_m": distance,
+                "los_unit_vector_tx_to_rx": vector / distance,
+            }
+        )
+        return info
+
+    @staticmethod
+    def _optional_position_m(value: Any, label: str) -> np.ndarray | None:
+        if value is None:
+            return None
+        position = np.asarray(value, dtype=np.float64)
+        if position.shape != (3,):
+            raise ValueError(f"channel.geometry.{label} must be a 3-element vector.")
+        return position
+
+    @staticmethod
+    def _vector_to_azimuth_zenith_deg(vector: np.ndarray) -> tuple[float, float]:
+        norm = float(np.linalg.norm(vector))
+        if norm <= 1e-12:
+            return 0.0, 90.0
+        unit = np.asarray(vector, dtype=np.float64) / norm
+        azimuth_deg = float(np.rad2deg(np.arctan2(unit[1], unit[0])))
+        zenith_deg = float(np.rad2deg(np.arccos(np.clip(unit[2], -1.0, 1.0))))
+        return azimuth_deg, zenith_deg
 
     @staticmethod
     def _time_axis(num_samples: int, sample_rate_hz: float) -> np.ndarray:

@@ -8,29 +8,13 @@ carrier:
 
 # 信道模型配置
 channel:
-  model: TDL                     # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
+  config_path: channels/tdl_c.yaml  # 独立信道配置文件路径；相对当前 YAML 所在目录
   params:
-    profile: TDL-C              # 38.901 TDL profile：TDL-A / TDL-B / TDL-C / TDL-D / TDL-E
     delay_spread_ns: 300.0      # 标准 profile 的 RMS delay spread，单位 ns；协议表中的归一化逐径时延会统一按它缩放
-    delay_spread_profile: nominal  # 可选 delay spread 档位：very_short / short / nominal / long / very_long；当 delay_spread_ns 为 null 时生效
-    scenario_delay_spread_lookup: null  # 可选：自定义 delay_spread_profile 到 ns 的映射，例如 {nominal: 300.0}
     path_delays_ns: null        # 可选：显式逐径时延列表，单位 ns；填写后将覆盖 profile*delay_spread 的时延
     path_powers_db: null        # 可选：显式逐径功率列表，单位 dB；需与 path_delays_ns 一一对应
-    carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
     ue_speed_mps: 3.0           # UE 速度，单位 m/s
-    num_sinusoids: 32           # Jakes 近似正弦数
-    tdl_mimo_method: iid         # TDL MIMO 方法：iid / correlated / spatial_filter；iid 为 38.901 zero-correlation 默认模式
-    tdl_tx_correlation: null     # 可选：发射端相关矩阵，维度 num_tx_ant x num_tx_ant；tdl_mimo_method=correlated 时使用
-    tdl_rx_correlation: null     # 可选：接收端相关矩阵，维度 num_rx_ant x num_rx_ant；tdl_mimo_method=correlated 时使用
-    spatial_filter: null         # 可选：显式 TDL spatial filter，形状为 (Nrx,Ntx) 或 (Npath,Nrx,Ntx)
     snr_db: 12.0                # 接收信噪比，单位 dB
-    frequency_response_path: null  # 外部频域信道系数文本文件路径；EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD 时可用
-    frequency_response: null       # 外部频域信道系数数组；长度必须等于小区带宽子载波数
-    time_domain_tap_length: null   # EXTERNAL_FREQRESP_TD 时保留的时域滤波 tap 数；null 表示保留 IFFT 全长
-    tx_antenna_spacing_lambda: 0.5  # 发射阵列天线间距，单位波长
-    rx_antenna_spacing_lambda: 0.5  # 接收阵列天线间距，单位波长
-    tx_array: null              # 可选：发射阵列配置；null 表示按 num_tx_ant 生成半波长单极化 ULA
-    rx_array: null              # 可选：接收阵列配置；null 表示按 num_rx_ant 生成半波长单极化 ULA
 
 # 数据扰码配置
 scrambling:

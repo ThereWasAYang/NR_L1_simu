@@ -202,7 +202,10 @@ class HarqConfig:
 
 @dataclass
 class ChannelConfig:
+    config_path: str | None = None
     model: str = "AWGN"
+    seed: int | str | None = None
+    geometry: ConfigNode = field(default_factory=ConfigNode)
     params: dict[str, Any] = field(default_factory=ConfigNode)
     extras: ConfigNode = field(default_factory=ConfigNode)
 
@@ -337,7 +340,7 @@ class SimulationConfig:
         channel = _build_config_dataclass(
             ChannelConfig,
             channel_data,
-            field_transforms={"params": ConfigNode},
+            field_transforms={"geometry": ConfigNode, "params": ConfigNode},
         )
         interference = _parse_interference_config(interference_data)
         plotting = _build_config_dataclass(PlottingConfig, data.get("plotting", {}))

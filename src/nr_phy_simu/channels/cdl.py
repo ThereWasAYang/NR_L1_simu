@@ -50,9 +50,7 @@ class CdlChannel(FadingChannelBase):
         path_powers = self._normalize_powers_db(power_db)
         coeff = np.zeros((num_rx_ant, num_tx_ant, delays_s.size, num_samples), dtype=np.complex128)
 
-        velocity_az_deg = float(config.channel.params.get("ue_azimuth_deg", 0.0))
-        velocity_ze_deg = float(config.channel.params.get("ue_zenith_deg", 90.0))
-        velocity_vec = self._unit_vector(velocity_az_deg, velocity_ze_deg)
+        velocity_vec = self._ue_motion_unit_vector(config)
         max_doppler_hz = self._max_doppler_hz(config)
         time = self._time_axis(num_samples, sample_rate_hz)
         rx_array = self._antenna_array(config, "rx", num_rx_ant)

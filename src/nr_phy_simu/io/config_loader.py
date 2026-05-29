@@ -21,18 +21,27 @@ def load_simulation_config(path: str | Path) -> SimulationConfig:
         Parsed :class:`SimulationConfig` instance.
     """
     resolved = config_path(path)
-    suffix = resolved.suffix.lower()
-    if suffix == ".json":
-        data = json.loads(resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING))
-    elif suffix in {".yaml", ".yml"}:
-        data = yaml.safe_load(resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING))
-    elif suffix == ".xml":
-        with resolved.open("r", encoding=_TEXT_FILE_READ_ENCODING) as handle:
-            data = _xml_to_mapping(ET.parse(handle).getroot())
-    else:
-        raise ValueError(f"Unsupported config format: {resolved.suffix}")
+    data = _load_mapping_file(resolved)
     _resolve_relative_paths(data, resolved.parent)
     return SimulationConfig.from_mapping(data)
+
+
+def _load_mapping_file(path: Path) -> dict:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        data = json.loads(path.read_text(encoding=_TEXT_FILE_READ_ENCODING))
+    elif suffix in {".yaml", ".yml"}:
+        data = yaml.safe_load(path.read_text(encoding=_TEXT_FILE_READ_ENCODING))
+    elif suffix == ".xml":
+        with path.open("r", encoding=_TEXT_FILE_READ_ENCODING) as handle:
+            data = _xml_to_mapping(ET.parse(handle).getroot())
+    else:
+        raise ValueError(f"Unsupported config format: {path.suffix}")
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Config file must contain a mapping at top level: {path}")
+    return data
 
 
 def _resolve_relative_paths(data: dict, base_dir: Path) -> None:
@@ -50,11 +59,42 @@ def _resolve_relative_paths(data: dict, base_dir: Path) -> None:
 
     channel = data.get("channel")
     if isinstance(channel, dict):
-        params = channel.get("params")
-        if isinstance(params, dict):
-            frequency_response_path = params.get("frequency_response_path")
-            if isinstance(frequency_response_path, str) and frequency_response_path.strip() != "":
-                params["frequency_response_path"] = str(_resolve_path_string(frequency_response_path, base_dir))
+        config_path_value = channel.get("config_path")
+        if isinstance(config_path_value, str) and config_path_value.strip() != "":
+            channel_config_path = _resolve_path_string(config_path_value, base_dir)
+            inline_channel = dict(channel)
+            external_channel = _load_mapping_file(channel_config_path)
+            _resolve_channel_relative_paths(external_channel, channel_config_path.parent)
+            inline_channel["config_path"] = str(channel_config_path)
+            _resolve_channel_relative_paths(inline_channel, base_dir)
+            channel.clear()
+            channel.update(_merge_channel_config(external_channel, inline_channel))
+            return
+        _resolve_channel_relative_paths(channel, base_dir)
+
+
+def _resolve_channel_relative_paths(channel: dict, base_dir: Path) -> None:
+    params = channel.get("params")
+    if isinstance(params, dict):
+        frequency_response_path = params.get("frequency_response_path")
+        if isinstance(frequency_response_path, str) and frequency_response_path.strip() != "":
+            params["frequency_response_path"] = str(_resolve_path_string(frequency_response_path, base_dir))
+
+
+def _merge_channel_config(external: dict, inline: dict) -> dict:
+    merged = dict(external)
+    for key, value in inline.items():
+        if key == "params" and isinstance(value, dict) and isinstance(merged.get("params"), dict):
+            params = dict(merged["params"])
+            params.update(value)
+            merged["params"] = params
+        elif key == "geometry" and isinstance(value, dict) and isinstance(merged.get("geometry"), dict):
+            geometry = dict(merged["geometry"])
+            geometry.update(value)
+            merged["geometry"] = geometry
+        else:
+            merged[key] = value
+    return merged
 
 
 def _resolve_path_string(path_value: str, base_dir: Path) -> Path:

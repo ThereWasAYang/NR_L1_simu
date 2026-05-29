@@ -1,0 +1,9 @@
+model: AWGN                    # 信道模型：AWGN
+seed: null                     # 信道随机种子；null 表示回退到系统 random_seed，auto 表示每次运行随机生成
+geometry:                      # link-level 辅助几何信息；AWGN 不使用坐标生成信道，仅保留统一结构
+  tx_position_m: [0.0, 0.0, 25.0]      # 发射机三维坐标，单位 m
+  rx_position_m: [100.0, 0.0, 1.5]     # 接收机三维坐标，单位 m
+  ue_velocity_vector_mps: [0.0, 0.0, 0.0]  # UE 速度向量，单位 m/s
+params:
+  add_noise: true              # 是否添加噪声
+  snr_db: 12.0                 # 加性白噪声信噪比，单位 dB

@@ -34,7 +34,7 @@ scrambling:
   n_id: 1
 
 channel:
-  model: AWGN
+  config_path: channels/awgn.yaml
   params:
     snr_db: 0.0
 

@@ -45,7 +45,7 @@ harq:
   rv_sequence: [0, 2, 3, 1]  # 冗余版本序列
 
 channel:
-  model: AWGN  # 信道模型
+  config_path: channels/awgn.yaml  # 独立信道配置文件路径
   params:
     snr_db: 5.0  # 信噪比
 

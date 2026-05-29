@@ -26,13 +26,24 @@ class DefaultChannelFactory(ChannelFactory):
     def create(self, config: SimulationConfig):
         model = config.channel.model.upper()
         if model == "AWGN":
-            return AwgnChannel(rng=np.random.default_rng(config.random_seed))
+            return AwgnChannel(rng=_channel_rng(config))
         if model == "TDL":
-            return TdlChannel(rng=np.random.default_rng(config.random_seed))
+            return TdlChannel(rng=_channel_rng(config))
         if model == "CDL":
-            return CdlChannel(rng=np.random.default_rng(config.random_seed))
+            return CdlChannel(rng=_channel_rng(config))
         if model == "EXTERNAL_FREQRESP_TD":
             return ExternalFrequencyResponseTimeDomainChannel()
         if model == "EXTERNAL_FREQRESP_FD":
             return ExternalFrequencyResponseFrequencyDomainChannel()
         raise NotImplementedError(f"Channel model '{config.channel.model}' is not implemented yet.")
+
+
+def _channel_rng(config: SimulationConfig) -> np.random.Generator:
+    seed = config.channel.seed
+    if seed is None:
+        seed = config.random_seed
+    if isinstance(seed, str):
+        if seed.lower() == "auto":
+            return np.random.default_rng()
+        seed = int(seed)
+    return np.random.default_rng(int(seed))

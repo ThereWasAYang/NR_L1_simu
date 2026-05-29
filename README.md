@@ -199,6 +199,10 @@ context.add_plot_artifact(
 - `MCS index`
 - `waveform`
 - `channel type`
+- `channel.config_path`
+- `channel.seed`
+- `channel.geometry.tx_position_m / rx_position_m`
+- `channel.geometry.ue_velocity_vector_mps`
 - `channel params`
 - `cell bandwidth RBs`
 - `user bandwidth RBs`
@@ -410,6 +414,41 @@ python examples/run_from_config.py configs/pusch_external_freqresp_fd.yaml
 - [inputs/mimo_frequency_response_24rb_2rx2tx.txt](inputs/mimo_frequency_response_24rb_2rx2tx.txt)：`2Rx x 2Tx` 频域信道系数示例，共 `288` 行，对应 `24RB` 小区带宽。每行是一个子载波上的 `2 x 2` 信道矩阵，按 `H[k,0,0]; H[k,0,1]; H[k,1,0]; H[k,1,1]` 排列。
 - [inputs/mimo_time_domain_taps_2rx2tx_8tap.txt](inputs/mimo_time_domain_taps_2rx2tx_8tap.txt)：`2Rx x 2Tx` 时域 tap 系数格式示例，共 `8` 行，每行是一个 tap 上的 `2 x 2` tap 矩阵，按 `h[tap,0,0]; h[tap,0,1]; h[tap,1,0]; h[tap,1,1]` 排列。当前内置 `EXTERNAL_FREQRESP_TD` 仍只消费外部频域响应并仅支持 `SISO`，该文件主要用于说明 MIMO 时域 tap 文件的推荐排布，便于后续自定义 MIMO 时域信道读取。
 
+### 独立信道配置文件
+
+系统仿真 YAML 可以只配置独立信道文件路径：
+
+```yaml
+channel:
+  config_path: channels/tdl_c.yaml
+```
+
+信道文件位于 [configs/channels](configs/channels)，当前提供：
+
+- `awgn.yaml`
+- `tdl_a.yaml` 到 `tdl_e.yaml`
+- `cdl_a.yaml` 到 `cdl_e.yaml`
+
+外部信道文件格式示例：
+
+```yaml
+model: TDL
+seed: 1007
+geometry:
+  tx_position_m: [0.0, 0.0, 25.0]
+  rx_position_m: [100.0, 0.0, 1.5]
+  ue_velocity_vector_mps: [3.0, 0.0, 0.0]
+params:
+  profile: TDL-C
+  carrier_frequency_hz: 3500000000.0
+  delay_spread_ns: 300.0
+  snr_db: 12.0
+```
+
+合并规则：外部信道文件作为基础配置；系统 YAML 中的 `channel.model`、`channel.seed`、`channel.geometry`、`channel.params` 会覆盖外部文件。`channel.seed: null` 表示回退到系统级 `random_seed`；`channel.seed: auto` 表示每次运行使用非确定随机源生成不同信道。
+
+`geometry` 属于 link-level 辅助信息：系统会校验三维坐标，计算 TX/RX 距离、LOS 单位方向，并优先用 `ue_velocity_vector_mps` 推导 UE 速度大小和运动方向。当前不会用坐标引入路径损耗、阴影衰落、LOS 概率或空间一致性。
+
 对于 `TDL/CDL`，当前已支持的典型信道参数包括：
 
 - `profile`
@@ -417,7 +456,7 @@ python examples/run_from_config.py configs/pusch_external_freqresp_fd.yaml
 - `carrier_frequency_hz`
 - `ue_speed_mps`
 - `max_doppler_hz`
-- `ue_azimuth_deg` / `ue_zenith_deg`（CDL）
+- `ue_azimuth_deg` / `ue_zenith_deg`
 - `num_sinusoids`
 - `k_factor_db`（LOS profile 可选覆盖）
 - `tdl_mimo_method`：`iid` / `correlated` / `spatial_filter`

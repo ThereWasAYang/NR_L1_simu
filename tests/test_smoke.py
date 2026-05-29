@@ -494,6 +494,71 @@ class ConfigLoaderTest(unittest.TestCase):
                 response_path.resolve(),
             )
 
+    def test_channel_config_path_merges_external_file_and_inline_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            response_path = tmpdir_path / "freq_resp.txt"
+            response_path.write_text("\n".join(["1.0 0.0"] * 624), encoding="utf-8")
+            channel_path = tmpdir_path / "awgn_channel.yaml"
+            channel_path.write_text(
+                "\n".join(
+                    [
+                        "model: AWGN",
+                        "seed: 11",
+                        "geometry:",
+                        "  tx_position_m: [0.0, 0.0, 25.0]",
+                        "  rx_position_m: [100.0, 0.0, 1.5]",
+                        "  ue_velocity_vector_mps: [3.0, 0.0, 4.0]",
+                        "params:",
+                        "  snr_db: 1.0",
+                        "  frequency_response_path: ./freq_resp.txt",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config_path = tmpdir_path / "sim.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "link:",
+                        "  channel_type: PUSCH",
+                        "  waveform: CP-OFDM",
+                        "channel:",
+                        "  config_path: ./awgn_channel.yaml",
+                        "  seed: 12",
+                        "  geometry:",
+                        "    rx_position_m: [50.0, 0.0, 1.5]",
+                        "  params:",
+                        "    snr_db: 7.0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = load_simulation_config(config_path)
+
+            self.assertEqual(cfg.channel.model, "AWGN")
+            self.assertEqual(cfg.channel.seed, 12)
+            self.assertEqual(Path(cfg.channel.config_path), channel_path.resolve())
+            self.assertEqual(cfg.channel.params.snr_db, 7.0)
+            self.assertEqual(Path(cfg.channel.params.frequency_response_path), response_path.resolve())
+            self.assertEqual(cfg.channel.geometry.tx_position_m, [0.0, 0.0, 25.0])
+            self.assertEqual(cfg.channel.geometry.rx_position_m, [50.0, 0.0, 1.5])
+            self.assertEqual(cfg.channel.geometry.ue_velocity_vector_mps, [3.0, 0.0, 4.0])
+
+    def test_channel_seed_controls_rng(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        cfg.channel.seed = 123
+        waveform = np.ones((1, 64), dtype=np.complex128)
+        first, _ = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+        second, _ = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+        self.assertTrue(np.allclose(first, second))
+
+        cfg.channel.seed = "auto"
+        third, _ = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+        fourth, _ = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+        self.assertFalse(np.allclose(third, fourth))
+
     def test_repository_mimo_frequency_response_example_shape(self):
         response = load_frequency_response(path=ROOT / "inputs" / "mimo_frequency_response_24rb_2rx2tx.txt")
         self.assertEqual(response.shape, (24 * 12, 4))
@@ -987,6 +1052,54 @@ class FadingChannelSmokeTest(unittest.TestCase):
         self.assertEqual(rx_waveform.shape, (4, waveform.shape[1]))
         self.assertEqual(info["path_coefficients"].shape[:3], (4, 2, 3))
         self.assertTrue(np.allclose(info["path_delays_s"], np.array([0.0, 70.0, 190.0]) * 1e-9))
+
+    def test_channel_geometry_derives_distance_and_velocity_angles(self):
+        cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
+        cfg.channel.geometry.tx_position_m = [0.0, 0.0, 0.0]
+        cfg.channel.geometry.rx_position_m = [3.0, 4.0, 0.0]
+        cfg.channel.geometry.ue_velocity_vector_mps = [0.0, 3.0, 4.0]
+
+        info = TdlChannel._channel_geometry_info(cfg)
+
+        self.assertAlmostEqual(info["tx_rx_distance_m"], 5.0)
+        self.assertTrue(np.allclose(info["los_unit_vector_tx_to_rx"], np.array([0.6, 0.8, 0.0])))
+        self.assertAlmostEqual(info["ue_speed_mps"], 5.0)
+        self.assertAlmostEqual(info["ue_azimuth_deg"], 90.0)
+        self.assertAlmostEqual(info["ue_zenith_deg"], np.rad2deg(np.arccos(4.0 / 5.0)))
+
+    def test_channel_profile_config_files_can_propagate(self):
+        channel_files = [
+            ROOT / "configs" / "channels" / "awgn.yaml",
+            *(ROOT / "configs" / "channels" / f"tdl_{name}.yaml" for name in "abcde"),
+            *(ROOT / "configs" / "channels" / f"cdl_{name}.yaml" for name in "abcde"),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            for channel_path in channel_files:
+                config_path = tmpdir_path / f"{channel_path.stem}_sim.yaml"
+                config_path.write_text(
+                    "\n".join(
+                        [
+                            "carrier:",
+                            "  cell_bandwidth_rbs: 24",
+                            "link:",
+                            "  channel_type: PUSCH",
+                            "  waveform: CP-OFDM",
+                            "  num_tx_ant: 1",
+                            "  num_rx_ant: 1",
+                            "channel:",
+                            f"  config_path: {channel_path}",
+                            "  params:",
+                            "    add_noise: false",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                cfg = load_simulation_config(config_path)
+                waveform = np.ones((1, 256), dtype=np.complex128)
+                rx_waveform, info = DefaultChannelFactory().create(cfg).propagate(waveform, cfg)
+                self.assertEqual(rx_waveform.shape, (1, waveform.shape[1]), msg=channel_path.name)
+                self.assertIn("snr_db", info, msg=channel_path.name)
 
     def test_tdl_iid_mimo_is_not_single_outer_product(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl_c.yaml")
