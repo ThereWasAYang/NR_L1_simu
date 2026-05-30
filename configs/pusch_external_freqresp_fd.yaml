@@ -11,7 +11,13 @@ carrier:
 
 # 信道模型配置
 channel:
+  config_path: null             # 独立信道配置文件路径；外部频域信道用例直接在本段配置
   model: EXTERNAL_FREQRESP_FD   # 信道类型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
+  seed: null                    # 信道随机种子；null 表示回退到 random_seed
+  geometry:                     # link-level 辅助几何信息；外部频域信道当前不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 25.0                # 加性白噪声信噪比，单位 dB
     frequency_response_path: ../inputs/siso_frequency_response_24rb_flat.txt  # 外部频域信道系数文本文件路径；SISO为每行1个复数，MIMO可每行用分号写Nrx*Ntx个复数
@@ -30,6 +36,7 @@ link:
   channel_type: PUSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM；本用例示范 CP-OFDM 频域直通过信道
   num_layers: 1                 # 传输层数
+  num_codewords: 1              # 码字数；当前 PUSCH 固定为 1
   num_tx_ant: 1                 # 发射天线数；EXTERNAL_FREQRESP_FD 支持 MIMO，EXTERNAL_FREQRESP_TD 当前仅支持 SISO
   num_rx_ant: 1                 # 接收天线数；MIMO 文本文件每行需写 num_rx_ant*num_tx_ant 个复数
   prb_start: 4                  # 资源分配起始 PRB
@@ -60,6 +67,9 @@ dmrs:
   num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
+  uplink_transform_precoding: false  # 是否启用 transform-precoded PUSCH DMRS 分支
+  pi2bpsk_scrambling_id0: null  # pi/2-BPSK DMRS scrambling ID 0
+  pi2bpsk_scrambling_id1: null  # pi/2-BPSK DMRS scrambling ID 1
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
@@ -71,6 +81,23 @@ simulation:
 # 绘图控制参数
 plotting:
   enabled: true                 # 是否启用本次仿真的所有绘图
+
+waveform_input:
+  waveform_path: null           # 灌数仿真输入文件；null 表示不启用
+  format: text_iq               # 输入文件格式
+  num_samples_per_tti: null     # 每个 TTI 样点数；null 表示自动推导
+  noise_variance: null          # 输入波形噪声方差；null 表示按配置估计
+
+decoder:
+  ldpc_max_iterations: 25       # LDPC 最大迭代次数
+  ldpc_min_sum_scaling: 0.75    # normalized min-sum 缩放因子
+  ldpc_enable_py3gpp_fallback: true  # 本地译码失败时是否启用 py3gpp 兜底
+
+harq:
+  enabled: false                # 是否启用 HARQ
+  num_processes: 4              # HARQ 进程数
+  max_retransmissions: 3        # 最大重传次数
+  rv_sequence: [0, 2, 3, 1]     # 冗余版本序列
 
 # 仿真控制参数
 random_seed: 7                  # 随机种子

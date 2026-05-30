@@ -3,6 +3,8 @@ carrier:
   cell_bandwidth_rbs: 24
   subcarrier_spacing_khz: 30
   cyclic_prefix: NormalCP
+  fft_size: null
+  sample_rate_hz: null
 
 link:
   channel_type: PUSCH
@@ -18,23 +20,45 @@ link:
   mcs:
     table: qam64
     index: 0
+    tp_pi2bpsk: false
     rv: 0
+    x_overhead: 0
 
 dmrs:
   config_type: 1
+  symbol_positions: []
   mapping_type: A
   type_a_position: 2
   additional_positions: 0
   max_length: 1
   data_mux_enabled: false
+  scrambling_id0: 1
+  scrambling_id1: null
+  nid_nscid: null
+  n_scid: 0
+  n_pusch_identity: 1
   num_cdm_groups_without_data: 2
+  sequence_hopping: false
+  group_hopping: false
+  uplink_transform_precoding: false
+  pi2bpsk_scrambling_id0: null
+  pi2bpsk_scrambling_id1: null
+  port_set: [0]
 
 scrambling:
   rnti: 4660
   n_id: 1
+  data_scrambling_id: null
+  codeword_index: 0
 
 channel:
+  model: AWGN
   config_path: channels/awgn.yaml
+  seed: null
+  geometry:
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 0.0
 
@@ -43,3 +67,25 @@ plotting:
 
 simulation:
   num_ttis: 20
+  result_output_path: null
+  bypass_channel_coding: false
+
+decoder:
+  ldpc_max_iterations: 25
+  ldpc_min_sum_scaling: 0.75
+  ldpc_enable_py3gpp_fallback: true
+
+harq:
+  enabled: false
+  num_processes: 4
+  max_retransmissions: 3
+  rv_sequence: [0, 2, 3, 1]
+
+waveform_input:
+  waveform_path: null
+  format: text_iq
+  num_samples_per_tti: null
+  noise_variance: null
+
+random_seed: 7
+slot_index: 0

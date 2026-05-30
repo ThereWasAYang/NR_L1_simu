@@ -7,8 +7,13 @@ carrier:
   sample_rate_hz: null          # 采样率；null 表示自动计算
 
 channel:
+  model: AWGN                         # 信道模型
   config_path: ../channels/awgn.yaml  # 干扰用户独立信道配置
   seed: 2101                          # 干扰用户信道随机种子；null 表示回退到本文件 random_seed
+  geometry:                           # link-level 辅助几何信息；AWGN 不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 30.0                      # 单独运行该文件时使用；作为干扰源时信道噪声会被关闭
 
@@ -22,6 +27,7 @@ link:
   channel_type: PUSCH           # 干扰共享信道类型
   waveform: CP-OFDM             # 干扰波形
   num_layers: 1                 # 干扰用户层数
+  num_codewords: 1              # 码字数；当前 PUSCH 固定为 1
   num_tx_ant: 1                 # 干扰用户发射天线数
   num_rx_ant: 4                 # 作为干扰源时会被主仿真接收天线数覆盖
   prb_start: 4                  # 干扰 RB 起始位置
@@ -51,6 +57,9 @@ dmrs:
   num_cdm_groups_without_data: null  # DMRS CDM group without data
   sequence_hopping: false       # sequence hopping 开关
   group_hopping: false          # group hopping 开关
+  uplink_transform_precoding: false  # 是否启用 transform-precoded PUSCH DMRS 分支
+  pi2bpsk_scrambling_id0: null  # pi/2-BPSK DMRS scrambling ID 0
+  pi2bpsk_scrambling_id1: null  # pi/2-BPSK DMRS scrambling ID 1
   port_set: [0]                 # DMRS 端口集合
 
 simulation:
@@ -60,6 +69,23 @@ simulation:
 
 plotting:
   enabled: false                # 干扰源内部不绘图
+
+waveform_input:
+  waveform_path: null           # 灌数仿真输入文件；null 表示不启用
+  format: text_iq               # 输入文件格式
+  num_samples_per_tti: null     # 每个 TTI 样点数；null 表示自动推导
+  noise_variance: null          # 输入波形噪声方差；null 表示按配置估计
+
+decoder:
+  ldpc_max_iterations: 25       # 干扰源强制 bypass 编码；保留译码字段以统一配置结构
+  ldpc_min_sum_scaling: 0.75
+  ldpc_enable_py3gpp_fallback: true
+
+harq:
+  enabled: false                # 干扰源不启用 HARQ
+  num_processes: 4
+  max_retransmissions: 3
+  rv_sequence: [0, 2, 3, 1]
 
 random_seed: 2101               # 干扰用户随机种子
 slot_index: 0                   # 作为干扰源时会被主仿真 slot_index 覆盖

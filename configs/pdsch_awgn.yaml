@@ -8,7 +8,13 @@ carrier:
 
 # 信道模型配置
 channel:
+  model: AWGN                    # 信道模型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   config_path: channels/awgn.yaml  # 独立信道配置文件路径；相对当前 YAML 所在目录
+  seed: null                     # 信道随机种子；null 表示回退到 random_seed，auto 表示每次运行随机
+  geometry:                      # link-level 辅助几何信息；AWGN 不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 12.0                # 加性白噪声信噪比，单位 dB
 
@@ -24,6 +30,7 @@ link:
   channel_type: PDSCH           # 共享信道类型：PUSCH / PDSCH
   waveform: CP-OFDM             # 波形类型：CP-OFDM / DFT-s-OFDM
   num_layers: 1                 # 传输层数
+  num_codewords: 1              # 码字数
   num_tx_ant: 1                 # 发射天线数
   num_rx_ant: 1                 # 接收天线数
   prb_start: 4                  # 资源分配起始 PRB
@@ -33,6 +40,7 @@ link:
   mcs:
     table: qam64                # MCS table type：qam64 / qam256 / qam64lowse / qam1024
     index: 10                   # MCS index
+    tp_pi2bpsk: false           # PDSCH 不使用；保留字段以统一 MCS 配置结构
     rv: 0                       # 冗余版本号 RV
     x_overhead: 0               # TBS 计算中的 xOh
 
@@ -49,7 +57,13 @@ dmrs:
   scrambling_id1: null          # DMRS scrambling ID 1
   nid_nscid: null               # NIDNSCID；null 表示回退到默认扰码 ID
   n_scid: 0                     # NSCID
+  n_pusch_identity: null        # PUSCH-specific sequence identity；PDSCH 不使用
   num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
+  sequence_hopping: false       # PDSCH 不使用；保留字段以统一 DMRS 配置结构
+  group_hopping: false          # PDSCH 不使用；保留字段以统一 DMRS 配置结构
+  uplink_transform_precoding: false  # PDSCH 不使用；保留字段以统一 DMRS 配置结构
+  pi2bpsk_scrambling_id0: null  # PDSCH 不使用；保留字段以统一 DMRS 配置结构
+  pi2bpsk_scrambling_id1: null  # PDSCH 不使用；保留字段以统一 DMRS 配置结构
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
@@ -61,6 +75,23 @@ simulation:
 # 绘图控制参数
 plotting:
   enabled: true                 # 是否启用本次仿真的所有绘图
+
+waveform_input:
+  waveform_path: null           # 灌数仿真输入文件；null 表示不启用
+  format: text_iq               # 输入文件格式
+  num_samples_per_tti: null     # 每个 TTI 样点数；null 表示自动推导
+  noise_variance: null          # 输入波形噪声方差；null 表示按配置估计
+
+decoder:
+  ldpc_max_iterations: 25       # LDPC 最大迭代次数
+  ldpc_min_sum_scaling: 0.75    # normalized min-sum 缩放因子
+  ldpc_enable_py3gpp_fallback: true  # 本地译码失败时是否启用 py3gpp 兜底
+
+harq:
+  enabled: false                # 是否启用 HARQ
+  num_processes: 4              # HARQ 进程数
+  max_retransmissions: 3        # 最大重传次数
+  rv_sequence: [0, 2, 3, 1]     # 冗余版本序列
 
 # 仿真控制参数
 random_seed: 7                  # 随机种子

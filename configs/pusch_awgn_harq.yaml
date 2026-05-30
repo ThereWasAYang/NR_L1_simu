@@ -3,6 +3,8 @@ carrier:
   cell_bandwidth_rbs: 24  # 小区带宽（RB）
   subcarrier_spacing_khz: 30  # 子载波间隔（kHz）
   cyclic_prefix: NormalCP  # 循环前缀类型：NormalCP / ECP
+  fft_size: null  # FFT 点数；null 表示自动计算
+  sample_rate_hz: null  # 采样率；null 表示自动计算
 
 link:
   channel_type: PUSCH  # 信道类型
@@ -18,20 +20,36 @@ link:
   mcs:
     table: qam64  # MCS 表类型
     index: 0  # MCS 阶数
+    tp_pi2bpsk: false  # transform-precoded PUSCH 低索引时是否启用 pi/2-BPSK
     rv: 0  # 初始冗余版本
+    x_overhead: 0  # TBS 计算 overhead
 
 dmrs:
   config_type: 1  # DMRS 梳分类型
+  symbol_positions: []  # 显式 DMRS symbol 列表；空表示自动推导
   mapping_type: A  # 映射类型
   type_a_position: 2  # type A 首个 DMRS 符号位置
   additional_positions: 0  # 额外 DMRS 位置数
   max_length: 1  # DMRS 最大长度
   data_mux_enabled: false  # 是否数据导频共符号
+  scrambling_id0: 1  # DMRS scrambling ID 0
+  scrambling_id1: null  # DMRS scrambling ID 1
+  nid_nscid: null  # NIDNSCID；null 表示回退默认扰码 ID
+  n_scid: 0  # NSCID
+  n_pusch_identity: 1  # PUSCH-specific sequence identity
   num_cdm_groups_without_data: 2  # 无数据 CDM group 数
+  sequence_hopping: false  # sequence hopping 开关
+  group_hopping: false  # group hopping 开关
+  uplink_transform_precoding: false  # 是否按 transform-precoded PUSCH 生成 DMRS
+  pi2bpsk_scrambling_id0: null  # pi/2-BPSK scrambling ID 0
+  pi2bpsk_scrambling_id1: null  # pi/2-BPSK scrambling ID 1
+  port_set: [0]  # DMRS 端口集合
 
 scrambling:
   rnti: 4660  # RNTI
   n_id: 1  # 数据/DMRS 相关 ID
+  data_scrambling_id: null  # 显式数据扰码 ID；null 表示回退到 n_id
+  codeword_index: 0  # 码字索引 q
 
 decoder:
   ldpc_max_iterations: 25  # LDPC 最大迭代次数
@@ -45,7 +63,13 @@ harq:
   rv_sequence: [0, 2, 3, 1]  # 冗余版本序列
 
 channel:
+  model: AWGN  # 信道模型
   config_path: channels/awgn.yaml  # 独立信道配置文件路径
+  seed: null  # 信道随机种子；null 表示回退到 random_seed
+  geometry:  # link-level 辅助几何信息；AWGN 不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 5.0  # 信噪比
 
@@ -54,3 +78,14 @@ plotting:
 
 simulation:
   num_ttis: 20  # 仿真 TTI 数
+  result_output_path: null  # 多 TTI 结果文本文件路径；null 表示不落盘
+  bypass_channel_coding: false  # 是否跳过编码与译码
+
+waveform_input:
+  waveform_path: null  # 灌数仿真输入文件；null 表示不启用
+  format: text_iq  # 输入文件格式
+  num_samples_per_tti: null  # 每个 TTI 样点数；null 表示自动推导
+  noise_variance: null  # 输入波形噪声方差；null 表示按配置估计
+
+random_seed: 7  # 随机种子
+slot_index: 0  # 槽号

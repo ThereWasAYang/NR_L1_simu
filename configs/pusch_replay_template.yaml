@@ -19,7 +19,13 @@ waveform_input:
 
 # 该模式下不会真正启用信道，但仍可用 snr_db 为接收机提供 MMSE/LLR 所需噪声估计
 channel:
+  model: AWGN                   # 信道模型；灌数模式下不真正过信道
   config_path: channels/awgn.yaml  # 独立信道配置文件路径；相对当前 YAML 所在目录
+  seed: null                    # 信道随机种子；灌数模式下不使用
+  geometry:                     # link-level 辅助几何信息；灌数模式下不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 50.0
     frequency_response_path: null  # 外部频域信道系数文本文件路径；EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD 时可用
@@ -38,6 +44,7 @@ link:
   channel_type: PUSCH
   waveform: CP-OFDM
   num_layers: 1
+  num_codewords: 1
   num_tx_ant: 1
   num_rx_ant: 1
   prb_start: 4
@@ -68,6 +75,9 @@ dmrs:
   num_cdm_groups_without_data: null  # 不带数据的 DMRS CDM group 数；null 表示按当前映射方式自动推导，并决定 DMRS 功率偏置
   sequence_hopping: false       # 是否启用 sequence hopping
   group_hopping: false          # 是否启用 group hopping
+  uplink_transform_precoding: false  # 是否启用 transform-precoded PUSCH DMRS 分支
+  pi2bpsk_scrambling_id0: null  # pi/2-BPSK DMRS scrambling ID 0
+  pi2bpsk_scrambling_id1: null  # pi/2-BPSK DMRS scrambling ID 1
   port_set: [0]                 # DMRS 端口集合
 
 # 仿真控制参数
@@ -78,6 +88,17 @@ simulation:
 
 plotting:
   enabled: true
+
+decoder:
+  ldpc_max_iterations: 25
+  ldpc_min_sum_scaling: 0.75
+  ldpc_enable_py3gpp_fallback: true
+
+harq:
+  enabled: false
+  num_processes: 4
+  max_retransmissions: 3
+  rv_sequence: [0, 2, 3, 1]
 
 random_seed: 7
 slot_index: 0

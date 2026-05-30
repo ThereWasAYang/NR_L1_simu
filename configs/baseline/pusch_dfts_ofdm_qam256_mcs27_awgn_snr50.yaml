@@ -12,7 +12,13 @@ carrier:
 
 # 信道模型配置
 channel:
+  model: AWGN                    # 信道模型：AWGN / TDL / CDL / EXTERNAL_FREQRESP_TD / EXTERNAL_FREQRESP_FD
   config_path: ../channels/awgn.yaml  # 独立信道配置文件路径；相对当前 YAML 所在目录
+  seed: null                     # 信道随机种子；null 表示回退到 random_seed，auto 表示每次运行随机
+  geometry:                      # link-level 辅助几何信息；AWGN 不使用坐标生成信道
+    tx_position_m: [0.0, 0.0, 25.0]
+    rx_position_m: [100.0, 0.0, 1.5]
+    ue_velocity_vector_mps: [0.0, 0.0, 0.0]
   params:
     snr_db: 50.0
 
@@ -28,6 +34,7 @@ link:
   channel_type: PUSCH
   waveform: DFT-s-OFDM
   num_layers: 1
+  num_codewords: 1
   num_tx_ant: 1
   num_rx_ant: 1
   prb_start: 4
@@ -58,6 +65,9 @@ dmrs:
   num_cdm_groups_without_data: null
   sequence_hopping: false
   group_hopping: false
+  uplink_transform_precoding: false
+  pi2bpsk_scrambling_id0: null
+  pi2bpsk_scrambling_id1: null
   port_set: [0]
 
 # 仿真控制参数
@@ -69,6 +79,23 @@ simulation:
 # 绘图控制参数
 plotting:
   enabled: false
+
+waveform_input:
+  waveform_path: null
+  format: text_iq
+  num_samples_per_tti: null
+  noise_variance: null
+
+decoder:
+  ldpc_max_iterations: 25
+  ldpc_min_sum_scaling: 0.75
+  ldpc_enable_py3gpp_fallback: true
+
+harq:
+  enabled: false
+  num_processes: 4
+  max_retransmissions: 3
+  rv_sequence: [0, 2, 3, 1]
 
 # 仿真控制参数
 random_seed: 7
