@@ -50,6 +50,7 @@ def _to_config_value(value: Any) -> Any:
 @dataclass
 class CarrierConfig:
     cell_bandwidth_rbs: int = 52
+    center_frequency_hz: float = 3.5e9
     subcarrier_spacing_khz: int = 30
     cyclic_prefix: str = "NormalCP"
     fft_size: int | None = None
@@ -211,6 +212,14 @@ class ChannelConfig:
 
 
 @dataclass
+class BwpConfig:
+    start_rb: int = 0
+    num_rbs: int | None = None
+    phase_compensation_enabled: bool = True
+    extras: ConfigNode = field(default_factory=ConfigNode)
+
+
+@dataclass
 class InterferenceSourceConfig:
     label: str | None = None
     enabled: bool = True
@@ -295,6 +304,7 @@ class LinkConfig:
 @dataclass
 class SimulationConfig:
     carrier: CarrierConfig = field(default_factory=CarrierConfig)
+    bwp: BwpConfig = field(default_factory=BwpConfig)
     dmrs: DmrsConfig = field(default_factory=DmrsConfig)
     scrambling: ScramblingConfig = field(default_factory=ScramblingConfig)
     decoder: DecoderConfig = field(default_factory=DecoderConfig)
@@ -319,17 +329,20 @@ class SimulationConfig:
     def from_mapping(cls, data: dict[str, Any]) -> "SimulationConfig":
         data = _ensure_mapping(data, "SimulationConfig")
         carrier_data = data.get("carrier", {})
+        channel_data = data.get("channel", {})
+        carrier_data = _migrate_legacy_channel_carrier_frequency(carrier_data, channel_data)
+        bwp_data = data.get("bwp", {})
         dmrs_data = data.get("dmrs", {})
         scrambling_data = data.get("scrambling", {})
         decoder_data = data.get("decoder", {})
         harq_data = data.get("harq", {})
         link_data = _ensure_mapping(data.get("link", {}), "link")
         mcs_data = link_data.pop("mcs", {})
-        channel_data = data.get("channel", {})
         interference_data = data.get("interference", {})
         waveform_input_data = data.get("waveform_input", {})
 
         carrier = _build_config_dataclass(CarrierConfig, carrier_data)
+        bwp = _build_config_dataclass(BwpConfig, bwp_data)
         dmrs = _build_config_dataclass(
             DmrsConfig,
             dmrs_data,
@@ -357,6 +370,7 @@ class SimulationConfig:
         }
         return cls(
             carrier=carrier,
+            bwp=bwp,
             dmrs=dmrs,
             scrambling=scrambling,
             decoder=decoder,
@@ -401,6 +415,7 @@ class SimulationConfig:
             raise ValueError("Current PUSCH implementation supports exactly one codeword.")
         if self.link.channel_type.upper() == "PDSCH" and int(self.link.num_codewords) not in (1, 2):
             raise ValueError("Current PDSCH configuration must use one or two codewords.")
+        self._validate_carrier_and_bwp()
         if self.harq.enabled:
             if int(self.harq.num_processes) <= 0:
                 raise ValueError("harq.num_processes must be a positive integer.")
@@ -411,6 +426,42 @@ class SimulationConfig:
             invalid_rv = [rv for rv in self.harq.rv_sequence if int(rv) not in (0, 1, 2, 3)]
             if invalid_rv:
                 raise ValueError(f"harq.rv_sequence contains unsupported RV values: {invalid_rv}")
+
+    def _validate_carrier_and_bwp(self) -> None:
+        center_frequency_hz = float(self.carrier.center_frequency_hz)
+        if center_frequency_hz <= 0.0:
+            raise ValueError("carrier.center_frequency_hz must be a positive frequency in Hz.")
+        cell_bandwidth_rbs = int(self.carrier.cell_bandwidth_rbs)
+        if cell_bandwidth_rbs <= 0:
+            raise ValueError("carrier.cell_bandwidth_rbs must be a positive integer.")
+        bwp_start_rb = int(self.bwp.start_rb)
+        bwp_num_rbs = cell_bandwidth_rbs if self.bwp.num_rbs is None else int(self.bwp.num_rbs)
+        if bwp_start_rb < 0:
+            raise ValueError("bwp.start_rb must be non-negative.")
+        if bwp_num_rbs <= 0:
+            raise ValueError("bwp.num_rbs must be a positive integer or null.")
+        if bwp_start_rb + bwp_num_rbs > cell_bandwidth_rbs:
+            raise ValueError(
+                "Configured active BWP exceeds the carrier grid: "
+                f"bwp.start_rb={bwp_start_rb}, bwp.num_rbs={bwp_num_rbs}, "
+                f"carrier.cell_bandwidth_rbs={cell_bandwidth_rbs}."
+            )
+        link_prb_start = int(self.link.prb_start)
+        link_num_prbs = int(self.link.num_prbs)
+        if link_prb_start < 0:
+            raise ValueError("link.prb_start must be non-negative inside the active BWP.")
+        if link_num_prbs <= 0:
+            raise ValueError("link.num_prbs must be a positive integer.")
+        if link_prb_start + link_num_prbs > bwp_num_rbs:
+            raise ValueError(
+                "Configured user allocation exceeds the active BWP: "
+                f"link.prb_start={link_prb_start}, link.num_prbs={link_num_prbs}, "
+                f"bwp.num_rbs={bwp_num_rbs}."
+            )
+
+    @property
+    def active_bwp_num_rbs(self) -> int:
+        return int(self.carrier.cell_bandwidth_rbs if self.bwp.num_rbs is None else self.bwp.num_rbs)
 
 
 def _build_config_dataclass(
@@ -442,6 +493,30 @@ def _build_config_dataclass(
     instance.extras = ConfigNode(instance.extras)
     _attach_dynamic_extras(instance, instance.extras)
     return instance
+
+
+def _migrate_legacy_channel_carrier_frequency(
+    carrier_data: Mapping[str, Any] | None,
+    channel_data: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Move the deprecated channel carrier frequency into the carrier section.
+
+    Args:
+        carrier_data: Raw ``carrier`` YAML mapping.
+        channel_data: Raw ``channel`` YAML mapping that may contain the legacy
+            ``params.carrier_frequency_hz`` field.
+
+    Returns:
+        New carrier mapping. Existing ``carrier.center_frequency_hz`` always wins.
+    """
+    carrier = _ensure_mapping(carrier_data, "carrier")
+    if "center_frequency_hz" in carrier:
+        return carrier
+    channel = _ensure_mapping(channel_data, "channel")
+    params = channel.get("params")
+    if isinstance(params, Mapping) and "carrier_frequency_hz" in params:
+        carrier["center_frequency_hz"] = params["carrier_frequency_hz"]
+    return carrier
 
 
 def _config_init_field_names(config_cls: type) -> set[str]:

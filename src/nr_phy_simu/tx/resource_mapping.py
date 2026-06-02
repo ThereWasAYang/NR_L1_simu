@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 
+from nr_phy_simu.common.bwp import allocated_subcarriers
 from nr_phy_simu.common.interfaces import DmrsSequenceGenerator, ResourceMapper
 from nr_phy_simu.config import SimulationConfig
 
@@ -134,9 +135,7 @@ class FrequencyDomainResourceMapper(ResourceMapper):
             One-dimensional integer array with shape ``(num_prbs * 12,)``; axis 0
             is the allocated subcarrier offset, values are absolute cell subcarrier indices.
         """
-        start = config.link.prb_start * 12
-        stop = start + config.link.num_prbs * 12
-        return np.arange(start, stop, dtype=int)
+        return allocated_subcarriers(config)
 
     @staticmethod
     def symbol_dmrs_offsets(config: SimulationConfig, dmrs_info) -> np.ndarray:

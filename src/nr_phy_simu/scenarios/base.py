@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 
+from nr_phy_simu.common.bwp import allocated_subcarriers, bwp_center_frequency_hz
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
 from nr_phy_simu.common.transmission import TransportBlockPlan, build_transport_block_plan
 from nr_phy_simu.common.types import SimulationResult
@@ -60,6 +61,8 @@ class SharedChannelSimulation:
         """
         self.runtime_context.clear()
         set_runtime_context(self.runtime_context)
+        self.runtime_context.set("bwp", "center_frequency_hz", bwp_center_frequency_hz(self.config))
+        self.runtime_context.set("bwp", "allocated_subcarriers", allocated_subcarriers(self.config))
         if harq_process_id is not None:
             self.runtime_context.set("harq", "process_id", harq_process_id)
             self.runtime_context.set("harq", "is_retransmission", bool(harq_retransmission))

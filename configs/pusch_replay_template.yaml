@@ -5,10 +5,17 @@
 # 载波与 numerology 配置
 carrier:
   cell_bandwidth_rbs: 52
+  center_frequency_hz: 3500000000.0  # 小区/载波中心频率，单位 Hz；用于 OFDM 相位补偿和 TDL/CDL 信道载频
   subcarrier_spacing_khz: 30
   cyclic_prefix: NormalCP
   fft_size: null
   sample_rate_hz: null
+
+# BWP 配置
+bwp:
+  start_rb: 0                    # active BWP 起始 RB；相对当前小区频域网格
+  num_rbs: null                  # active BWP 带宽，单位 PRB；null 表示等于小区带宽
+  phase_compensation_enabled: false  # 灌数样例由旧基带波形生成，关闭相位补偿以匹配输入文件
 
 # 直接灌入接收机的时域波形文件配置
 waveform_input:

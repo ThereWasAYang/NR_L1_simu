@@ -440,12 +440,11 @@ geometry:
   ue_velocity_vector_mps: [3.0, 0.0, 0.0]
 params:
   profile: TDL-C
-  carrier_frequency_hz: 3500000000.0
   delay_spread_ns: 300.0
   snr_db: 12.0
 ```
 
-合并规则：外部信道文件作为基础配置；系统 YAML 中的 `channel.model`、`channel.seed`、`channel.geometry`、`channel.params` 会覆盖外部文件。`channel.seed: null` 表示回退到系统级 `random_seed`；`channel.seed: auto` 表示每次运行使用非确定随机源生成不同信道。
+合并规则：外部信道文件作为基础配置；系统 YAML 中的 `channel.model`、`channel.seed`、`channel.geometry`、`channel.params` 会覆盖外部文件。`carrier.center_frequency_hz` 是系统唯一载频配置，OFDM 相位补偿、TDL/CDL Doppler、波长和阵列相位都读取该字段；旧配置中的 `channel.params.carrier_frequency_hz` 仅作为兼容迁移入口，不建议继续使用。`channel.seed: null` 表示回退到系统级 `random_seed`；`channel.seed: auto` 表示每次运行使用非确定随机源生成不同信道。
 
 `geometry` 属于 link-level 辅助信息：系统会校验三维坐标，计算 TX/RX 距离、LOS 单位方向，并优先用 `ue_velocity_vector_mps` 推导 UE 速度大小和运动方向。当前不会用坐标引入路径损耗、阴影衰落、LOS 概率或空间一致性。
 
@@ -453,7 +452,6 @@ params:
 
 - `profile`
 - `delay_spread_ns`
-- `carrier_frequency_hz`
 - `ue_speed_mps`
 - `max_doppler_hz`
 - `ue_azimuth_deg` / `ue_zenith_deg`
@@ -467,6 +465,22 @@ params:
 - `angle_scaling_enabled` 以及 `desired_*` 角度均值/扩展配置（CDL）
 
 `TDL/CDL` link-level 模型按 38.901 的 `0.5 GHz` 到 `100 GHz` 载频范围校验配置，当前激活带宽上限为 `2 GHz`。Profile 表本身不按载频切换；载频影响波长、阵列相位和 Doppler。
+
+### BWP 和载频相位补偿
+
+完整仿真配置中使用顶层 `bwp` 描述单 active BWP：
+
+```yaml
+carrier:
+  center_frequency_hz: 3500000000.0  # 系统唯一载频，单位 Hz
+
+bwp:
+  start_rb: 0
+  num_rbs: null
+  phase_compensation_enabled: true
+```
+
+`link.prb_start` 是 BWP 内 PRB 起点；实际映射到小区全带 grid 的子载波起点为 `(bwp.start_rb + link.prb_start) * 12`。当 `bwp.num_rbs: null` 时，BWP 等于小区带宽，旧配置行为保持不变。BWP 中心频率由 `carrier.center_frequency_hz`、小区带宽、BWP 起点/宽度和 SCS 推导，不需要单独配置。
 
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。

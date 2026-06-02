@@ -50,7 +50,8 @@
 
 关键类：
 
-- `CarrierConfig`: 载波、SCS、CP、FFT、采样率。
+- `CarrierConfig`: 载波中心频率、SCS、CP、FFT、采样率。
+- `BwpConfig`: 单 active BWP 的起始 RB、带宽和相位补偿开关。
 - `DmrsConfig`: DMRS config type、符号位置、扰码 ID、transform-precoded 相关字段。
 - `ScramblingConfig`: 数据扰码的 RNTI、N_id、codeword index。
 - `McsConfig`: MCS table、MCS index、调制方式、目标码率、RV。
@@ -65,9 +66,11 @@
 关键函数和属性：
 
 - `CarrierConfig.n_subcarriers`: 小区带宽子载波数，等于 `cell_bandwidth_rbs * 12`。
+- `CarrierConfig.center_frequency_hz`: 系统唯一载频，供 OFDM 相位补偿和 TDL/CDL 信道模型共用。
 - `CarrierConfig.fft_size_effective`: 若配置未提供 FFT 点数，则自动选择不小于小区带宽的最小 2 的整数次幂。
 - `CarrierConfig.sample_rate_effective_hz`: 若配置未提供采样率，则用 `fft_size * SCS` 自动计算。
 - `CarrierConfig.cyclic_prefix_lengths`: 根据 CP 类型、SCS 和采样率推导每个 OFDM 符号 CP 长度。
+- `SimulationConfig.active_bwp_num_rbs`: 解析 `bwp.num_rbs`，`null` 时等于小区带宽。
 - `SimulationConfig.from_mapping`: 把配置文件中的字典转成强类型 dataclass，同时把未知字段递归保存到动态配置节点。
 - `SimulationConfig.__post_init__`: 创建配置后立即执行协议约束检查。
 - `_validate_protocol_constraints`: 检查 DFT-s-OFDM 只能使用 type1 DMRS、不支持数据/DMRS 共符号、需要 `num_cdm_groups_without_data = 2` 等约束。
@@ -75,6 +78,8 @@
 设计意图：
 
 - CP 长度不暴露为手工配置，避免不符合协议的配置进入链路。
+- `link.prb_start` 是 BWP 内 PRB 起点；实际 cell-grid 子载波位置由 `common/bwp.py` 统一计算。
+- `channel.params.carrier_frequency_hz` 已废弃，旧配置加载时只作为 `carrier.center_frequency_hz` 的兼容迁移入口。
 - `ChannelConfig.params` 使用 `ConfigNode`，保留字典兼容性，同时允许 `config.channel.params.snr_db` 形式访问。
 - `ChannelConfig.config_path` 可引用独立信道 YAML/JSON/XML；外部文件是基础配置，系统 YAML 中的同名字段作为覆盖。
 - `ChannelConfig.seed` 独立控制信道随机性；`null` 回退到系统 `random_seed`，`auto` 表示每次运行使用非确定随机源。
@@ -99,6 +104,22 @@
 
 - Windows 默认编码可能不是 UTF-8，因此所有文本配置文件显式按 UTF-8 读取。
 - 路径相对配置文件，而不是相对当前工作目录，便于从任意目录运行示例脚本。
+
+### `common/bwp.py`
+
+`common/bwp.py` 是 BWP 坐标和 OFDM 相位补偿的公共入口。
+
+关键函数：
+
+- `active_bwp_num_rbs`: 得到 active BWP 宽度，`bwp.num_rbs = null` 时返回 `carrier.cell_bandwidth_rbs`。
+- `allocated_subcarriers`: 将 BWP 内 `link.prb_start / link.num_prbs` 转成 full-cell subcarrier index。
+- `bwp_center_frequency_hz`: 根据 `carrier.center_frequency_hz`、小区带宽、BWP 起点/宽度和 SCS 推导 BWP 中心频率。
+- `ofdm_phase_compensation_vector`: 为一个 CP 扩展 OFDM symbol 生成逐样点相位补偿向量。
+
+设计意图：
+
+- 发射映射、接收抽取、接收数据处理和绘图都使用同一套资源坐标，避免非零 BWP 下各模块理解不一致。
+- BWP 中心频率是派生量，不作为配置项，避免和 `bwp.start_rb/num_rbs` 冲突。
 
 ### `common/interfaces.py`
 
@@ -533,6 +554,7 @@ DFT-s-OFDM 波形下：
    - 将 cell-band active subcarriers 放入 FFT 中心。
    - `ifftshift` 后 IFFT。
    - 添加 cyclic prefix。
+   - 若 `bwp.phase_compensation_enabled = true`，对 CP 扩展后的 symbol 乘以 BWP/载频相位补偿向量。
    - 串接所有 symbol。
 
 ### `OfdmProcessor.demodulate`
@@ -548,13 +570,15 @@ DFT-s-OFDM 波形下：
 执行逻辑：
 
 1. 对每根 RX antenna 调用 `_demodulate_single`。
-2. `_demodulate_single` 根据 CP 长度切片每个 OFDM symbol。
-3. FFT 后 `fftshift`，抽取 active subcarriers。
+2. `_demodulate_single` 根据 CP 长度切片每个 CP 扩展 OFDM symbol。
+3. 若 `bwp.phase_compensation_enabled = true`，先乘发射侧相位补偿的共轭向量。
+4. 去 CP 后 FFT，`fftshift`，抽取 active subcarriers。
 
 设计意图：
 
 - OFDM 只负责频域/时域转换，不关心 DMRS、数据、信道估计。
 - CP 长度来自 `CarrierConfig`，不手写。
+- 相位补偿频率来自 `common/bwp.py` 推导的 BWP 中心频率，最终载频源是 `carrier.center_frequency_hz`。
 
 ## 信道模型
 
@@ -597,7 +621,7 @@ TDL/CDL 共享的时变多径 MIMO 基类。
 核心函数：
 
 - `propagate`: 总入口，扩展 TX 分支，生成路径系数，卷积信道，加噪声。
-- `_validate_link_level_limits`: 检查 38.901 link-level TDL/CDL 的载频和带宽范围。
+- `_validate_link_level_limits`: 用 `carrier.center_frequency_hz` 检查 38.901 link-level TDL/CDL 的载频范围，并检查带宽范围。
 - `_channel_geometry_info`: 校验 `channel.geometry.tx_position_m/rx_position_m`，计算距离和 LOS 单位方向，并解析 UE 速度/运动方向。
 - `_ue_velocity_vector_mps` / `_ue_speed_mps` / `_ue_motion_angles_deg`: 统一解析 UE 运动参数；速度向量优先于 `ue_speed_mps + ue_azimuth_deg + ue_zenith_deg`。
 - `_generate_path_coefficients`: 抽象函数，由 TDL/CDL 子类实现。
@@ -709,7 +733,7 @@ rx_grid = np.einsum("krt,tks->rks", channel_matrix, tx_grid)
 
 独立配置文件模式的强制约束：
 
-- 主链路的 `carrier`、`slot_index`、`link.num_rx_ant` 覆盖干扰用户配置。
+- 主链路的 `carrier`、`bwp`、`slot_index`、`link.num_rx_ant` 覆盖干扰用户配置。
 - 被引用配置中的 `interference` 会清空，防止循环引用。
 - `simulation.bypass_channel_coding` 强制为 `true`，干扰源不做 `CRC/LDPC/rate matching`。
 - `waveform_input`、`plotting`、`simulation.result_output_path` 对干扰源无效。

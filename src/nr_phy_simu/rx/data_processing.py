@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from nr_phy_simu.common.bwp import allocated_subcarriers
 from nr_phy_simu.common.interfaces import (
     ChannelEstimator,
     Demodulator,
@@ -300,9 +301,7 @@ def extract_user_allocation(
     if dmrs_mask.ndim != 2 or data_mask.ndim != 2:
         raise ValueError("DMRS and data masks must have shape (num_subcarriers, num_symbols).")
 
-    start = int(config.link.prb_start) * 12
-    stop = start + int(config.link.num_prbs) * 12
-    user_subcarriers = np.arange(start, stop, dtype=int)
+    user_subcarriers = allocated_subcarriers(config)
     return (
         rx_grid[:, user_subcarriers, :],
         dmrs_mask[user_subcarriers, :],

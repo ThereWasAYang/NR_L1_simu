@@ -255,10 +255,10 @@ class FadingChannelBase(ChannelModel, ABC):
 
     @staticmethod
     def _carrier_frequency_hz(config: SimulationConfig) -> float:
-        carrier_frequency_hz = float(config.channel.params.get("carrier_frequency_hz", 3.5e9))
+        carrier_frequency_hz = float(config.carrier.center_frequency_hz)
         if not 0.5e9 <= carrier_frequency_hz <= 100.0e9:
             raise ValueError(
-                "TDL/CDL link-level models are specified for carrier_frequency_hz "
+                "TDL/CDL link-level models are specified for carrier.center_frequency_hz "
                 "between 0.5 GHz and 100 GHz."
             )
         return carrier_frequency_hz

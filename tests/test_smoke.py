@@ -25,7 +25,10 @@ from py3gpp import (
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.io.frequency_response_loader import load_frequency_response
 from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
+from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.common.bwp import allocated_subcarriers, bwp_center_frequency_hz
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
+from nr_phy_simu.common.ofdm import OfdmProcessor
 from nr_phy_simu.common.harq import HarqManager
 from nr_phy_simu.common.layer_mapping import LayerMapper
 from nr_phy_simu.common.interfaces import ReceiverDataProcessor, ReceiverProcessingStage, ReceiverProcessor
@@ -238,7 +241,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         source.prb_start = config.carrier.cell_bandwidth_rbs - 1
         source.num_prbs = 2
         source.explicit_fields = frozenset(set(source.explicit_fields) | {"prb_start", "num_prbs"})
-        with self.assertRaisesRegex(ValueError, "exceeds the main carrier bandwidth"):
+        with self.assertRaisesRegex(ValueError, "exceeds the active BWP"):
             InterferenceMixer(DefaultSimulationComponentFactory())._build_interferer_config(
                 config,
                 source,
@@ -348,6 +351,75 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertIs(result.crc_ok, True)
         self.assertEqual(result.bit_error_rate, 0.0)
         self.assertEqual(result.rx.rx_grid.ndim, 3)
+
+    def test_bwp_allocation_is_relative_to_active_bwp(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.bwp.start_rb = 10
+        config.bwp.num_rbs = 32
+        config.link.prb_start = 4
+        config.link.num_prbs = 6
+        expected_start = (10 + 4) * 12
+        allocated = allocated_subcarriers(config)
+        self.assertEqual(allocated[0], expected_start)
+        self.assertEqual(allocated[-1], expected_start + 6 * 12 - 1)
+
+    def test_bwp_center_frequency_is_derived_from_carrier_and_bwp(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.carrier.center_frequency_hz = 3.5e9
+        config.carrier.cell_bandwidth_rbs = 52
+        config.bwp.start_rb = 10
+        config.bwp.num_rbs = 20
+        expected = 3.5e9 + (10 + 20 / 2 - 52 / 2) * 12 * 30e3
+        self.assertAlmostEqual(bwp_center_frequency_hz(config), expected)
+
+    def test_ofdm_phase_compensation_round_trip_with_nonzero_bwp(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.bwp.start_rb = 8
+        config.bwp.num_rbs = 32
+        config.link.prb_start = 2
+        config.link.num_prbs = 8
+        rng = np.random.default_rng(123)
+        grid = (
+            rng.normal(size=(1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot))
+            + 1j * rng.normal(size=(1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot))
+        )
+        processor = OfdmProcessor()
+        waveform = processor.modulate(grid, config)
+        recovered = processor.demodulate(waveform, config)
+        self.assertTrue(np.allclose(recovered, grid, atol=1e-10))
+
+    def test_ofdm_phase_compensation_can_be_disabled(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        grid = np.zeros((1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot), dtype=np.complex128)
+        grid[:, config.carrier.n_subcarriers // 2, :] = 1.0
+        processor = OfdmProcessor()
+        config.bwp.phase_compensation_enabled = False
+        disabled = processor.modulate(grid, config)
+        config.bwp.phase_compensation_enabled = True
+        enabled = processor.modulate(grid, config)
+        self.assertFalse(np.allclose(enabled, disabled))
+
+    def test_pusch_cp_and_dfts_ofdm_run_with_nonzero_bwp_offset(self):
+        for waveform in ("CP-OFDM", "DFT-s-OFDM"):
+            with self.subTest(waveform=waveform):
+                config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+                config.plotting.enabled = False
+                config.channel.params["snr_db"] = 35.0
+                config.link.waveform = waveform
+                config.link.num_tx_ant = 1
+                config.link.num_rx_ant = 1
+                config.bwp.start_rb = 8
+                config.bwp.num_rbs = 32
+                config.link.prb_start = 2
+                config.link.num_prbs = 8
+                config.link.mcs.table = "qam256"
+                config.link.mcs.index = 0
+                config.dmrs.config_type = 1
+                config.dmrs.data_mux_enabled = False
+                result = PuschSimulation(config).run()
+                self.assertIs(result.crc_ok, True)
+                self.assertEqual(result.rx.rx_grid.shape[1], config.carrier.n_subcarriers)
+                self.assertEqual(result.rx.channel_estimation.channel_estimate.shape[1], config.link.num_prbs * 12)
 
 
 class BaselineRegressionTest(unittest.TestCase):
@@ -595,6 +667,30 @@ class ConfigLoaderTest(unittest.TestCase):
             self.assertEqual(cfg.channel.geometry.tx_position_m, [0.0, 0.0, 25.0])
             self.assertEqual(cfg.channel.geometry.rx_position_m, [50.0, 0.0, 1.5])
             self.assertEqual(cfg.channel.geometry.ue_velocity_vector_mps, [3.0, 0.0, 4.0])
+
+    def test_legacy_channel_carrier_frequency_migrates_to_carrier_center_frequency(self):
+        cfg = SimulationConfig.from_mapping(
+            {
+                "carrier": {"cell_bandwidth_rbs": 24},
+                "link": {"channel_type": "PUSCH", "waveform": "CP-OFDM", "num_prbs": 12},
+                "channel": {
+                    "model": "TDL",
+                    "params": {"carrier_frequency_hz": 2.6e9, "profile": "TDL-C"},
+                },
+            }
+        )
+        self.assertEqual(cfg.carrier.center_frequency_hz, 2.6e9)
+
+    def test_bwp_validation_rejects_out_of_bounds_allocation(self):
+        with self.assertRaisesRegex(ValueError, "exceeds the active BWP"):
+            SimulationConfig.from_mapping(
+                {
+                    "carrier": {"cell_bandwidth_rbs": 24, "center_frequency_hz": 3.5e9},
+                    "bwp": {"start_rb": 4, "num_rbs": 8},
+                    "link": {"channel_type": "PUSCH", "waveform": "CP-OFDM", "prb_start": 4, "num_prbs": 8},
+                    "channel": {"model": "AWGN"},
+                }
+            )
 
     def test_channel_seed_controls_rng(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
@@ -1312,13 +1408,13 @@ class FadingChannelSmokeTest(unittest.TestCase):
         low_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
         low_cfg.channel.params["add_noise"] = False
         low_cfg.channel.params["ue_speed_mps"] = 10.0
-        low_cfg.channel.params["carrier_frequency_hz"] = 1.0e9
+        low_cfg.carrier.center_frequency_hz = 1.0e9
         _rx_low, low_info = CdlChannel(rng=np.random.default_rng(4)).propagate(waveform, low_cfg)
 
         high_cfg = load_simulation_config(ROOT / "configs" / "pusch_cdl.yaml")
         high_cfg.channel.params["add_noise"] = False
         high_cfg.channel.params["ue_speed_mps"] = 10.0
-        high_cfg.channel.params["carrier_frequency_hz"] = 10.0e9
+        high_cfg.carrier.center_frequency_hz = 10.0e9
         _rx_high, high_info = CdlChannel(rng=np.random.default_rng(4)).propagate(waveform, high_cfg)
 
         self.assertAlmostEqual(high_info["max_doppler_hz"] / low_info["max_doppler_hz"], 10.0)
@@ -1340,7 +1436,7 @@ class FadingChannelSmokeTest(unittest.TestCase):
 
     def test_tdl_cdl_reject_out_of_range_carrier_frequency(self):
         cfg = load_simulation_config(ROOT / "configs" / "pusch_tdl.yaml")
-        cfg.channel.params["carrier_frequency_hz"] = 200.0e9
+        cfg.carrier.center_frequency_hz = 200.0e9
         waveform = np.ones((cfg.link.num_tx_ant, 128), dtype=np.complex128)
         with self.assertRaisesRegex(ValueError, "0.5 GHz and 100 GHz"):
             TdlChannel(rng=np.random.default_rng(6)).propagate(waveform, cfg)

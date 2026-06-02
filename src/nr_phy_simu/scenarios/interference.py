@@ -127,6 +127,7 @@ class InterferenceMixer:
             base_config: Main-link config providing global timing and receiver dimensions.
         """
         config.carrier = deepcopy(base_config.carrier)
+        config.bwp = deepcopy(base_config.bwp)
         config.slot_index = int(base_config.slot_index)
         config.link.num_rx_ant = int(base_config.link.num_rx_ant)
         config.waveform_input.waveform_path = None
@@ -242,10 +243,11 @@ class InterferenceMixer:
         num_symbols = int(config.link.num_symbols)
         if prb_start < 0 or num_prbs <= 0:
             raise ValueError("Interferer PRB allocation must use non-negative prb_start and positive num_prbs.")
-        if prb_start + num_prbs > int(config.carrier.cell_bandwidth_rbs):
+        bwp_num_rbs = int(config.active_bwp_num_rbs)
+        if prb_start + num_prbs > bwp_num_rbs:
             raise ValueError(
-                "Interferer PRB allocation exceeds the main carrier bandwidth: "
-                f"prb_start={prb_start}, num_prbs={num_prbs}, cell_bandwidth_rbs={config.carrier.cell_bandwidth_rbs}."
+                "Interferer PRB allocation exceeds the active BWP bandwidth: "
+                f"prb_start={prb_start}, num_prbs={num_prbs}, bwp.num_rbs={bwp_num_rbs}."
             )
         if start_symbol < 0 or num_symbols <= 0:
             raise ValueError("Interferer symbol allocation must use non-negative start_symbol and positive num_symbols.")

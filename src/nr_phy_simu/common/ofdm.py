@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from nr_phy_simu.common.bwp import ofdm_phase_compensation_vector
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.interfaces import TimeDomainProcessor
 
@@ -49,13 +50,23 @@ class OfdmProcessor(TimeDomainProcessor):
         start = (fft_size - n_sc) // 2
         stop = start + n_sc
 
+        offset = 0
         for symbol_idx in range(grid.shape[1]):
             cp_length = cp_lengths[symbol_idx % len(cp_lengths)]
             fft_bins = np.zeros(fft_size, dtype=np.complex128)
             fft_bins[start:stop] = grid[:, symbol_idx]
             time_domain = np.fft.ifft(np.fft.ifftshift(fft_bins))
             cp = time_domain[-cp_length:]
-            waveform_symbols.append(np.concatenate([cp, time_domain]))
+            symbol_with_cp = np.concatenate([cp, time_domain])
+            symbol_with_cp = symbol_with_cp * ofdm_phase_compensation_vector(
+                config,
+                symbol_start_sample=offset,
+                cp_length=cp_length,
+                symbol_length=symbol_with_cp.size,
+                inverse=False,
+            )
+            waveform_symbols.append(symbol_with_cp)
+            offset += symbol_with_cp.size
 
         return np.concatenate(waveform_symbols)
 
@@ -101,7 +112,15 @@ class OfdmProcessor(TimeDomainProcessor):
         for symbol_idx in range(symbols_per_slot):
             cp_length = cp_lengths[symbol_idx % len(cp_lengths)]
             symbol_length = fft_size + cp_length
-            symbol = waveform[offset + cp_length : offset + symbol_length]
+            symbol_with_cp = waveform[offset : offset + symbol_length]
+            symbol_with_cp = symbol_with_cp * ofdm_phase_compensation_vector(
+                config,
+                symbol_start_sample=offset,
+                cp_length=cp_length,
+                symbol_length=symbol_length,
+                inverse=True,
+            )
+            symbol = symbol_with_cp[cp_length:]
             fft_bins = np.fft.fftshift(np.fft.fft(symbol, n=fft_size))
             grid[:, symbol_idx] = fft_bins[start:stop]
             offset += symbol_length

@@ -11,7 +11,6 @@ params:
   scenario_delay_spread_lookup: null  # 可选：自定义 delay spread 档位映射
   path_delays_ns: null         # 可选：显式逐径时延，单位 ns
   path_powers_db: null         # 可选：显式逐径功率，单位 dB
-  carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
   ue_speed_mps: 3.0            # UE 速度大小；未配置速度向量时生效，单位 m/s
   ue_azimuth_deg: 0.0          # UE 运动方位角；未配置速度向量时生效，单位度
   ue_zenith_deg: 90.0          # UE 运动天顶角；未配置速度向量时生效，单位度

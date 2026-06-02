@@ -9,7 +9,6 @@ params:
   delay_spread_ns: 30.0        # RMS delay spread，单位 ns
   delay_spread_profile: nominal  # delay_spread_ns 为 null 时使用的档位
   scenario_delay_spread_lookup: null  # 可选：自定义 delay spread 档位映射
-  carrier_frequency_hz: 3500000000.0  # 载频，单位 Hz
   ue_speed_mps: 1.0            # UE 速度大小；未配置速度向量时生效，单位 m/s
   ue_azimuth_deg: 0.0          # UE 运动方位角；未配置速度向量时生效，单位度
   ue_zenith_deg: 90.0          # UE 运动天顶角；未配置速度向量时生效，单位度

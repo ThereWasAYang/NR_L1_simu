@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from nr_phy_simu.common.bwp import allocated_subcarriers
 from nr_phy_simu.common.interfaces import FrequencyExtractor
 from nr_phy_simu.config import SimulationConfig
 
@@ -92,9 +93,7 @@ class FrequencyDomainExtractor(FrequencyExtractor):
             is the user-allocation subcarrier index and values are absolute cell
             subcarrier indices.
         """
-        start = int(config.link.prb_start) * 12
-        stop = start + int(config.link.num_prbs) * 12
-        return np.arange(start, stop, dtype=int)
+        return allocated_subcarriers(config)
 
     @staticmethod
     def _extract_single(
