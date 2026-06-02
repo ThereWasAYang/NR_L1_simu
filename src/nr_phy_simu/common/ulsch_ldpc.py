@@ -87,8 +87,7 @@ def encode_ldpc_codeblocks(code_blocks: np.ndarray, base_graph: int) -> np.ndarr
 
     codeword_bits = int(zc * num_codeword_nodes)
     coded = np.zeros((codeword_bits + 2 * zc, num_code_blocks), dtype=np.int8)
-    lifting_kb = _select_lifting_kb(input_bits, base_graph)
-    lifting_set_index = _find_lifting_set_index(lifting_kb, input_bits)
+    lifting_set_index = _lifting_set_index_from_zc(zc)
 
     filler_indices = code_blocks[:, 0] == -1
     code_blocks[filler_indices, :] = 0
@@ -337,25 +336,26 @@ def _modulation_order(modulation: str) -> int:
         "16QAM": 4,
         "64QAM": 6,
         "256QAM": 8,
+        "1024QAM": 10,
     }
     if normalized not in mapping:
         raise ValueError(f"Unsupported modulation type: {modulation}")
     return mapping[normalized]
 
 
-def _find_lifting_set_index(kb: int, k: int) -> int:
-    z_array = _get_z_array()
-    min_value = 100000
-    lifting_set_index = None
-    for idx, sizes in enumerate(z_array):
-        for size in sizes:
-            candidate = kb * size
-            if candidate >= k and candidate < min_value:
-                min_value = candidate
-                lifting_set_index = idx
-    if lifting_set_index is None:
-        raise ValueError(f"Unable to find lifting-set index for K={k}")
-    return lifting_set_index
+def _lifting_set_index_from_zc(zc: int) -> int:
+    """Return the 38.212 lifting-size set index for a selected lifting size.
+
+    Args:
+        zc: LDPC lifting size selected during code-block segmentation.
+
+    Returns:
+        Lifting-size set index ``i_LS`` from 38.212 Table 5.3.2-1.
+    """
+    for set_index, lifting_sizes in enumerate(_get_z_array()):
+        if int(zc) in lifting_sizes:
+            return set_index
+    raise ValueError(f"Unsupported lifting size Zc={zc}")
 
 
 def _select_lifting_kb(input_bits: int, base_graph: int) -> int:
@@ -492,8 +492,7 @@ def _parity_check_satisfied(bits: np.ndarray, parity_check: sp.csr_matrix) -> bo
 
 @lru_cache(maxsize=None)
 def _ldpc_decoder_structure(base_graph: int, cb_input_bits: int, zc: int) -> LdpcDecoderStructure:
-    lifting_kb = _select_lifting_kb(cb_input_bits, base_graph)
-    lifting_set_index = _find_lifting_set_index(lifting_kb, cb_input_bits)
+    lifting_set_index = _lifting_set_index_from_zc(zc)
     base_matrix = _load_basegraph(lifting_set_index, base_graph)
     parity_check = _lift_basegraph(base_matrix, zc).tocsr()
 
@@ -586,8 +585,7 @@ def _punctured_solver_matrices(base_graph: int, cb_input_bits: int, zc: int) -> 
         ``(num_check_nodes, num_variable_nodes)`` and ``punctured_submatrix`` has
         shape ``(num_check_nodes, 2 * zc)``.
     """
-    lifting_kb = _select_lifting_kb(cb_input_bits, base_graph)
-    lifting_set_index = _find_lifting_set_index(lifting_kb, cb_input_bits)
+    lifting_set_index = _lifting_set_index_from_zc(zc)
     base_matrix = _load_basegraph(lifting_set_index, base_graph)
     parity_check = _lift_basegraph(base_matrix, zc).astype(np.uint8).toarray() % 2
     punctured_submatrix = parity_check[:, : 2 * zc].copy()

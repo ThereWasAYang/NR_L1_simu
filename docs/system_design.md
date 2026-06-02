@@ -230,6 +230,7 @@
    - 调用 `transmitter.transmit` 完成发射机和 OFDM。
    - 调用 `channel.propagate` 过时域信道。
    - 调用 `interference_mixer.apply` 叠加干扰源。
+   - 将时域噪声方差按 FFT 点数换算成频域 RE 噪声方差。
    - 调用 `receiver.receive` 完成接收机。
 9. 调用 `_build_result` 形成 `SimulationResult`。
 
@@ -241,7 +242,7 @@
 - 否则参考比特是 transport block。
 - `bit_errors` 由 `decoded != reference` 统计。
 - `bit_error_rate = bit_errors / reference_bits.size`。
-- `_compute_evm_metrics` 比较发射星座点和均衡后星座点，得到 EVM 和 EVM_SNR。
+- `_compute_evm_metrics` 比较发射星座点和均衡后星座点，按 RMS 定义得到 EVM：`sqrt(mean(|err|^2) / mean(|ref|^2))`，并给出线性 `EVM_SNR = 1/EVM^2`。
 - 将 HARQ、CRC、干扰报告、transport plan 等一起写入 `SimulationResult`。
 
 ### `SharedChannelSimulation._uses_frequency_domain_channel`
@@ -340,6 +341,7 @@ config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
 注意：
 
 - 这不是完整 NR 预编码，只是一个默认占位策略。
+- 当前配置层限制 `num_layers = 1` 和 `num_codewords = 1`，避免误用为真实多层空间复用链路。
 - 未来引入真正 precoder 时，应替换这一段或在 mapper 前后增加预编码模块。
 
 ### `Transmitter.transmit`
@@ -373,6 +375,7 @@ config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
 
 - 曾发现 py3gpp 在 BG2 K=640 等低码率场景下存在接口或实现问题。
 - 本工程需要稳定通过低 MCS、低 SNR、多 TTI 基线用例。
+- LDPC base graph 的 lifting-set index `i_LS` 由最终选定的 `Zc` 直接查 38.212 Table 5.3.2-1，避免编码/译码闭环自洽但与标准矩阵不一致。
 
 ### `RandomBitCoder.encode`
 
@@ -421,6 +424,8 @@ bit = llr < 0
 - `64QAM`
 - `256QAM`
 - `1024QAM`
+
+`1024QAM` 使用本地 38.211 square-QAM labeling 和归一化实现；其他调制优先复用 py3gpp。
 
 ### `QamModulator._pad_bits`
 
@@ -530,6 +535,7 @@ DFT-s-OFDM 波形下：
 
 - Gold 序列、低 PAPR 序列、group hopping、sequence hopping 等协议细节集中在 `dmrs.py`。
 - 资源位置由 mapper 管，序列值由 generator 管，二者解耦。
+- Type A single-symbol DMRS 位置使用表驱动实现；`l_d=8/9` 且 `additionalPosition=0` 只生成首个 DMRS symbol，不额外插入 symbol 7。
 - 生成结果要求恒模特性满足 DMRS 典型属性。
 
 ## OFDM 时域处理
@@ -1047,7 +1053,7 @@ crc_ok is False
 - 文件非空时追加数据行。
 - 列包括 SNR、BLER、EVM、EVM_SNR、RB 位置、MCS、TTI 数、误包数、码率、调制阶数、TBsize。
 
-EVM_SNR 写文件时用 dB，但 TTI 间平均先在线性域平均。
+EVM 使用 RMS 定义。EVM_SNR 写文件时用 dB，但 TTI 间平均先在线性域平均。
 
 ## 灌数仿真
 

@@ -409,12 +409,15 @@ class SimulationConfig:
             )
         if int(self.link.num_layers) <= 0:
             raise ValueError("link.num_layers must be a positive integer.")
+        if int(self.link.num_layers) != 1:
+            raise NotImplementedError(
+                "Current shared-channel chain supports one transmission layer. "
+                "True multi-layer MIMO spatial multiplexing is not implemented yet."
+            )
         if int(self.link.num_codewords) <= 0:
             raise ValueError("link.num_codewords must be a positive integer.")
-        if self.link.channel_type.upper() == "PUSCH" and int(self.link.num_codewords) != 1:
-            raise ValueError("Current PUSCH implementation supports exactly one codeword.")
-        if self.link.channel_type.upper() == "PDSCH" and int(self.link.num_codewords) not in (1, 2):
-            raise ValueError("Current PDSCH configuration must use one or two codewords.")
+        if int(self.link.num_codewords) != 1:
+            raise NotImplementedError("Current shared-channel chain supports exactly one active codeword.")
         self._validate_carrier_and_bwp()
         if self.harq.enabled:
             if int(self.harq.num_processes) <= 0:

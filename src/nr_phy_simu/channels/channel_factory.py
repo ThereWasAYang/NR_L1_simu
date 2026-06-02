@@ -32,9 +32,9 @@ class DefaultChannelFactory(ChannelFactory):
         if model == "CDL":
             return CdlChannel(rng=_channel_rng(config))
         if model == "EXTERNAL_FREQRESP_TD":
-            return ExternalFrequencyResponseTimeDomainChannel()
+            return ExternalFrequencyResponseTimeDomainChannel(rng=_channel_rng(config))
         if model == "EXTERNAL_FREQRESP_FD":
-            return ExternalFrequencyResponseFrequencyDomainChannel()
+            return ExternalFrequencyResponseFrequencyDomainChannel(rng=_channel_rng(config))
         raise NotImplementedError(f"Channel model '{config.channel.model}' is not implemented yet.")
 
 

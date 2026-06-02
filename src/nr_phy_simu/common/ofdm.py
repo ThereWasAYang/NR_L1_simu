@@ -7,6 +7,22 @@ from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.interfaces import TimeDomainProcessor
 
 
+def time_to_frequency_noise_variance(noise_variance: float, config: SimulationConfig) -> float:
+    """Convert time-sample AWGN variance to FFT-bin noise variance.
+
+    Args:
+        noise_variance: Complex time-domain sample noise variance.
+        config: Full simulation configuration defining the FFT size.
+
+    Returns:
+        Frequency-domain RE noise variance after the unnormalized FFT used by
+        :class:`OfdmProcessor`.
+    """
+    if not np.isfinite(noise_variance):
+        return float(noise_variance)
+    return float(noise_variance) * float(config.carrier.fft_size_effective)
+
+
 class OfdmProcessor(TimeDomainProcessor):
     """CP-OFDM processor shared by CP-OFDM and DFT-s-OFDM chains."""
 

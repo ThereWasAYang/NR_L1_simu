@@ -13,6 +13,9 @@ from nr_phy_simu.io.frequency_response_loader import load_frequency_response
 class ExternalFrequencyResponseBase(ChannelModel, ABC):
     """Shared helper for channels driven by externally supplied frequency response."""
 
+    def __init__(self, rng: np.random.Generator | None = None) -> None:
+        self.rng = rng or np.random.default_rng()
+
     @staticmethod
     def load_frequency_response(config: SimulationConfig) -> np.ndarray:
         """Load and validate the configured per-subcarrier frequency response.
@@ -66,8 +69,7 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
         fft_bins[start:stop] = frequency_response
         return fft_bins
 
-    @staticmethod
-    def add_awgn(samples: np.ndarray, config: SimulationConfig) -> tuple[np.ndarray, float, float]:
+    def add_awgn(self, samples: np.ndarray, config: SimulationConfig) -> tuple[np.ndarray, float, float]:
         """Add AWGN using the configured SNR.
 
         Args:
@@ -84,14 +86,31 @@ class ExternalFrequencyResponseBase(ChannelModel, ABC):
 
         snr_db = float(config.channel.params.get("snr_db", config.snr_db))
         snr_linear = 10 ** (snr_db / 10.0)
-        signal_power = np.mean(np.abs(samples) ** 2)
+        signal_power = self._estimate_signal_power(samples, config)
         noise_variance = signal_power / max(snr_linear, 1e-12)
-        rng = np.random.default_rng(config.random_seed)
         noise = (
-            rng.normal(0.0, np.sqrt(noise_variance / 2.0), samples.shape)
-            + 1j * rng.normal(0.0, np.sqrt(noise_variance / 2.0), samples.shape)
+            self.rng.normal(0.0, np.sqrt(noise_variance / 2.0), samples.shape)
+            + 1j * self.rng.normal(0.0, np.sqrt(noise_variance / 2.0), samples.shape)
         )
         return samples + noise, float(noise_variance), snr_db
+
+    @staticmethod
+    def _estimate_signal_power(samples: np.ndarray, config: SimulationConfig) -> float:
+        """Estimate signal power using active REs for frequency-domain grids.
+
+        Args:
+            samples: Complex sample/grid array.
+            config: Full simulation configuration.
+
+        Returns:
+            Scalar average signal power.
+        """
+        magnitudes = np.abs(samples) ** 2
+        if config.channel.model.upper() == "EXTERNAL_FREQRESP_FD" and samples.ndim == 3:
+            active = magnitudes > 1e-24
+            if np.any(active):
+                return float(np.mean(magnitudes[active]))
+        return float(np.mean(magnitudes))
 
     @staticmethod
     def _frequency_response_matrix(frequency_response: np.ndarray, config: SimulationConfig) -> np.ndarray:

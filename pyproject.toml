@@ -7,7 +7,7 @@ name = "nr-phy-simu"
 version = "0.1.0"
 description = "A modular Python project for NR PHY simulation."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.26",
   "scipy>=1.13",

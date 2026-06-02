@@ -28,21 +28,25 @@ from nr_phy_simu.io.multi_tti_report import append_multi_tti_report
 from nr_phy_simu.config import SimulationConfig
 from nr_phy_simu.common.bwp import allocated_subcarriers, bwp_center_frequency_hz
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, get_runtime_context
-from nr_phy_simu.common.ofdm import OfdmProcessor
+from nr_phy_simu.common.ofdm import OfdmProcessor, time_to_frequency_noise_variance
 from nr_phy_simu.common.harq import HarqManager
 from nr_phy_simu.common.layer_mapping import LayerMapper
 from nr_phy_simu.common.interfaces import ReceiverDataProcessor, ReceiverProcessingStage, ReceiverProcessor
 from nr_phy_simu.common.types import ChannelEstimateResult, PlotArtifact, ReceiverDataProcessingResult, RxPayload
 from nr_phy_simu.common.transmission import build_transport_block_plan
 from nr_phy_simu.common.ulsch_ldpc import (
+    _get_z_array,
+    _lifting_set_index_from_zc,
     decode_ulsch_ldpc,
     encode_ldpc_codeblocks,
     get_ulsch_ldpc_info,
     rate_match_ulsch_ldpc,
     rate_recover_ulsch_ldpc,
 )
+from nr_phy_simu.common.sequences.dmrs_tables import resolve_dmrs_symbol_indices
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
+from nr_phy_simu.scenarios.base import SharedChannelSimulation
 from nr_phy_simu.scenarios.component_factory import DefaultSimulationComponentFactory
 from nr_phy_simu.scenarios.multi_tti import MultiTtiSimulationRunner
 from nr_phy_simu.tx.resource_mapping import FrequencyDomainResourceMapper
@@ -344,6 +348,37 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertTrue(np.allclose(rx_grid, expected))
         self.assertEqual(info["noise_variance"], 0.0)
 
+    def test_external_frequency_response_noise_rng_advances_on_same_channel_instance(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.link.num_tx_ant = 1
+        config.link.num_rx_ant = 1
+        config.channel.model = "EXTERNAL_FREQRESP_FD"
+        config.channel.seed = 123
+        config.channel.params = {
+            "frequency_response": [[1.0, 0.0]] * config.carrier.n_subcarriers,
+            "snr_db": 10.0,
+        }
+        tx_grid = np.ones((1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot), dtype=np.complex128)
+        channel = DefaultChannelFactory().create(config)
+        first, _ = channel.propagate_grid(tx_grid, config)
+        second, _ = channel.propagate_grid(tx_grid, config)
+        self.assertFalse(np.allclose(first, second))
+
+    def test_external_frequency_response_fd_noise_power_uses_active_res(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        config.link.num_tx_ant = 1
+        config.link.num_rx_ant = 1
+        config.channel.model = "EXTERNAL_FREQRESP_FD"
+        config.channel.seed = 123
+        config.channel.params = {
+            "frequency_response": [[1.0, 0.0]] * config.carrier.n_subcarriers,
+            "snr_db": 0.0,
+        }
+        tx_grid = np.zeros((1, config.carrier.n_subcarriers, config.carrier.symbols_per_slot), dtype=np.complex128)
+        tx_grid[0, 0, 0] = 1.0
+        _, info = DefaultChannelFactory().create(config).propagate_grid(tx_grid, config)
+        self.assertAlmostEqual(info["noise_variance"], 1.0)
+
     def test_external_frequency_response_sample_config_smoke(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_external_freqresp_fd.yaml")
         config.plotting.enabled = False
@@ -398,6 +433,28 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         config.bwp.phase_compensation_enabled = True
         enabled = processor.modulate(grid, config)
         self.assertFalse(np.allclose(enabled, disabled))
+
+    def test_time_domain_noise_variance_converts_to_frequency_domain_variance(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        self.assertEqual(
+            time_to_frequency_noise_variance(0.25, config),
+            0.25 * config.carrier.fft_size_effective,
+        )
+
+    def test_evm_metrics_use_rms_definition(self):
+        reference = np.array([1.0 + 0.0j, 2.0 + 0.0j], dtype=np.complex128)
+        measured = np.array([1.1 + 0.0j, 1.8 + 0.0j], dtype=np.complex128)
+        evm_percent, evm_snr_linear = SharedChannelSimulation._compute_evm_metrics(reference, measured)
+        expected_evm = np.sqrt((0.1**2 + 0.2**2) / (1.0**2 + 2.0**2))
+        self.assertAlmostEqual(evm_percent, expected_evm * 100.0)
+        self.assertAlmostEqual(evm_snr_linear, 1.0 / expected_evm**2)
+
+    def test_resource_mapper_rejects_insufficient_data_symbols(self):
+        config = load_simulation_config(ROOT / "configs" / "pusch_awgn.yaml")
+        mapper = FrequencyDomainResourceMapper(dmrs_generator=DmrsGenerator())
+        data_re_count = mapper.count_data_re(config)
+        with self.assertRaisesRegex(ValueError, "Insufficient data symbols"):
+            mapper.map_to_grid(np.ones(data_re_count - 1, dtype=np.complex128), config)
 
     def test_pusch_cp_and_dfts_ofdm_run_with_nonzero_bwp_offset(self):
         for waveform in ("CP-OFDM", "DFT-s-OFDM"):
@@ -459,6 +516,16 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertIs(result.crc_ok, True)
 
+    def test_pdsch_qam1024_non_bypass_smoke(self):
+        config = load_simulation_config(ROOT / "configs" / "pdsch_awgn.yaml")
+        config.plotting.enabled = False
+        config.channel.params["snr_db"] = 60.0
+        config.link.mcs.table = "qam1024"
+        config.link.mcs.index = 23
+        result = PdschSimulation(config).run()
+        self.assertEqual(config.link.modulation, "1024QAM")
+        self.assertIs(result.crc_ok, True)
+
 
 class VisualizationSmokeTest(unittest.TestCase):
     def test_save_simulation_plots(self):
@@ -506,6 +573,27 @@ class VisualizationSmokeTest(unittest.TestCase):
 
 
 class DmrsSequenceTest(unittest.TestCase):
+    def test_type_a_single_symbol_dmrs_table_additional_position_zero(self):
+        cases = [
+            (8, 0, (2,)),
+            (8, 1, (2, 7)),
+            (9, 0, (2,)),
+            (9, 1, (2, 7)),
+            (10, 0, (2,)),
+            (10, 1, (2, 9)),
+        ]
+        for num_symbols, additional_position, expected in cases:
+            with self.subTest(num_symbols=num_symbols, additional_position=additional_position):
+                positions = resolve_dmrs_symbol_indices(
+                    start_symbol=0,
+                    num_symbols=num_symbols,
+                    mapping_type="A",
+                    additional_positions=additional_position,
+                    max_length=1,
+                    type_a_position=2,
+                )
+                self.assertEqual(positions, expected)
+
     def test_transform_precoded_pusch_dmrs_short_lengths(self):
         generator = DmrsGenerator()
         for num_prbs in (1, 2, 3, 4):
@@ -688,6 +776,22 @@ class ConfigLoaderTest(unittest.TestCase):
                     "carrier": {"cell_bandwidth_rbs": 24, "center_frequency_hz": 3.5e9},
                     "bwp": {"start_rb": 4, "num_rbs": 8},
                     "link": {"channel_type": "PUSCH", "waveform": "CP-OFDM", "prb_start": 4, "num_prbs": 8},
+                    "channel": {"model": "AWGN"},
+                }
+            )
+
+    def test_config_rejects_unimplemented_multi_layer_and_multi_codeword(self):
+        with self.assertRaisesRegex(NotImplementedError, "one transmission layer"):
+            SimulationConfig.from_mapping(
+                {
+                    "link": {"channel_type": "PUSCH", "waveform": "CP-OFDM", "num_layers": 2},
+                    "channel": {"model": "AWGN"},
+                }
+            )
+        with self.assertRaisesRegex(NotImplementedError, "one active codeword"):
+            SimulationConfig.from_mapping(
+                {
+                    "link": {"channel_type": "PDSCH", "waveform": "CP-OFDM", "num_codewords": 2},
                     "channel": {"model": "AWGN"},
                 }
             )
@@ -1014,6 +1118,28 @@ class McsTableTest(unittest.TestCase):
 
 
 class UlschLdpcRegressionTest(unittest.TestCase):
+    def test_ldpc_lifting_set_index_is_selected_from_zc_table(self):
+        for expected_index, lifting_sizes in enumerate(_get_z_array()):
+            for zc in lifting_sizes:
+                with self.subTest(zc=zc):
+                    self.assertEqual(_lifting_set_index_from_zc(zc), expected_index)
+
+    def test_ldpc_lifting_set_index_regression_for_bg2_small_blocks(self):
+        self.assertEqual(_lifting_set_index_from_zc(10), 2)
+        self.assertEqual(_lifting_set_index_from_zc(11), 5)
+        self.assertEqual(_lifting_set_index_from_zc(12), 1)
+
+    def test_rate_matching_accepts_1024qam_modulation_order(self):
+        encoded = np.tile(np.array([[0], [1]], dtype=np.int8), (50, 1))
+        matched = rate_match_ulsch_ldpc(
+            encoded,
+            out_length=100,
+            rv=0,
+            modulation="1024QAM",
+            num_layers=1,
+        )
+        self.assertEqual(matched.size, 100)
+
     def test_local_ulsch_ldpc_chain_decodes_low_rate_cp_ofdm_case(self):
         tbs = 552
         target_code_rate = 120 / 1024

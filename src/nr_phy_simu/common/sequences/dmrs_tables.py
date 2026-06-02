@@ -2,11 +2,11 @@ from __future__ import annotations
 
 
 TYPE_A_SINGLE_SYMBOL_TABLE: dict[tuple[int, int], tuple[int, ...]] = {
-    (8, 0): (2, 7),
+    (8, 0): (2,),
     (8, 1): (2, 7),
     (8, 2): (2, 7),
     (8, 3): (2, 7),
-    (9, 0): (2, 7),
+    (9, 0): (2,),
     (9, 1): (2, 7),
     (9, 2): (2, 7),
     (9, 3): (2, 7),

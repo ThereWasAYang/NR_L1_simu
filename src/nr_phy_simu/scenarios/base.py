@@ -5,6 +5,7 @@ from dataclasses import replace
 import numpy as np
 
 from nr_phy_simu.common.bwp import allocated_subcarriers, bwp_center_frequency_hz
+from nr_phy_simu.common.ofdm import time_to_frequency_noise_variance
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
 from nr_phy_simu.common.transmission import TransportBlockPlan, build_transport_block_plan
 from nr_phy_simu.common.types import SimulationResult
@@ -99,12 +100,16 @@ class SharedChannelSimulation:
                 noise_variance=float(channel_info["noise_variance"]),
                 config=self.config,
             )
+            receiver_noise_variance = time_to_frequency_noise_variance(
+                float(channel_info["noise_variance"]),
+                self.config,
+            )
             rx_payload = self.receiver.receive(
                 rx_waveform=rx_waveform,
                 dmrs_symbols=tx_payload.dmrs_symbols,
                 dmrs_mask=tx_payload.dmrs_mask,
                 data_mask=tx_payload.data_mask,
-                noise_variance=float(channel_info["noise_variance"]),
+                noise_variance=receiver_noise_variance,
                 config=self.config,
             )
             return self._build_result(
@@ -208,10 +213,11 @@ class SharedChannelSimulation:
         count = min(reference_symbols.size, equalized_symbols.size)
         reference = np.asarray(reference_symbols[:count], dtype=np.complex128)
         measured = np.asarray(equalized_symbols[:count], dtype=np.complex128)
-        symbol_magnitude = np.maximum(np.abs(reference), 1e-12)
-        error_vector = np.abs(measured - reference)
-        evm_ratio = error_vector / symbol_magnitude
-        mean_evm_ratio = float(np.mean(evm_ratio))
-        evm_percent = mean_evm_ratio * 100.0
-        evm_snr_linear = float(1.0 / max(mean_evm_ratio**2, 1e-24))
+        reference_power = float(np.mean(np.abs(reference) ** 2))
+        error_power = float(np.mean(np.abs(measured - reference) ** 2))
+        if reference_power <= 0.0:
+            return None, None
+        evm_ratio = float(np.sqrt(error_power / max(reference_power, 1e-24)))
+        evm_percent = evm_ratio * 100.0
+        evm_snr_linear = float(reference_power / max(error_power, 1e-24))
         return evm_percent, evm_snr_linear

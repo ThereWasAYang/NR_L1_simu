@@ -37,7 +37,24 @@ class QamModulator(Modulator):
         """
         bps = bits_per_symbol(modulation)
         padded = QamModulator._pad_bits(bits, bps)
+        if modulation.upper() == "1024QAM":
+            return QamModulator._map_1024qam(padded)
         return nrSymbolModulate(padded.astype(np.int8), modulation)
+
+    @staticmethod
+    def _map_1024qam(bits: np.ndarray) -> np.ndarray:
+        """Map bits to 1024QAM symbols using the 38.211 square-QAM labeling."""
+        grouped = np.asarray(bits, dtype=np.int8).reshape(-1, 10)
+        i_bits = grouped[:, [0, 2, 4, 6, 8]]
+        q_bits = grouped[:, [1, 3, 5, 7, 9]]
+        i_values = QamModulator._map_32pam_axis(i_bits)
+        q_values = QamModulator._map_32pam_axis(q_bits)
+        return (i_values + 1j * q_values) / np.sqrt(682.0)
+
+    @staticmethod
+    def _map_32pam_axis(axis_bits: np.ndarray) -> np.ndarray:
+        b = 1 - 2 * axis_bits.astype(np.float64)
+        return b[:, 0] * (16.0 - b[:, 1] * (8.0 - b[:, 2] * (4.0 - b[:, 3] * (2.0 - b[:, 4]))))
 
     @staticmethod
     def _pad_bits(bits: np.ndarray, bits_per_mod_symbol: int) -> np.ndarray:

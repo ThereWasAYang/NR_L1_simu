@@ -82,9 +82,11 @@ class FrequencyDomainResourceMapper(ResourceMapper):
 
             symbol_data = data_symbols[data_ptr : data_ptr + available_subcarriers.size]
             if symbol_data.size < available_subcarriers.size:
-                remaining = available_subcarriers.size - symbol_data.size
-                extra = np.tile(source_symbols, int(np.ceil(remaining / source_symbols.size)))[:remaining]
-                symbol_data = np.concatenate([symbol_data, extra])
+                raise ValueError(
+                    "Insufficient data symbols for resource mapping: "
+                    f"needed {available_subcarriers.size} symbols for OFDM symbol {symbol_idx}, "
+                    f"only {symbol_data.size} remain."
+                )
             data_ptr += available_subcarriers.size
 
             mapped_symbol = self.map_allocated_symbol(symbol_data, config)

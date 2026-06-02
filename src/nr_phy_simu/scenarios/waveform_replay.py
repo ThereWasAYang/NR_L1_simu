@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
+from nr_phy_simu.common.ofdm import time_to_frequency_noise_variance
 from nr_phy_simu.common.runtime_context import SimulationRuntimeContext, set_runtime_context
 from nr_phy_simu.common.types import SimulationResult, TxPayload
 from nr_phy_simu.config import SimulationConfig
@@ -64,13 +65,14 @@ class WaveformReplaySimulation:
             noise_variance=noise_variance,
             config=self.config,
         )
+        receiver_noise_variance = time_to_frequency_noise_variance(noise_variance, self.config)
 
         rx_payload = self.receiver.receive(
             rx_waveform=waveform,
             dmrs_symbols=dmrs_symbols,
             dmrs_mask=dmrs_mask,
             data_mask=data_mask,
-            noise_variance=noise_variance,
+            noise_variance=receiver_noise_variance,
             config=self.config,
         )
         tx_placeholder = TxPayload(
