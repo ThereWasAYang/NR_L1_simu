@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
+import logging
+
 import numpy as np
 
 from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_size
@@ -16,6 +19,8 @@ from nr_phy_simu.scenarios.component_factory import (
     build_receiver,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class WaveformReplaySimulation:
     """Replay captured time-domain waveform directly into the receiver chain."""
@@ -29,7 +34,13 @@ class WaveformReplaySimulation:
     ) -> None:
         if not config.waveform_input.enabled:
             raise ValueError("waveform_input.waveform_path must be configured for waveform replay simulation.")
-        self.config = config
+        if int(config.simulation.num_ttis) > 1:
+            raise ValueError(
+                "Waveform replay currently supports exactly one TTI per input file; "
+                "set simulation.num_ttis=1."
+            )
+        self.config = deepcopy(config)
+        self.last_run_config: SimulationConfig | None = None
         self.runtime_context = runtime_context or SimulationRuntimeContext()
         self.component_factory = component_factory or DefaultSimulationComponentFactory()
         self.components = self.component_factory.create_components(config)
@@ -56,6 +67,7 @@ class WaveformReplaySimulation:
         self.config.link.coded_bit_capacity = data_re * self._bits_per_symbol()
         if not self.config.link.transport_block_size:
             self.config.link.transport_block_size = resolve_transport_block_size(self.config, data_re)
+        self.last_run_config = deepcopy(self.config)
 
         waveform = load_text_waveform(self.config.waveform_input.waveform_path, self.config)
         dmrs_mask, data_mask, dmrs_symbols = self._build_reference_masks()
@@ -102,6 +114,8 @@ class WaveformReplaySimulation:
             evm_percent=None,
             evm_snr_linear=None,
             interference_reports=interference_reports,
+            ldpc_iterations=self.runtime_context.get("decoder", "ldpc_iterations"),
+            ldpc_decoder_path=self.runtime_context.get("decoder", "ldpc_decoder_path"),
         )
 
     def _build_reference_masks(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -132,6 +146,10 @@ class WaveformReplaySimulation:
         if self.config.waveform_input.noise_variance is not None:
             return float(self.config.waveform_input.noise_variance)
 
+        logger.warning(
+            "waveform_input.noise_variance is unset; estimating replay noise variance "
+            "from full-waveform power and configured SNR."
+        )
         snr_db = float(self.config.channel.params.get("snr_db", self.config.snr_db))
         snr_linear = 10 ** (snr_db / 10.0)
         signal_power = np.mean(np.abs(waveform) ** 2)

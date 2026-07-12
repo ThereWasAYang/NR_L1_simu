@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 
 import numpy as np
 from py3gpp import (
@@ -10,12 +11,15 @@ from py3gpp import (
 )
 
 from nr_phy_simu.common.interfaces import ChannelDecoder
+from nr_phy_simu.common.runtime_context import get_runtime_context
 from nr_phy_simu.common.ulsch_ldpc import (
     decode_ulsch_ldpc,
     get_ulsch_ldpc_info,
     rate_recover_ulsch_ldpc,
 )
 from nr_phy_simu.config import SimulationConfig
+
+logger = logging.getLogger(__name__)
 
 
 class NrLdpcDecoder(ChannelDecoder):
@@ -53,8 +57,12 @@ class NrLdpcDecoder(ChannelDecoder):
             min_sum_scaling=float(config.decoder.ldpc_min_sum_scaling),
             enable_py3gpp_fallback=bool(config.decoder.ldpc_enable_py3gpp_fallback),
         )
-        with contextlib.redirect_stdout(io.StringIO()):
+        captured_stdout = io.StringIO()
+        with contextlib.redirect_stdout(captured_stdout):
             tb_with_crc, _ = nrCodeBlockDesegmentLDPC(decoded_cbs, info.base_graph, tbs + info.tb_crc_bits)
+        message = captured_stdout.getvalue().strip()
+        if message:
+            logger.debug("py3gpp nrCodeBlockDesegmentLDPC output: %s", message)
         decoded, crc_error = nrCRCDecode(tb_with_crc.astype(np.int8), info.crc)
         self.last_crc_ok = bool(crc_error == 0)
         return np.asarray(decoded).reshape(-1)[:tbs].astype(np.int8)
@@ -77,4 +85,7 @@ class HardDecisionBypassDecoder(ChannelDecoder):
         """
         del config
         self.last_crc_ok = None
+        context = get_runtime_context()
+        context.set("decoder", "ldpc_decoder_path", "hard")
+        context.set("decoder", "ldpc_iterations", 0)
         return (np.asarray(llrs).reshape(-1) < 0.0).astype(np.int8)

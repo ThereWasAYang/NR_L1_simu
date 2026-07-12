@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from nr_phy_simu.config import SimulationConfig
+from nr_phy_simu.io._complex_text import parse_complex_value
 
 _TEXT_FILE_READ_ENCODING = "utf-8-sig"
 
@@ -24,7 +25,7 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
     """
     resolved = Path(path).expanduser().resolve()
     values = [
-        _parse_complex_line(line)
+        parse_complex_value(line)
         for line in resolved.read_text(encoding=_TEXT_FILE_READ_ENCODING).splitlines()
         if line.strip()
     ]
@@ -46,26 +47,3 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
 
     waveform = np.asarray(values, dtype=np.complex128).reshape(num_rx_ant, num_samples)
     return waveform
-
-
-def _parse_complex_line(line: str) -> complex:
-    """Parse one IQ text line into a complex sample.
-
-    Args:
-        line: One input line representing a scalar sample. Supported forms are
-            ``I Q``, ``I,Q`` and Python-style ``I+Qj``.
-
-    Returns:
-        One scalar complex time-domain sample.
-    """
-    stripped = line.strip().strip("()")
-    comma_parts = [part.strip() for part in stripped.split(",")]
-    if len(comma_parts) == 2:
-        return complex(float(comma_parts[0]), float(comma_parts[1]))
-
-    space_parts = stripped.split()
-    if len(space_parts) == 2:
-        return complex(float(space_parts[0]), float(space_parts[1]))
-
-    normalized = stripped.replace("i", "j").replace("I", "j")
-    return complex(normalized)

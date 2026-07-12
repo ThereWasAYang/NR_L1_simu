@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from nr_phy_simu.io._complex_text import parse_complex_value
+
 _TEXT_FILE_READ_ENCODING = "utf-8-sig"
 
 
@@ -60,22 +62,22 @@ def _parse_complex_array(value: Any):
         Parsed scalar complex value or nested list of complex values.
     """
     if _is_complex_pair(value):
-        return _parse_complex_value(value)
+        return parse_complex_value(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return _parse_complex_value(value.item())
+            return parse_complex_value(value.item())
         return [_parse_complex_array(item) for item in value.tolist()]
     if isinstance(value, (list, tuple)):
         return [_parse_complex_array(item) for item in value]
-    return _parse_complex_value(value)
+    return parse_complex_value(value)
 
 
 def _parse_complex_line(line: str):
     """Parse one SISO coefficient or one flat MIMO coefficient row from text."""
     stripped = line.strip()
     if ";" in stripped:
-        return [_parse_complex_value(part.strip()) for part in stripped.split(";") if part.strip()]
-    return _parse_complex_value(stripped)
+        return [parse_complex_value(part.strip()) for part in stripped.split(";") if part.strip()]
+    return parse_complex_value(stripped)
 
 
 def _is_complex_pair(value: Any) -> bool:
@@ -85,31 +87,3 @@ def _is_complex_pair(value: Any) -> bool:
         and len(value) == 2
         and all(isinstance(item, (int, float, np.integer, np.floating)) for item in value)
     )
-
-
-def _parse_complex_value(value: Any) -> complex:
-    """Parse one complex coefficient from config/file input.
-
-    Args:
-        value: Raw coefficient representation from config or text input.
-
-    Returns:
-        One scalar complex frequency-response coefficient.
-    """
-    if isinstance(value, complex):
-        return value
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        return complex(float(value), 0.0)
-    if isinstance(value, (list, tuple)) and len(value) == 2:
-        return complex(float(value[0]), float(value[1]))
-    if isinstance(value, str):
-        stripped = value.strip().strip("()")
-        comma_parts = [part.strip() for part in stripped.split(",")]
-        if len(comma_parts) == 2:
-            return complex(float(comma_parts[0]), float(comma_parts[1]))
-        space_parts = stripped.split()
-        if len(space_parts) == 2:
-            return complex(float(space_parts[0]), float(space_parts[1]))
-        normalized = stripped.replace("i", "j").replace("I", "j")
-        return complex(normalized)
-    raise ValueError(f"Unsupported complex coefficient format: {value!r}")

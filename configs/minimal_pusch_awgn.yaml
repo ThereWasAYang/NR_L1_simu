@@ -1,0 +1,14 @@
+# 最小配置示例：其余字段全部使用 SimulationConfig 默认值。
+link:
+  channel_type: PUSCH
+  mcs:
+    table: qam64
+    index: 0
+
+channel:
+  model: AWGN
+  params:
+    snr_db: 10.0
+
+simulation:
+  num_ttis: 1

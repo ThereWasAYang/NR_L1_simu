@@ -428,6 +428,7 @@ class DmrsGenerator(DmrsSequenceGenerator):
         if config.dmrs.symbol_positions:
             return tuple(config.dmrs.symbol_positions)
         return resolve_dmrs_symbol_indices(
+            channel_type=str(config.link.channel_type),
             start_symbol=int(config.link.start_symbol),
             num_symbols=int(config.link.num_symbols),
             mapping_type=str(config.dmrs.mapping_type),
@@ -472,8 +473,9 @@ class DmrsGenerator(DmrsSequenceGenerator):
             One-dimensional complex QPSK DMRS sequence with shape
             ``(num_prbs * dmrs_re_per_prb,)``.
         """
-        dmrs_begin = info.re_per_prb * config.link.prb_start * 2
-        dmrs_end = info.re_per_prb * (config.link.prb_start + num_prbs) * 2
+        absolute_prb_start = int(config.bwp.start_rb) + int(config.link.prb_start)
+        dmrs_begin = info.re_per_prb * absolute_prb_start * 2
+        dmrs_end = info.re_per_prb * (absolute_prb_start + num_prbs) * 2
         dmrs_size = info.re_per_prb * config.carrier.n_size_grid * 2
         bits = gold_sequence(self._dmrs_c_init(symbol, config), dmrs_size)
         return qpsk_from_prbs(bits[dmrs_begin:dmrs_end])
@@ -557,6 +559,9 @@ class DmrsGenerator(DmrsSequenceGenerator):
             phases = np.array(SHORT_LOW_PAPR_TYPE1_PHASES[length][u], dtype=np.float64)
             sequence = np.exp(1j * np.pi * phases / 4.0)
             return sequence / np.sqrt(np.mean(np.abs(sequence) ** 2))
+        if length == 30:
+            n = np.arange(length, dtype=np.float64)
+            return np.exp(-1j * np.pi * (u + 1) * (n + 1) * (n + 2) / 31.0)
         return self._zc_low_papr_sequence(u=u, v=v, length=length)
 
     def _generate_type2_low_papr_sequence(

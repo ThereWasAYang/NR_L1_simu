@@ -155,6 +155,8 @@ class SimulationResult:
     harq_rv: int | None = None
     harq_retransmission: bool | None = None
     interference_reports: tuple[Any, ...] = ()
+    ldpc_iterations: int | None = None
+    ldpc_decoder_path: str | None = None
 
 
 @dataclass

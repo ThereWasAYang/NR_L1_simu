@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import logging
 
 import numpy as np
 
@@ -13,6 +14,8 @@ from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory
 from nr_phy_simu.scenarios.pdsch import PdschSimulation
 from nr_phy_simu.scenarios.pusch import PuschSimulation
 from nr_phy_simu.scenarios.waveform_replay import WaveformReplaySimulation
+
+logger = logging.getLogger(__name__)
 
 
 class MultiTtiSimulationRunner:
@@ -38,25 +41,31 @@ class MultiTtiSimulationRunner:
         evm_values: list[float] = []
         evm_snr_values: list[float] = []
         harq_manager = HarqManager(self.config.harq) if self.config.harq.enabled else None
+        working_config = deepcopy(self.config)
+        simulation = self._build_simulation(working_config)
+        progress_interval = max(1, num_ttis // 10)
         for tti_idx in range(num_ttis):
-            tti_config = deepcopy(self.config)
+            # Reuse the assembled PHY and, crucially, its stateful channel RNG.
+            # A fixed channel seed now defines a reproducible sequence of drops
+            # instead of restarting the identical realization every TTI.
+            tti_config = simulation.config
             tti_config.random_seed = self.config.random_seed + tti_idx
             tti_config.slot_index = self.config.slot_index + tti_idx
             harq_tx = None
             if harq_manager is not None:
                 planner_probe = deepcopy(tti_config)
-                data_re_count = self._build_simulation(planner_probe).mapper.count_data_re(planner_probe)
+                data_re_count = simulation.mapper.count_data_re(planner_probe)
                 transport_plan = build_transport_block_plan(planner_probe, data_re_count)
                 rng = np.random.default_rng(tti_config.random_seed)
                 harq_tx = harq_manager.schedule(tti_idx, transport_plan.size_bits, rng)
                 tti_config.link.mcs.rv = int(harq_tx.rv)
-            tti_result = self._build_simulation(tti_config).run(
+            tti_result = simulation.run(
                 transport_block_override=None if harq_tx is None else harq_tx.transport_block,
                 harq_process_id=None if harq_tx is None else harq_tx.process_id,
                 harq_retransmission=None if harq_tx is None else harq_tx.is_retransmission,
             )
             tti_results.append(tti_result)
-            final_config = tti_config
+            final_config = deepcopy(simulation.last_run_config or tti_config)
             if harq_manager is not None:
                 harq_manager.update(harq_tx.process_id, tti_result.crc_ok)
             if tti_result.crc_ok is not None:
@@ -67,6 +76,13 @@ class MultiTtiSimulationRunner:
                 evm_values.append(tti_result.evm_percent)
             if tti_result.evm_snr_linear is not None:
                 evm_snr_values.append(tti_result.evm_snr_linear)
+            if (tti_idx + 1) % progress_interval == 0 or tti_idx + 1 == num_ttis:
+                logger.info(
+                    "Multi-TTI progress: %d/%d (packet_errors=%d)",
+                    tti_idx + 1,
+                    num_ttis,
+                    packet_errors,
+                )
 
         return MultiTtiSimulationResult(
             num_ttis=num_ttis,

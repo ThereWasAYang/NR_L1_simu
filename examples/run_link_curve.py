@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 import matplotlib.pyplot as plt
 
@@ -15,6 +22,7 @@ def _parse_snr_points(raw: str) -> list[float]:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description="Run BER/BLER curve sweep for the NR PHY simulator.")
     parser.add_argument("config_path", help="Base YAML/JSON/XML config path.")
     parser.add_argument(
@@ -34,7 +42,7 @@ def main() -> None:
     snr_points = _parse_snr_points(args.snr_points)
     sweep_points = run_snr_sweep(config, snr_points, component_factory=DefaultSimulationComponentFactory())
 
-    outputs_dir = Path("outputs")
+    outputs_dir = ROOT / "outputs"
     csv_path = write_snr_sweep_csv(outputs_dir / f"{args.output_prefix}.csv", sweep_points)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=True)

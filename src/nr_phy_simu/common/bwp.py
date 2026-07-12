@@ -97,9 +97,9 @@ def ofdm_phase_compensation_frequency_hz(config: SimulationConfig) -> float:
         config: Full simulation configuration.
 
     Returns:
-        Active BWP center frequency in Hz.
+        RF carrier frequency ``f0`` in Hz from 38.211 clause 5.4.
     """
-    return bwp_center_frequency_hz(config)
+    return float(config.carrier.center_frequency_hz)
 
 
 def ofdm_phase_compensation_vector(
@@ -121,16 +121,22 @@ def ofdm_phase_compensation_vector(
         inverse: ``False`` for TX modulation and ``True`` for RX compensation.
 
     Returns:
-        Complex phasor vector with shape ``(symbol_length,)``. Axis 0 is the
-        CP-extended time-sample index of this OFDM symbol.
+        Constant complex phasor vector with shape ``(symbol_length,)``. The
+        constant is referenced to the useful-symbol start as required for a
+        global complex-envelope representation of 38.211 clause 5.4.
     """
     if not bool(config.bwp.phase_compensation_enabled):
         return np.ones(symbol_length, dtype=np.complex128)
 
     sample_rate_hz = float(config.carrier.sample_rate_effective_hz)
-    slot_start_sample = int(config.slot_index) * int(config.carrier.slot_length_samples)
+    slots_per_subframe = 2 ** int(config.carrier.numerology)
+    slot_in_subframe = int(config.slot_index) % slots_per_subframe
+    slot_start_sample = slot_in_subframe * int(config.carrier.slot_length_samples)
     useful_symbol_start = slot_start_sample + int(symbol_start_sample) + int(cp_length)
-    sample_positions = useful_symbol_start + np.arange(symbol_length, dtype=np.float64) - int(cp_length)
-    cycles = np.remainder(ofdm_phase_compensation_frequency_hz(config) * sample_positions / sample_rate_hz, 1.0)
-    sign = -1.0 if inverse else 1.0
-    return np.exp(1j * sign * 2.0 * np.pi * cycles)
+    cycles = np.remainder(
+        ofdm_phase_compensation_frequency_hz(config) * useful_symbol_start / sample_rate_hz,
+        1.0,
+    )
+    sign = 1.0 if inverse else -1.0
+    phasor = np.exp(1j * sign * 2.0 * np.pi * cycles)
+    return np.full(symbol_length, phasor, dtype=np.complex128)

@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ def _format_evm_snr_db(evm_snr_linear: float | None) -> str | None:
 
 
 def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     config_path = ROOT / config_relpath
     config = load_simulation_config(config_path)
     component_factory = DefaultSimulationComponentFactory()
@@ -63,7 +65,7 @@ def main(config_relpath: str = "configs/pusch_awgn.yaml") -> None:
                 else PdschSimulation(config, component_factory=component_factory, runtime_context=runtime_context)
             )
         result = simulation.run()
-        effective_config = config
+        effective_config = simulation.last_run_config or config
     prefix = config_path.stem
     plots = {}
     if effective_config.plotting.enabled:

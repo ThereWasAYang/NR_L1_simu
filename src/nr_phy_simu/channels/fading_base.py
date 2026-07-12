@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass
 import math
 from typing import Any
@@ -31,6 +32,10 @@ class AntennaArrayDescription:
 class FadingChannelBase(ChannelModel, ABC):
     def __init__(self, rng: np.random.Generator | None = None) -> None:
         self.rng = rng or np.random.default_rng()
+        self._time_offset_s = 0.0
+        self._continuous_initial_rng_state: dict | None = None
+        self._continuous_noise_rng: np.random.Generator | None = None
+        self._continuous_mode = False
 
     def propagate(
         self,
@@ -52,10 +57,28 @@ class FadingChannelBase(ChannelModel, ABC):
             shape ``(num_rx_ant, num_tx_ant, num_paths, slot_samples)``.
         """
         self._validate_link_level_limits(config)
+        evolution = str(config.channel.params.get("tti_evolution", "independent")).lower()
+        if evolution not in {"independent", "continuous"}:
+            raise ValueError("channel.params.tti_evolution must be 'independent' or 'continuous'.")
+        self._continuous_mode = evolution == "continuous"
+        if self._continuous_mode:
+            if self._continuous_initial_rng_state is None:
+                self._continuous_initial_rng_state = deepcopy(self.rng.bit_generator.state)
+            else:
+                self.rng.bit_generator.state = deepcopy(self._continuous_initial_rng_state)
+            self._time_offset_s = (
+                int(config.slot_index) * int(config.carrier.slot_length_samples)
+                / float(config.carrier.sample_rate_effective_hz)
+            )
+        else:
+            self._time_offset_s = 0.0
         geometry_info = self._channel_geometry_info(config)
         tx_waveform = self._expand_tx_branches(waveform, config)
         sample_rate = config.carrier.sample_rate_effective_hz
         delays_s, coeff = self._generate_path_coefficients(tx_waveform.shape[-1], sample_rate, config)
+        if self._continuous_mode and self._continuous_noise_rng is None:
+            self._continuous_noise_rng = np.random.default_rng()
+            self._continuous_noise_rng.bit_generator.state = deepcopy(self.rng.bit_generator.state)
         rx_waveform = self._apply_time_varying_channel(tx_waveform, delays_s, coeff, sample_rate)
         base_info = {
             "path_delays_s": delays_s,
@@ -114,11 +137,19 @@ class FadingChannelBase(ChannelModel, ABC):
         num_rx_ant, num_tx_ant, _, _ = coefficients.shape
         rx_waveform = np.zeros((num_rx_ant, tx_waveform.shape[-1]), dtype=np.complex128)
 
+        delayed_branches = {
+            (tx_idx, path_idx): self._fractional_delay(
+                tx_waveform[tx_idx],
+                delay_s * sample_rate_hz,
+            )
+            for tx_idx in range(num_tx_ant)
+            for path_idx, delay_s in enumerate(delays_s)
+        }
         for rx_idx in range(num_rx_ant):
             for tx_idx in range(num_tx_ant):
                 tx_branch = tx_waveform[tx_idx]
-                for path_idx, delay_s in enumerate(delays_s):
-                    delayed = self._fractional_delay(tx_branch, delay_s * sample_rate_hz)
+                for path_idx, _delay_s in enumerate(delays_s):
+                    delayed = delayed_branches[(tx_idx, path_idx)]
                     rx_waveform[rx_idx] += delayed * coefficients[rx_idx, tx_idx, path_idx, : tx_branch.size]
 
         return rx_waveform
@@ -170,7 +201,7 @@ class FadingChannelBase(ChannelModel, ABC):
             sample = (self.rng.normal() + 1j * self.rng.normal()) / np.sqrt(2.0)
             return np.full(num_samples, sample, dtype=np.complex128)
 
-        time = np.arange(num_samples, dtype=np.float64) / sample_rate_hz
+        time = self._time_axis(num_samples, sample_rate_hz)
         alpha = 2 * np.pi * (np.arange(1, num_sinusoids + 1) - 0.5) / num_sinusoids
         phase_i = self.rng.uniform(0.0, 2 * np.pi, size=num_sinusoids)
         phase_q = self.rng.uniform(0.0, 2 * np.pi, size=num_sinusoids)
@@ -209,7 +240,7 @@ class FadingChannelBase(ChannelModel, ABC):
         diffuse = self._rayleigh_process(num_samples, sample_rate_hz, max_doppler_hz, num_sinusoids)
         phase0 = self.rng.uniform(0.0, 2 * np.pi) if initial_phase is None else initial_phase
         spec_freq = specular_doppler_hz if specular_doppler_hz is not None else max_doppler_hz
-        time = np.arange(num_samples, dtype=np.float64) / sample_rate_hz
+        time = self._time_axis(num_samples, sample_rate_hz)
         specular = np.exp(1j * (2 * np.pi * spec_freq * time + phase0))
         return (
             np.sqrt(k_factor_linear / (k_factor_linear + 1.0)) * specular
@@ -247,9 +278,10 @@ class FadingChannelBase(ChannelModel, ABC):
         snr_linear = 10 ** (snr_db / 10.0)
         signal_power = np.mean(np.abs(waveform) ** 2)
         noise_variance = signal_power / max(snr_linear, 1e-12)
+        noise_rng = self._continuous_noise_rng if self._continuous_mode else self.rng
         noise = (
-            self.rng.normal(0.0, np.sqrt(noise_variance / 2.0), waveform.shape)
-            + 1j * self.rng.normal(0.0, np.sqrt(noise_variance / 2.0), waveform.shape)
+            noise_rng.normal(0.0, np.sqrt(noise_variance / 2.0), waveform.shape)
+            + 1j * noise_rng.normal(0.0, np.sqrt(noise_variance / 2.0), waveform.shape)
         )
         return waveform + noise, float(noise_variance), snr_db
 
@@ -389,8 +421,7 @@ class FadingChannelBase(ChannelModel, ABC):
         zenith_deg = float(np.rad2deg(np.arccos(np.clip(unit[2], -1.0, 1.0))))
         return azimuth_deg, zenith_deg
 
-    @staticmethod
-    def _time_axis(num_samples: int, sample_rate_hz: float) -> np.ndarray:
+    def _time_axis(self, num_samples: int, sample_rate_hz: float) -> np.ndarray:
         """Build a sample-time vector.
 
         Args:
@@ -400,7 +431,7 @@ class FadingChannelBase(ChannelModel, ABC):
         Returns:
             One-dimensional time array with shape ``(num_samples,)`` in seconds.
         """
-        return np.arange(num_samples, dtype=np.float64) / sample_rate_hz
+        return self._time_offset_s + np.arange(num_samples, dtype=np.float64) / sample_rate_hz
 
     @staticmethod
     def _resolve_path_parameters(

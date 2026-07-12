@@ -21,9 +21,41 @@ def load_simulation_config(path: str | Path) -> SimulationConfig:
         Parsed :class:`SimulationConfig` instance.
     """
     resolved = config_path(path)
-    data = _load_mapping_file(resolved)
-    _resolve_relative_paths(data, resolved.parent)
+    data = _load_config_mapping_with_bases(resolved, ())
     return SimulationConfig.from_mapping(data)
+
+
+def _load_config_mapping_with_bases(path: Path, stack: tuple[Path, ...]) -> dict:
+    """Load one config and recursively merge an optional ``base_config_path``."""
+    resolved = path.expanduser().resolve()
+    if resolved in stack:
+        chain = " -> ".join(str(item) for item in (*stack, resolved))
+        raise ValueError(f"Circular base_config_path reference: {chain}")
+
+    data = _load_mapping_file(resolved)
+    base_value = data.pop("base_config_path", None)
+    base_data: dict = {}
+    if base_value is not None:
+        if not isinstance(base_value, str) or not base_value.strip():
+            raise ValueError("base_config_path must be a non-empty path string.")
+        base_path = _resolve_path_string(base_value, resolved.parent)
+        base_data = _load_config_mapping_with_bases(base_path, (*stack, resolved))
+
+    # Resolve each layer before merging so relative paths remain relative to the
+    # file in which they were declared.
+    _resolve_relative_paths(data, resolved.parent)
+    return _deep_merge_mapping(base_data, data)
+
+
+def _deep_merge_mapping(base: dict, override: dict) -> dict:
+    """Recursively merge mapping sections; scalars and sequences replace bases."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_mapping(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _load_mapping_file(path: Path) -> dict:

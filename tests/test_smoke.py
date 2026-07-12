@@ -3,6 +3,7 @@ from dataclasses import replace
 import sys
 import tempfile
 import unittest
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -112,7 +113,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         self.assertEqual(result.rx.channel_estimation.channel_estimate.shape[1], config.link.num_prbs * 12)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.ndim, 2)
         self.assertEqual(result.rx.channel_estimation.pilot_estimates.shape[0], config.link.num_rx_ant)
-        self.assertIsNotNone(config.link.transport_block_size)
+        self.assertIsNotNone(result.transport_plan.size_bits)
         self.assertIs(result.crc_ok, True)
         self.assertIsNotNone(result.evm_percent)
         self.assertIsNotNone(result.evm_snr_linear)
@@ -272,7 +273,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
         result = PuschSimulation(config).run()
         self.assertTrue(0.0 <= result.bit_error_rate <= 1.0)
         self.assertIsNone(result.crc_ok)
-        self.assertEqual(result.tx.coded_bits.size, config.link.coded_bit_capacity)
+        self.assertEqual(result.tx.coded_bits.size, result.transport_plan.codewords[0].coded_bit_capacity)
         self.assertEqual(result.rx.decoded_bits.size, result.tx.coded_bits.size)
 
     def test_bypass_channel_coding_multi_tti_reports_bler_as_nan(self):
@@ -479,6 +480,7 @@ class PuschAwgnSmokeTest(unittest.TestCase):
                 self.assertEqual(result.rx.channel_estimation.channel_estimate.shape[1], config.link.num_prbs * 12)
 
 
+@pytest.mark.slow
 class BaselineRegressionTest(unittest.TestCase):
     def test_pusch_baseline_cases(self):
         cases = [
@@ -523,7 +525,7 @@ class PdschAwgnSmokeTest(unittest.TestCase):
         config.link.mcs.table = "qam1024"
         config.link.mcs.index = 23
         result = PdschSimulation(config).run()
-        self.assertEqual(config.link.modulation, "1024QAM")
+        self.assertEqual(result.transport_plan.mcs.modulation, "1024QAM")
         self.assertIs(result.crc_ok, True)
 
 
@@ -585,6 +587,7 @@ class DmrsSequenceTest(unittest.TestCase):
         for num_symbols, additional_position, expected in cases:
             with self.subTest(num_symbols=num_symbols, additional_position=additional_position):
                 positions = resolve_dmrs_symbol_indices(
+                    channel_type="PDSCH",
                     start_symbol=0,
                     num_symbols=num_symbols,
                     mapping_type="A",
@@ -602,6 +605,14 @@ class DmrsSequenceTest(unittest.TestCase):
             symbols = generator.generate_for_symbol(symbol=2, config=config)
             self.assertEqual(symbols.size, num_prbs * 6)
             self.assertTrue(np.allclose(np.abs(symbols), 1.0))
+
+    def test_low_papr_type1_length_30_uses_spec_closed_form(self):
+        generator = DmrsGenerator()
+        n = np.arange(30, dtype=np.float64)
+        for group in (0, 7, 29):
+            actual = generator._low_papr_type1(u=group, v=0, length=30)
+            expected = np.exp(-1j * np.pi * (group + 1) * (n + 1) * (n + 2) / 31.0)
+            self.assertTrue(np.allclose(actual, expected))
 
     def test_transform_precoded_pusch_rejects_dmrs_config_type2(self):
         config = load_simulation_config(ROOT / "configs" / "pusch_dfts_awgn.yaml")

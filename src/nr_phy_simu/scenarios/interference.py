@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from nr_phy_simu.common.mcs import apply_mcs_to_link, resolve_transport_block_si
 from nr_phy_simu.config import InterferenceSourceConfig, SimulationConfig
 from nr_phy_simu.io.config_loader import load_simulation_config
 from nr_phy_simu.scenarios.component_factory import SimulationComponentFactory, build_transmitter
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class InterferenceReport:
 class InterferenceMixer:
     def __init__(self, component_factory: SimulationComponentFactory) -> None:
         self.component_factory = component_factory
+        self._pipelines: dict[int, tuple[Any, Any, Any]] = {}
 
     def apply(
         self,
@@ -56,7 +60,7 @@ class InterferenceMixer:
             if not source.enabled:
                 continue
             interferer_cfg = self._build_interferer_config(config, source, index)
-            interferer_waveform = self._generate_interferer_waveform(interferer_cfg)
+            interferer_waveform = self._generate_interferer_waveform(interferer_cfg, index)
             scaled_waveform, report = self._scale_to_inr(
                 interferer_waveform,
                 noise_variance=noise_variance,
@@ -68,7 +72,7 @@ class InterferenceMixer:
             reports.append(report)
         return composite, tuple(reports)
 
-    def _generate_interferer_waveform(self, config: SimulationConfig) -> np.ndarray:
+    def _generate_interferer_waveform(self, config: SimulationConfig, index: int) -> np.ndarray:
         """Generate one interferer after its own TX and channel path.
 
         Args:
@@ -78,9 +82,14 @@ class InterferenceMixer:
             Complex interferer waveform with shape ``(slot_samples,)`` or
             ``(num_rx_ant, slot_samples)``; last axis is time-sample index.
         """
-        components = self.component_factory.create_components(config)
-        transmitter = build_transmitter(components)
-        channel = self.component_factory.create_channel_factory().create(config)
+        pipeline = self._pipelines.get(index)
+        if pipeline is None:
+            components = self.component_factory.create_components(config)
+            transmitter = build_transmitter(components)
+            channel = self.component_factory.create_channel_factory().create(config)
+            self._pipelines[index] = (components, transmitter, channel)
+        else:
+            components, transmitter, channel = pipeline
         apply_mcs_to_link(config)
         data_re = components.transmitter.mapper.count_data_re(config)
         bits_per_symbol = _bits_per_symbol(config)
@@ -280,6 +289,11 @@ class InterferenceMixer:
             scalar report describing the applied scale.
         """
         rx_power = float(np.mean(np.abs(waveform) ** 2))
+        if rx_power <= 0.0:
+            logger.warning(
+                "Interference source '%s' has zero measured receive power; applied scale is zero.",
+                source.label or index,
+            )
         target_power = float(noise_variance * (10 ** (source.inr_db / 10.0)))
         scale = 0.0 if rx_power <= 0.0 else np.sqrt(target_power / rx_power)
         label = source.label or f"interferer_{index}"

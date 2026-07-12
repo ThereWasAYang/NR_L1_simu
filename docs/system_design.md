@@ -114,7 +114,7 @@
 - `active_bwp_num_rbs`: 得到 active BWP 宽度，`bwp.num_rbs = null` 时返回 `carrier.cell_bandwidth_rbs`。
 - `allocated_subcarriers`: 将 BWP 内 `link.prb_start / link.num_prbs` 转成 full-cell subcarrier index。
 - `bwp_center_frequency_hz`: 根据 `carrier.center_frequency_hz`、小区带宽、BWP 起点/宽度和 SCS 推导 BWP 中心频率。
-- `ofdm_phase_compensation_vector`: 为一个 CP 扩展 OFDM symbol 生成逐样点相位补偿向量。
+- `ofdm_phase_compensation_vector`: 按 38.211 clause 5.4 为一个 CP 扩展 OFDM symbol 生成常量复包络相位；使用 RF carrier `f0` 并在 subframe 边界重置时间参考。
 
 设计意图：
 
@@ -560,7 +560,7 @@ DFT-s-OFDM 波形下：
    - 将 cell-band active subcarriers 放入 FFT 中心。
    - `ifftshift` 后 IFFT。
    - 添加 cyclic prefix。
-   - 若 `bwp.phase_compensation_enabled = true`，对 CP 扩展后的 symbol 乘以 BWP/载频相位补偿向量。
+   - 若 `bwp.phase_compensation_enabled = true`，对 CP 扩展后的 symbol 乘以 38.211 clause 5.4 的 symbol 常量复包络相位。
    - 串接所有 symbol。
 
 ### `OfdmProcessor.demodulate`
@@ -584,7 +584,7 @@ DFT-s-OFDM 波形下：
 
 - OFDM 只负责频域/时域转换，不关心 DMRS、数据、信道估计。
 - CP 长度来自 `CarrierConfig`，不手写。
-- 相位补偿频率来自 `common/bwp.py` 推导的 BWP 中心频率，最终载频源是 `carrier.center_frequency_hz`。
+- 相位补偿频率是 RF carrier `carrier.center_frequency_hz`；BWP 中心频率仍供运行上下文和算法使用，但不代替 clause 5.4 的 `f0`。
 
 ## 信道模型
 
@@ -603,8 +603,10 @@ DFT-s-OFDM 波形下：
 AWGN/TDL/CDL 创建时使用 `channel.seed` 初始化随机数发生器：
 
 - `channel.seed = null`: 使用系统级 `random_seed`。
-- `channel.seed = 整数`: 固定信道随机种子。
+- `channel.seed = 整数`: 固定一条可复现、逐 TTI 不重复的信道随机序列。
 - `channel.seed = auto`: 每次运行使用非确定随机源。
+
+多 TTI 默认使用 `channel.params.tti_evolution = independent`，即逐 TTI 独立 drop，但复用同一信道对象以推进 RNG。设置为 `continuous` 时，TDL/CDL 固定几何、射线耦合和初始相位，时间轴从 `slot_index * slot_length_samples / sample_rate` 起算，从而在 TTI 边界连续演进。
 
 ### `awgn.py`
 
@@ -1019,7 +1021,8 @@ scrambling bit = 1 -> LLR 取反
 `MultiTtiSimulationRunner.run`：
 
 - 连续运行 `simulation.num_ttis` 个 TTI。
-- 每个 TTI 调用单 TTI 场景。
+- 每次 run 只装配一次组件、收发链和信道；每个 TTI 只更新 slot、TB seed 和 HARQ RV。
+- 复用信道对象，使固定 seed 的 RNG 自然推进并保留连续时间演进状态。
 - 根据 `crc_ok` 统计 packet error。
 - 计算 BLER。
 - 对 EVM 和 EVM_SNR 做跨 TTI 平均。
@@ -1342,8 +1345,10 @@ WaveformReplaySimulation.run
 
 ```text
 MultiTtiSimulationRunner.run
+  -> build PuschSimulation/PdschSimulation once
   -> for each TTI:
-       PuschSimulation/PdschSimulation.run
+       update slot/random seed/HARQ RV
+       reuse simulation.run
   -> packet error count
   -> BLER / average EVM
   -> optional append_multi_tti_report

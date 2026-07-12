@@ -8,11 +8,8 @@ import subprocess
 import sys
 import tempfile
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "nr_phy_simu_mplconfig"))
-
-import matplotlib
-
 _PREFERRED_BACKEND_ENV = "NR_PHY_SIMU_PLOT_BACKEND"
+_PYPLOT = None
 _WINDOWS_FONT_CANDIDATES = [
     "Microsoft YaHei",
     "Microsoft JhengHei",
@@ -35,24 +32,24 @@ _COMMON_FONT_CANDIDATES = [
 ]
 
 
-def _configure_matplotlib_backend() -> None:
+def _configure_matplotlib_backend(matplotlib_module) -> None:
     requested_backend = os.environ.get(_PREFERRED_BACKEND_ENV)
     if requested_backend:
-        matplotlib.use(requested_backend)
+        matplotlib_module.use(requested_backend)
         return
 
     if os.environ.get("MPLBACKEND"):
         return
 
     if platform.system() == "Darwin":
-        matplotlib.use("macosx")
+        matplotlib_module.use("macosx")
         return
 
     if _is_foreground_session() and _has_tkinter():
-        matplotlib.use("TkAgg")
+        matplotlib_module.use("TkAgg")
 
 
-def _configure_matplotlib_fonts() -> None:
+def _configure_matplotlib_fonts(matplotlib_module) -> None:
     """Set cross-platform Chinese font fallbacks for plot labels and titles."""
     preferred_fonts: list[str] = []
     system = platform.system()
@@ -63,8 +60,8 @@ def _configure_matplotlib_fonts() -> None:
     else:
         preferred_fonts.extend(_LINUX_FONT_CANDIDATES)
     preferred_fonts.extend(_COMMON_FONT_CANDIDATES)
-    matplotlib.rcParams["font.sans-serif"] = preferred_fonts
-    matplotlib.rcParams["axes.unicode_minus"] = False
+    matplotlib_module.rcParams["font.sans-serif"] = preferred_fonts
+    matplotlib_module.rcParams["axes.unicode_minus"] = False
 
 
 def _is_foreground_session() -> bool:
@@ -79,10 +76,20 @@ def _has_tkinter() -> bool:
     return True
 
 
-_configure_matplotlib_backend()
-_configure_matplotlib_fonts()
+def _get_pyplot():
+    """Import and configure matplotlib only when plotting is first requested."""
+    global _PYPLOT
+    if _PYPLOT is None:
+        os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "nr_phy_simu_mplconfig"))
+        import matplotlib
 
-import matplotlib.pyplot as plt
+        _configure_matplotlib_backend(matplotlib)
+        import matplotlib.pyplot as pyplot
+
+        _configure_matplotlib_fonts(matplotlib)
+        _PYPLOT = pyplot
+    return _PYPLOT
+
 import numpy as np
 
 from nr_phy_simu.common.bwp import allocated_subcarriers
@@ -114,6 +121,7 @@ def save_simulation_plots(
     Returns:
         Mapping from artifact name to generated PNG path.
     """
+    _get_pyplot()
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -123,7 +131,7 @@ def save_simulation_plots(
         figure = _build_artifact_figure(artifact)
         path = output_path / f"{prefix}_{artifact.name}.png"
         figure.savefig(path, dpi=160)
-        plt.close(figure)
+        _get_pyplot().close(figure)
         plots[artifact.name] = path
 
     if show:
@@ -216,7 +224,7 @@ def _build_constellation_figure(artifact: PlotArtifact) -> object:
     """
     symbols = _as_plot_array(artifact.values)
     snr_db = float((artifact.metadata or {}).get("snr_db", 0.0))
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = _get_pyplot().subplots(figsize=(6, 6))
     ax.scatter(symbols.real, symbols.imag, s=10, alpha=0.7)
     ax.set_title(f"Equalized Constellation (SNR={snr_db:.2f} dB)")
     ax.set_xlabel("I (Real)")
@@ -253,7 +261,7 @@ def _build_pilot_estimate_figure(artifact: PlotArtifact) -> object:
     max_cols = 4
     ant_cols = min(num_ant, max_cols)
     ant_rows = int(np.ceil(num_ant / ant_cols))
-    fig, axes = plt.subplots(
+    fig, axes = _get_pyplot().subplots(
         ant_rows * 2,
         ant_cols,
         figsize=(max(ant_cols * 4.5, 10), max(ant_rows * 5.5, 6)),
@@ -344,7 +352,7 @@ def _build_rx_time_domain_figure(artifact: PlotArtifact) -> object:
         boundaries.append(offset)
 
     num_ant = waveform.shape[0]
-    fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
+    fig, axes = _get_pyplot().subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
     axes = np.atleast_1d(axes)
     for ant_idx, ax in enumerate(axes):
         x = np.arange(waveform.shape[1])
@@ -382,7 +390,7 @@ def _build_rx_frequency_domain_figure(artifact: PlotArtifact) -> object:
     n_sc = int(metadata["n_subcarriers"])
     symbols_per_slot = int(metadata["symbols_per_slot"])
     num_ant = rx_grid.shape[0]
-    fig, axes = plt.subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
+    fig, axes = _get_pyplot().subplots(num_ant, 1, figsize=(12, max(3.5 * num_ant, 4)), sharex=True)
     axes = np.atleast_1d(axes)
     for ant_idx, ax in enumerate(axes):
         concatenated = np.abs(rx_grid[ant_idx, :n_sc, :]).reshape(-1, order="F")
@@ -427,8 +435,8 @@ def _build_artifact_figure(artifact: PlotArtifact) -> object:
     plot_type = artifact.plot_type.lower()
     title = artifact.title or artifact.name
 
-    if plot_type == "image" or values.ndim == 2 and plot_type == "auto":
-        fig, ax = plt.subplots(figsize=(8, 5))
+    if plot_type == "image":
+        fig, ax = _get_pyplot().subplots(figsize=(8, 5))
         image = ax.imshow(np.abs(values), aspect="auto", origin="lower")
         fig.colorbar(image, ax=ax)
         ax.set_title(title)
@@ -438,7 +446,7 @@ def _build_artifact_figure(artifact: PlotArtifact) -> object:
         return fig
 
     series = values.reshape(-1) if values.ndim == 1 else values.reshape(values.shape[0], -1)
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = _get_pyplot().subplots(figsize=(8, 4.5))
     if series.ndim == 1:
         _plot_artifact_series(ax, series, x_values, plot_type, label=None)
     else:
@@ -524,25 +532,25 @@ def _show_plots(paths: list[Path], block: bool) -> None:
         _open_with_system_viewer(paths)
         return
 
-    figures = [plt.figure() for _ in paths]
+    figures = [_get_pyplot().figure() for _ in paths]
     for figure, path in zip(figures, paths, strict=True):
-        image = plt.imread(path)
+        image = _get_pyplot().imread(path)
         axis = figure.subplots()
         axis.imshow(image)
         axis.axis("off")
 
-    manager_backend = plt.get_backend().lower()
+    manager_backend = _get_pyplot().get_backend().lower()
     if "agg" in manager_backend:
         for figure in figures:
-            plt.close(figure)
+            _get_pyplot().close(figure)
         return
 
-    plt.ioff()
-    plt.show(block=block)
-    plt.pause(0.001)
+    _get_pyplot().ioff()
+    _get_pyplot().show(block=block)
+    _get_pyplot().pause(0.001)
     if block:
         for figure in figures:
-            plt.close(figure)
+            _get_pyplot().close(figure)
 
 
 def _use_system_viewer() -> bool:

@@ -302,9 +302,8 @@ def _build_my_new_figure(artifact: PlotArtifact) -> object:
 2. 修改 `src/nr_phy_simu/rx/chain.py` 或 `src/nr_phy_simu/scenarios/base.py`
    把中间结果写进 `result`
 3. 修改 `src/nr_phy_simu/visualization.py`
-   新增 `_build_xxx_figures(...)`
-4. 修改 `save_simulation_plots(...)`
-   在 `figure_builders` 中注册这个 builder
+   新增 `_build_xxx_figure(...)`
+4. 在 `_build_artifact_figure(...)` 中增加对应 `plot_type` 分支
 
 ## 11. 当前最关键的文件
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 
 import numpy as np
@@ -32,6 +33,7 @@ class SharedChannelSimulation:
         runtime_context: SimulationRuntimeContext | None = None,
     ) -> None:
         self.config = config
+        self.last_run_config: SimulationConfig | None = None
         self.runtime_context = runtime_context or SimulationRuntimeContext()
         self.component_factory = component_factory or DefaultSimulationComponentFactory()
         self.components = self.component_factory.create_components(config)
@@ -60,57 +62,45 @@ class SharedChannelSimulation:
         Returns:
             Structured simulation result containing TX/RX buffers and KPIs.
         """
+        # Keep the caller-owned configuration immutable.  The PHY chain still
+        # consumes resolved MCS/TBS fields through a private per-run view.
+        config = deepcopy(self.config)
+        self.last_run_config = config
         self.runtime_context.clear()
         set_runtime_context(self.runtime_context)
-        self.runtime_context.set("bwp", "center_frequency_hz", bwp_center_frequency_hz(self.config))
-        self.runtime_context.set("bwp", "allocated_subcarriers", allocated_subcarriers(self.config))
+        self.runtime_context.set("bwp", "center_frequency_hz", bwp_center_frequency_hz(config))
+        self.runtime_context.set("bwp", "allocated_subcarriers", allocated_subcarriers(config))
         if harq_process_id is not None:
             self.runtime_context.set("harq", "process_id", harq_process_id)
             self.runtime_context.set("harq", "is_retransmission", bool(harq_retransmission))
-        data_re = self.mapper.count_data_re(self.config)
-        transport_plan = build_transport_block_plan(self.config, data_re)
+        data_re = self.mapper.count_data_re(config)
+        transport_plan = build_transport_block_plan(config, data_re)
         self.runtime_context.set("transmission", "transport_plan", transport_plan)
         self.runtime_context.set("harq", "rv", int(transport_plan.codewords[0].rv))
 
-        rng = np.random.default_rng(self.config.random_seed)
+        rng = np.random.default_rng(config.random_seed)
         transport_block = (
             np.asarray(transport_block_override, dtype=np.int8).reshape(-1)
             if transport_block_override is not None
             else rng.integers(0, 2, size=int(transport_plan.size_bits), dtype=np.int8)
         )
-        if self._uses_frequency_domain_channel():
-            if self.config.interference.enabled:
+        if self._uses_frequency_domain_channel(config):
+            if config.interference.enabled:
                 raise NotImplementedError("Frequency-domain direct channel does not currently support interference injection.")
-            tx_payload = self.transmitter.build_slot_payload(transport_block, self.config)
-            rx_grid, channel_info = self.channel.propagate_grid(tx_payload.resource_grid, self.config)
+            tx_payload = self.transmitter.build_slot_payload(transport_block, config)
+            rx_grid, channel_info = self.channel.propagate_grid(tx_payload.resource_grid, config)
             rx_payload = self.receiver.receive_from_grid(
                 rx_grid=rx_grid,
                 dmrs_symbols=tx_payload.dmrs_symbols,
                 dmrs_mask=tx_payload.dmrs_mask,
                 data_mask=tx_payload.data_mask,
                 noise_variance=float(channel_info["noise_variance"]),
-                config=self.config,
+                config=config,
                 rx_waveform=None,
             )
-        else:
-            tx_payload = self.transmitter.transmit(transport_block, self.config)
-            rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, self.config)
-            rx_waveform, interference_reports = self.interference_mixer.apply(
-                rx_waveform,
-                noise_variance=float(channel_info["noise_variance"]),
-                config=self.config,
-            )
-            receiver_noise_variance = time_to_frequency_noise_variance(
-                float(channel_info["noise_variance"]),
-                self.config,
-            )
-            rx_payload = self.receiver.receive(
-                rx_waveform=rx_waveform,
-                dmrs_symbols=tx_payload.dmrs_symbols,
-                dmrs_mask=tx_payload.dmrs_mask,
-                data_mask=tx_payload.data_mask,
-                noise_variance=receiver_noise_variance,
-                config=self.config,
+            tx_payload = replace(
+                tx_payload,
+                waveform=np.empty((int(config.link.num_tx_ant), 0), dtype=np.complex128),
             )
             return self._build_result(
                 tx_payload=tx_payload,
@@ -118,21 +108,41 @@ class SharedChannelSimulation:
                 transport_block=transport_block,
                 transport_plan=transport_plan,
                 channel_info=channel_info,
-                interference_reports=interference_reports,
+                interference_reports=(),
                 harq_process_id=harq_process_id,
                 harq_retransmission=harq_retransmission,
+                config=config,
             )
 
-        tx_payload = replace(tx_payload, waveform=np.empty((int(self.config.link.num_tx_ant), 0), dtype=np.complex128))
+        tx_payload = self.transmitter.transmit(transport_block, config)
+        rx_waveform, channel_info = self.channel.propagate(tx_payload.waveform, config)
+        rx_waveform, interference_reports = self.interference_mixer.apply(
+            rx_waveform,
+            noise_variance=float(channel_info["noise_variance"]),
+            config=config,
+        )
+        receiver_noise_variance = time_to_frequency_noise_variance(
+            float(channel_info["noise_variance"]),
+            config,
+        )
+        rx_payload = self.receiver.receive(
+            rx_waveform=rx_waveform,
+            dmrs_symbols=tx_payload.dmrs_symbols,
+            dmrs_mask=tx_payload.dmrs_mask,
+            data_mask=tx_payload.data_mask,
+            noise_variance=receiver_noise_variance,
+            config=config,
+        )
         return self._build_result(
             tx_payload=tx_payload,
             rx_payload=rx_payload,
             transport_block=transport_block,
             transport_plan=transport_plan,
             channel_info=channel_info,
-            interference_reports=(),
+            interference_reports=interference_reports,
             harq_process_id=harq_process_id,
             harq_retransmission=harq_retransmission,
+            config=config,
         )
 
     def _build_result(
@@ -145,6 +155,7 @@ class SharedChannelSimulation:
         interference_reports: tuple,
         harq_process_id: int | None,
         harq_retransmission: bool | None,
+        config: SimulationConfig,
     ) -> SimulationResult:
         """Build the final simulation result object from chain outputs.
 
@@ -162,7 +173,7 @@ class SharedChannelSimulation:
         Returns:
             Structured simulation result containing payload arrays and scalar KPIs.
         """
-        if self.config.simulation.bypass_channel_coding:
+        if config.simulation.bypass_channel_coding:
             reference_bits = tx_payload.coded_bits
             decoded = rx_payload.decoded_bits[: reference_bits.size]
         else:
@@ -176,7 +187,7 @@ class SharedChannelSimulation:
             rx=rx_payload,
             bit_errors=bit_errors,
             bit_error_rate=ber,
-            snr_db=float(channel_info.get("snr_db", self.config.snr_db)),
+            snr_db=float(channel_info.get("snr_db", config.snr_db)),
             transport_plan=transport_plan,
             crc_ok=rx_payload.crc_ok,
             evm_percent=evm_percent,
@@ -185,11 +196,14 @@ class SharedChannelSimulation:
             harq_rv=int(transport_plan.codewords[0].rv),
             harq_retransmission=harq_retransmission,
             interference_reports=interference_reports,
+            ldpc_iterations=self.runtime_context.get("decoder", "ldpc_iterations"),
+            ldpc_decoder_path=self.runtime_context.get("decoder", "ldpc_decoder_path"),
         )
 
-    def _uses_frequency_domain_channel(self) -> bool:
+    @staticmethod
+    def _uses_frequency_domain_channel(config: SimulationConfig) -> bool:
         """Return whether the configured channel bypasses time-domain processing."""
-        return self.config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
+        return config.channel.model.upper() == "EXTERNAL_FREQRESP_FD"
 
     @staticmethod
     def _compute_evm_metrics(

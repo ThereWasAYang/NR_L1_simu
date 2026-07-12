@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import logging
 
 import numpy as np
 import scipy.sparse as sp
 from py3gpp import nrLDPCDecode
 from py3gpp.nrLDPCEncode import _encode, _gen_submat, _lift_basegraph, _load_basegraph
+
+from nr_phy_simu.common.runtime_context import get_runtime_context
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,7 @@ class LdpcDecoderStructure:
     edge_var_indices: np.ndarray
     row_edge_groups: tuple[np.ndarray, ...]
     col_edge_groups: tuple[np.ndarray, ...]
+    row_degree_buckets: tuple[np.ndarray, ...]
 
 
 def get_ulsch_ldpc_info(tbs: int, target_code_rate: float) -> UlschLdpcInfo:
@@ -238,14 +244,25 @@ def decode_ulsch_ldpc(
         Decoded code-block matrix with shape ``(cb_input_bits, num_code_blocks)``.
     """
     decoded = np.zeros((info.cb_input_bits, llrs.shape[1]), dtype=np.uint8)
+    paths: list[str] = []
+    iterations: list[int] = []
     for code_block_index in range(llrs.shape[1]):
-        decoded[:, code_block_index] = _decode_single_code_block(
+        block, path, block_iterations = _decode_single_code_block(
             llrs[:, code_block_index],
             info,
             max_num_iter=max_num_iter,
             min_sum_scaling=min_sum_scaling,
             enable_py3gpp_fallback=enable_py3gpp_fallback,
         )
+        decoded[:, code_block_index] = block
+        paths.append(path)
+        iterations.append(block_iterations)
+    decoder_path = paths[0] if len(set(paths)) == 1 else "mixed:" + ",".join(paths)
+    context = get_runtime_context()
+    context.set("decoder", "ldpc_decoder_path", decoder_path)
+    context.set("decoder", "ldpc_iterations", max(iterations, default=0))
+    context.set("decoder", "ldpc_codeblock_paths", tuple(paths))
+    context.set("decoder", "ldpc_codeblock_iterations", tuple(iterations))
     return decoded
 
 
@@ -358,25 +375,13 @@ def _lifting_set_index_from_zc(zc: int) -> int:
     raise ValueError(f"Unsupported lifting size Zc={zc}")
 
 
-def _select_lifting_kb(input_bits: int, base_graph: int) -> int:
-    if base_graph == 1:
-        return 22
-    if input_bits > 640:
-        return 10
-    if input_bits > 560:
-        return 9
-    if input_bits > 192:
-        return 8
-    return 6
-
-
 def _decode_single_code_block(
     llrs: np.ndarray,
     info: UlschLdpcInfo,
     max_num_iter: int,
     min_sum_scaling: float,
     enable_py3gpp_fallback: bool,
-) -> np.ndarray:
+) -> tuple[np.ndarray, str, int]:
     """Decode one recovered LDPC code block.
 
     Args:
@@ -387,31 +392,35 @@ def _decode_single_code_block(
         enable_py3gpp_fallback: Whether to use py3gpp as a fallback.
 
     Returns:
-        One-dimensional decoded block with shape ``(cb_input_bits,)``.
+        Tuple ``(decoded_bits, decoder_path, iterations)``. ``decoded_bits`` has
+        shape ``(cb_input_bits,)``.
     """
     structure = _ldpc_decoder_structure(info.base_graph, info.cb_input_bits, info.zc)
     punctured_prefix = np.zeros(2 * info.zc, dtype=np.float64)
     channel_llr = np.concatenate([punctured_prefix, np.asarray(llrs, dtype=np.float64)])
     channel_llr = np.nan_to_num(channel_llr, nan=0.0, posinf=1e6, neginf=-1e6)
 
-    posterior = _normalized_min_sum_decode(
+    posterior, iterations = _normalized_min_sum_decode(
         channel_llr,
         structure,
         max_num_iter=max_num_iter,
         scaling=min_sum_scaling,
     )
     if posterior is not None:
-        return (posterior[: info.cb_input_bits] < 0).astype(np.uint8)
+        return (posterior[: info.cb_input_bits] < 0).astype(np.uint8), "min_sum", iterations
 
     direct = _direct_decode_from_hard_decisions(llrs.reshape(-1, 1), info)
     if direct is not None:
-        return direct[:, 0]
+        logger.warning("LDPC min-sum did not converge; using GF(2) direct fallback.")
+        return direct[:, 0], "gf2_direct", iterations
 
     if not enable_py3gpp_fallback:
-        return (channel_llr[: info.cb_input_bits] < 0).astype(np.uint8)
+        logger.warning("LDPC min-sum did not converge; using hard decisions because py3gpp fallback is disabled.")
+        return (channel_llr[: info.cb_input_bits] < 0).astype(np.uint8), "hard", iterations
 
+    logger.warning("LDPC min-sum and GF(2) direct decoding failed; using py3gpp fallback.")
     decoded, _ = nrLDPCDecode(llrs.reshape(-1, 1), info.base_graph, maxNumIter=max_num_iter)
-    return decoded[:, 0].astype(np.uint8)
+    return decoded[:, 0].astype(np.uint8), "py3gpp", iterations
 
 
 def _normalized_min_sum_decode(
@@ -419,7 +428,7 @@ def _normalized_min_sum_decode(
     structure: LdpcDecoderStructure,
     max_num_iter: int,
     scaling: float,
-) -> np.ndarray | None:
+) -> tuple[np.ndarray | None, int]:
     """Run normalized min-sum LDPC decoding on one full codeword LLR vector.
 
     Args:
@@ -430,49 +439,48 @@ def _normalized_min_sum_decode(
         scaling: Normalized min-sum check-node scaling factor.
 
     Returns:
-        Posterior LLR vector with the same shape as ``channel_llr`` if parity checks
-        pass, otherwise ``None``.
+        Tuple of the posterior LLR vector (or ``None`` when parity checks do not
+        pass) and the number of iterations performed.
     """
     edge_var_indices = structure.edge_var_indices
-    row_edge_groups = structure.row_edge_groups
-    col_edge_groups = structure.col_edge_groups
-
     v2c = channel_llr[edge_var_indices].astype(np.float64, copy=True)
     c2v = np.zeros_like(v2c)
     posterior = channel_llr.copy()
 
-    for _ in range(max_num_iter):
-        for row_edges in row_edge_groups:
+    for iteration in range(1, max_num_iter + 1):
+        for row_edges in structure.row_degree_buckets:
             incoming = v2c[row_edges]
-            if incoming.size == 0:
-                continue
             signs = np.sign(incoming)
             signs[signs == 0.0] = 1.0
             abs_values = np.abs(incoming)
+            min_indices = np.argmin(abs_values, axis=1)
+            if abs_values.shape[1] > 1:
+                two_smallest = np.partition(abs_values, 1, axis=1)[:, :2]
+                min1 = two_smallest[:, 0]
+                min2 = two_smallest[:, 1]
+            else:
+                min1 = abs_values[:, 0]
+                min2 = min1
+            total_sign = np.prod(signs, axis=1)
+            outgoing = np.broadcast_to(scaling * min1[:, np.newaxis], abs_values.shape).copy()
+            outgoing[np.arange(row_edges.shape[0]), min_indices] = scaling * min2
+            c2v[row_edges] = total_sign[:, np.newaxis] * signs * outgoing
 
-            min_index = int(np.argmin(abs_values))
-            min1 = float(abs_values[min_index])
-            min2 = float(np.min(np.delete(abs_values, min_index))) if abs_values.size > 1 else min1
-            total_sign = float(np.prod(signs))
-
-            outgoing = np.full(abs_values.shape, scaling * min1, dtype=np.float64)
-            outgoing[min_index] = scaling * min2
-            c2v[row_edges] = total_sign * signs * outgoing
-
-        posterior = channel_llr.copy()
-        for var_index, edge_ids in enumerate(col_edge_groups):
-            if edge_ids.size:
-                posterior[var_index] += float(np.sum(c2v[edge_ids]))
+        posterior = channel_llr + np.bincount(
+            edge_var_indices,
+            weights=c2v,
+            minlength=channel_llr.size,
+        )
 
         hard = (posterior < 0).astype(np.uint8)
         if _parity_check_satisfied(hard, structure.parity_check):
-            return posterior
+            return posterior, iteration
 
         v2c = posterior[edge_var_indices] - c2v
 
     if _parity_check_satisfied((posterior < 0).astype(np.uint8), structure.parity_check):
-        return posterior
-    return None
+        return posterior, max_num_iter
+    return None, max_num_iter
 
 
 def _parity_check_satisfied(bits: np.ndarray, parity_check: sp.csr_matrix) -> bool:
@@ -511,11 +519,17 @@ def _ldpc_decoder_structure(base_graph: int, cb_input_bits: int, zc: int) -> Ldp
             edge_id += 1
 
     col_edge_groups = tuple(np.asarray(edges, dtype=np.int32) for edges in col_edges)
+    degree_buckets: list[np.ndarray] = []
+    for degree in sorted({edges.size for edges in row_edge_groups if edges.size}):
+        degree_buckets.append(
+            np.stack([edges for edges in row_edge_groups if edges.size == degree]).astype(np.int32)
+        )
     return LdpcDecoderStructure(
         parity_check=parity_check,
         edge_var_indices=np.asarray(edge_var_indices, dtype=np.int32),
         row_edge_groups=tuple(row_edge_groups),
         col_edge_groups=col_edge_groups,
+        row_degree_buckets=tuple(degree_buckets),
     )
 
 

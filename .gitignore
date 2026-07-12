@@ -9,6 +9,9 @@ __pycache__/
 .venv/
 build/
 dist/
-src/*.egg-info/
+*.egg-info/
 src/nr_phy_simu.egg-info/
+.coverage
+htmlcov/
+.vscode/
 outputs/
