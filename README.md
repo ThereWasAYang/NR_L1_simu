@@ -515,7 +515,7 @@ bwp:
 
 `link.prb_start` 是 BWP 内 PRB 起点；实际映射到小区全带 grid 的子载波起点为 `(bwp.start_rb + link.prb_start) * 12`。当 `bwp.num_rbs: null` 时，BWP 等于小区带宽，旧配置行为保持不变。BWP 中心频率由 `carrier.center_frequency_hz`、小区带宽、BWP 起点/宽度和 SCS 推导，不需要单独配置。
 
-OFDM 复包络按 38.211 clause 5.4 在每个 symbol 的有效起点使用常量相位，频率采用 RF carrier `carrier.center_frequency_hz`，时间参考在每个 subframe 重置；slot 0 波形与 py3gpp 参考实现逐样点对齐。CP-OFDM PUSCH/PDSCH Gold DMRS 的序列偏移使用 `(bwp.start_rb + link.prb_start)` 对应的 CRB 参考点，而不是仅用 BWP 内偏移。
+OFDM 复包络按 38.211 clause 5.4 在每个 symbol 的有效起点使用常量相位，频率采用 RF carrier `carrier.center_frequency_hz`，时间参考在每个 subframe 重置；slot 0 波形与 py3gpp 参考实现逐样点对齐。normal CP 的长前缀按 subframe 内 OFDM symbol 0 和 `7 * 2**μ` 放置，因此 μ≥2 时 CP、slot 样点数、相位参考与连续信道时间偏移都会随绝对 slot 正确变化。CP-OFDM PUSCH/PDSCH Gold DMRS 的序列偏移使用 `(bwp.start_rb + link.prb_start)` 对应的 CRB 参考点，而不是仅用 BWP 内偏移。
 
 当 `fft_size` 或 `sample_rate_hz` 未显式提供时，工程会自动选择满足当前带宽要求的最小 `2` 的整数次幂 FFT，并据此计算采样率。
 循环前缀长度不再由配置文件手动输入，而是根据 `cyclic_prefix + subcarrier spacing + sample rate` 自动推导。

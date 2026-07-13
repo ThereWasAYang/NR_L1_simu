@@ -26,7 +26,7 @@
 
 ## py3gpp 升级后结果变化
 
-项目依赖范围限制为 `py3gpp>=0.6.0,<0.7`。升级该边界前必须运行全量协议和 baseline 测试；仓库已知 DMRS 互通问题见项目相关开发文档与测试。
+项目依赖范围限制为 `py3gpp>=0.6.0,<0.7`。升级该边界前必须运行全量协议和 baseline 测试；已确认的 PDSCH DMRS 表项和非零 slot OFDM 参考实现问题见 [PY3GPP_DMRS_BUG_REPORT.md](../PY3GPP_DMRS_BUG_REPORT.md)。
 
 ## CDL 运行内存过高
 

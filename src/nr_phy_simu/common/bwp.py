@@ -129,9 +129,7 @@ def ofdm_phase_compensation_vector(
         return np.ones(symbol_length, dtype=np.complex128)
 
     sample_rate_hz = float(config.carrier.sample_rate_effective_hz)
-    slots_per_subframe = 2 ** int(config.carrier.numerology)
-    slot_in_subframe = int(config.slot_index) % slots_per_subframe
-    slot_start_sample = slot_in_subframe * int(config.carrier.slot_length_samples)
+    slot_start_sample = config.carrier.slot_start_sample_in_subframe(config.slot_index)
     useful_symbol_start = slot_start_sample + int(symbol_start_sample) + int(cp_length)
     cycles = np.remainder(
         ofdm_phase_compensation_frequency_hz(config) * useful_symbol_start / sample_rate_hz,

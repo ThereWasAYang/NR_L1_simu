@@ -43,7 +43,7 @@ class WaveformReplaySimulation:
         self.last_run_config: SimulationConfig | None = None
         self.runtime_context = runtime_context or SimulationRuntimeContext()
         self.component_factory = component_factory or DefaultSimulationComponentFactory()
-        self.components = self.component_factory.create_components(config)
+        self.components = self.component_factory.create_components(self.config)
         self.mapper = self.components.transmitter.mapper
         self.dmrs_generator = self.components.shared.dmrs_generator
         self.receiver = receiver or build_receiver(self.components)

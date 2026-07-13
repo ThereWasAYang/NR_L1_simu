@@ -15,7 +15,10 @@
 - 清理死代码、重复复数解析和 matplotlib 导入副作用。
 - 增加 MIT License 与对应打包元数据。
 - 按 38.211 R18.8 补齐 PUSCH/PDSCH 单/双符号 DMRS 位置表、type-A pos3、CRB 序列参考点和长度 30 低 PAPR 闭式序列。
+- DMRS 位置解析现在显式拒绝 pos3/type-A pos3、双符号/pos2-pos3 及前置导频落在 allocation 外等非法组合，不再静默钳位或过滤。
 - 修正 OFDM clause 5.4 复包络相位为 symbol 常量、RF carrier 频率和 subframe 时间参考，并加入 py3gpp 波形互通测试。
+- 修正 normal CP 在 μ≥2 时随 slot 变化的长 CP 布局，并统一 OFDM、回放、绘图和连续信道的绝对采样时间轴。
+- 补充 py3gpp 0.6.0/current-main 的 DMRS 与非零 slot OFDM 已知问题报告。
 
 ## 0.1.0 - 2026-06-03
 

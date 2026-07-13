@@ -69,7 +69,9 @@
 - `CarrierConfig.center_frequency_hz`: 系统唯一载频，供 OFDM 相位补偿和 TDL/CDL 信道模型共用。
 - `CarrierConfig.fft_size_effective`: 若配置未提供 FFT 点数，则自动选择不小于小区带宽的最小 2 的整数次幂。
 - `CarrierConfig.sample_rate_effective_hz`: 若配置未提供采样率，则用 `fft_size * SCS` 自动计算。
-- `CarrierConfig.cyclic_prefix_lengths`: 根据 CP 类型、SCS 和采样率推导每个 OFDM 符号 CP 长度。
+- `CarrierConfig.cyclic_prefix_lengths`: slot 0 的 CP 长度兼容入口。
+- `CarrierConfig.cyclic_prefix_lengths_for_slot(slot_index)`: 根据 CP 类型、SCS、采样率和绝对 slot 推导每个 OFDM 符号 CP 长度；normal CP 的长前缀位于每个 subframe 的 symbol 0 与 `7 * 2**μ`。
+- `CarrierConfig.slot_length_samples_for_slot(slot_index)` / `slot_start_sample(slot_index)`: 为 μ≥2 的非等长 slot 提供精确长度和绝对采样时间轴。
 - `SimulationConfig.active_bwp_num_rbs`: 解析 `bwp.num_rbs`，`null` 时等于小区带宽。
 - `SimulationConfig.from_mapping`: 把配置文件中的字典转成强类型 dataclass，同时把未知字段递归保存到动态配置节点。
 - `SimulationConfig.__post_init__`: 创建配置后立即执行协议约束检查。
@@ -77,7 +79,7 @@
 
 设计意图：
 
-- CP 长度不暴露为手工配置，避免不符合协议的配置进入链路。
+- CP 长度不暴露为手工配置，避免不符合协议的配置进入链路。OFDM、相位补偿、连续衰落信道、回放校验和绘图元数据共用同一套 slot-aware CP/采样时间轴。
 - `link.prb_start` 是 BWP 内 PRB 起点；实际 cell-grid 子载波位置由 `common/bwp.py` 统一计算。
 - `channel.params.carrier_frequency_hz` 已废弃，旧配置加载时只作为 `carrier.center_frequency_hz` 的兼容迁移入口。
 - `ChannelConfig.params` 使用 `ConfigNode`，保留字典兼容性，同时允许 `config.channel.params.snr_db` 形式访问。

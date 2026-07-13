@@ -187,7 +187,7 @@ def _collect_plot_artifacts(
                 values=result.rx.rx_waveform,
                 plot_type="rx_time",
                 metadata={
-                    "cp_lengths": config.carrier.cyclic_prefix_lengths,
+                    "cp_lengths": config.carrier.cyclic_prefix_lengths_for_slot(config.slot_index),
                     "fft_size": config.carrier.fft_size_effective,
                 },
             )

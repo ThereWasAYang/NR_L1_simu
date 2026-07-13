@@ -67,7 +67,7 @@ class FadingChannelBase(ChannelModel, ABC):
             else:
                 self.rng.bit_generator.state = deepcopy(self._continuous_initial_rng_state)
             self._time_offset_s = (
-                int(config.slot_index) * int(config.carrier.slot_length_samples)
+                int(config.carrier.slot_start_sample(config.slot_index))
                 / float(config.carrier.sample_rate_effective_hz)
             )
         else:

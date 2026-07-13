@@ -59,7 +59,7 @@ class OfdmProcessor(TimeDomainProcessor):
             Serialized time-domain waveform with shape ``(slot_samples,)``.
         """
         fft_size = config.carrier.fft_size_effective
-        cp_lengths = config.carrier.cyclic_prefix_lengths
+        cp_lengths = config.carrier.cyclic_prefix_lengths_for_slot(config.slot_index)
         n_sc = config.carrier.n_subcarriers
 
         waveform_symbols = []
@@ -116,7 +116,7 @@ class OfdmProcessor(TimeDomainProcessor):
             axis 0 is cell subcarrier index and axis 1 is OFDM symbol index.
         """
         fft_size = config.carrier.fft_size_effective
-        cp_lengths = config.carrier.cyclic_prefix_lengths
+        cp_lengths = config.carrier.cyclic_prefix_lengths_for_slot(config.slot_index)
         n_sc = config.carrier.n_subcarriers
         symbols_per_slot = config.carrier.symbols_per_slot
 

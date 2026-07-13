@@ -39,7 +39,10 @@ def load_text_waveform(path: str | Path, config: SimulationConfig) -> np.ndarray
         )
 
     num_samples = len(values) // num_rx_ant
-    expected_samples = config.waveform_input.num_samples_per_tti or config.carrier.slot_length_samples
+    expected_samples = (
+        config.waveform_input.num_samples_per_tti
+        or config.carrier.slot_length_samples_for_slot(config.slot_index)
+    )
     if num_samples != expected_samples:
         raise ValueError(
             f"Waveform samples per antenna ({num_samples}) do not match expected TTI length ({expected_samples})."

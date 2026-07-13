@@ -67,8 +67,11 @@ class CarrierConfig:
 
     @property
     def slots_per_frame(self) -> int:
-        mu = int(round(math.log2(self.subcarrier_spacing_khz / 15)))
-        return 10 * (2**mu)
+        return 10 * self.slots_per_subframe
+
+    @property
+    def slots_per_subframe(self) -> int:
+        return 2**self.numerology
 
     @property
     def numerology(self) -> int:
@@ -114,13 +117,26 @@ class CarrierConfig:
 
     @property
     def cyclic_prefix_lengths(self) -> tuple[int, ...]:
+        """Return CP lengths for slot 0, preserving the legacy convenience API."""
+        return self.cyclic_prefix_lengths_for_slot(0)
+
+    def cyclic_prefix_lengths_for_slot(self, slot_index: int) -> tuple[int, ...]:
+        """Return per-symbol CP lengths for the requested absolute slot.
+
+        For normal CP, 38.211 places the longer prefixes at OFDM symbols 0 and
+        ``7 * 2**mu`` of each subframe.  Consequently every slot starts with a
+        long prefix for mu <= 1, while only selected slots do so for mu >= 2.
+        """
         scale = self.sample_rate_effective_hz / 30.72e6
         mu = self.numerology
         if self.cyclic_prefix_mode == "NORMAL":
             first = int(((144 * (2 ** (-mu))) + 16) * scale)
             other = int((144 * (2 ** (-mu))) * scale)
+            slot_in_subframe = int(slot_index) % self.slots_per_subframe
+            first_symbol_in_subframe = slot_in_subframe * self.symbols_per_slot
+            long_cp_symbols = {0, 7 * (2**mu)}
             lengths = [
-                first if idx == 0 or idx == 7 * (2**mu) else other
+                first if first_symbol_in_subframe + idx in long_cp_symbols else other
                 for idx in range(self.symbols_per_slot)
             ]
             return tuple(lengths)
@@ -130,7 +146,36 @@ class CarrierConfig:
 
     @property
     def slot_length_samples(self) -> int:
-        return sum(self.cyclic_prefix_lengths) + self.symbols_per_slot * self.fft_size_effective
+        """Return slot-0 length, preserving the legacy convenience API."""
+        return self.slot_length_samples_for_slot(0)
+
+    def slot_length_samples_for_slot(self, slot_index: int) -> int:
+        return (
+            sum(self.cyclic_prefix_lengths_for_slot(slot_index))
+            + self.symbols_per_slot * self.fft_size_effective
+        )
+
+    @property
+    def subframe_length_samples(self) -> int:
+        return sum(
+            self.slot_length_samples_for_slot(slot_index)
+            for slot_index in range(self.slots_per_subframe)
+        )
+
+    def slot_start_sample_in_subframe(self, slot_index: int) -> int:
+        slot_in_subframe = int(slot_index) % self.slots_per_subframe
+        return sum(
+            self.slot_length_samples_for_slot(index)
+            for index in range(slot_in_subframe)
+        )
+
+    def slot_start_sample(self, slot_index: int) -> int:
+        """Return the absolute start sample of ``slot_index`` on the NR timeline."""
+        subframe_index, slot_in_subframe = divmod(int(slot_index), self.slots_per_subframe)
+        return (
+            subframe_index * self.subframe_length_samples
+            + self.slot_start_sample_in_subframe(slot_in_subframe)
+        )
 
 
 @dataclass
